@@ -1,0 +1,309 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "milpacs.proto",
+    "version": "1.0"
+  },
+  "tags": [
+    {
+      "name": "Milpacs"
+    }
+  ],
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/api/v1/milpacs/profile/id/{userId}": {
+      "get": {
+        "summary": "Get given user milpac Profile",
+        "description": "Get milpac Profile data for a specific user",
+        "operationId": "Milpacs_GetProfile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/milpacsProfile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Users, Milpacs, Profile"
+        ]
+      }
+    },
+    "/api/v1/milpacs/profile/username/{username}": {
+      "get": {
+        "summary": "Get given user milpac Profile",
+        "description": "Get milpac Profile data for a specific user",
+        "operationId": "Milpacs_GetProfile2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/milpacsProfile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "Users, Milpacs, Profile"
+        ]
+      }
+    },
+    "/api/v1/roster/{roster}": {
+      "get": {
+        "summary": "Get a given roster",
+        "description": "Get all milpac Profile data for a given roster",
+        "operationId": "Milpacs_GetRoster",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/milpacsRoster"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "roster",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "COMBAT",
+              "ON_ELOA",
+              "RESERVE",
+              "PAST_MEMBERS",
+              "WALL_OF_HONOR"
+            ]
+          }
+        ],
+        "tags": [
+          "Roster, Milpacs"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "milpacsAward": {
+      "type": "object",
+      "properties": {
+        "awardDetails": {
+          "type": "string"
+        },
+        "awardName": {
+          "type": "string"
+        },
+        "awardDate": {
+          "type": "string"
+        },
+        "awardImageUrl": {
+          "type": "string"
+        }
+      }
+    },
+    "milpacsPosition": {
+      "type": "object",
+      "properties": {
+        "positionTitle": {
+          "type": "string"
+        }
+      }
+    },
+    "milpacsProfile": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "$ref": "#/definitions/milpacsUser"
+        },
+        "rank": {
+          "$ref": "#/definitions/milpacsRank"
+        },
+        "uniformUrl": {
+          "type": "string"
+        },
+        "roster": {
+          "$ref": "#/definitions/milpacsRosterType"
+        },
+        "primary": {
+          "$ref": "#/definitions/milpacsPosition"
+        },
+        "secondaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/milpacsPosition"
+          }
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/milpacsRecord"
+          }
+        },
+        "awards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/milpacsAward"
+          }
+        }
+      }
+    },
+    "milpacsRank": {
+      "type": "object",
+      "properties": {
+        "rankShort": {
+          "type": "string"
+        },
+        "rankFull": {
+          "type": "string"
+        }
+      }
+    },
+    "milpacsRecord": {
+      "type": "object",
+      "properties": {
+        "recordDetails": {
+          "type": "string"
+        },
+        "recordType": {
+          "$ref": "#/definitions/milpacsRecordType"
+        },
+        "recordDate": {
+          "type": "string"
+        }
+      }
+    },
+    "milpacsRecordType": {
+      "type": "string",
+      "enum": [
+        "PROMOTION",
+        "TRANSFER",
+        "OPERATION",
+        "DISCIPLINARY",
+        "DISCHARGE",
+        "ASSIGNMENT",
+        "NAME_CHANGE",
+        "ELOA",
+        "GRADUATION"
+      ],
+      "default": "PROMOTION"
+    },
+    "milpacsRoster": {
+      "type": "object",
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/milpacsProfile"
+          }
+        }
+      }
+    },
+    "milpacsRosterType": {
+      "type": "string",
+      "enum": [
+        "COMBAT",
+        "ON_ELOA",
+        "RESERVE",
+        "PAST_MEMBERS",
+        "WALL_OF_HONOR"
+      ],
+      "default": "COMBAT"
+    },
+    "milpacsUser": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "typeUrl": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "format": "byte"
+        }
+      }
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  },
+  "externalDocs": {
+    "description": "7Cav API Repository",
+    "url": "https://github.com/7cav/api"
+  }
+}

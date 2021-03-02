@@ -1,0 +1,10 @@
+.vscode
+.idea
+
+!proto
+proto/*
+!proto/scripts
+proto/*.pb.go
+
+!statik/
+statik/statik.go
