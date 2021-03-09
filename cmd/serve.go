@@ -17,7 +17,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/7cav/api/server"
+	"github.com/7cav/api/servers"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -25,15 +25,9 @@ import (
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Launches the example webserver on https://0.0.0.0:10000",
 	Run: func(cmd *cobra.Command, args []string) {
-		server := server.New(fmt.Sprintf("0.0.0.0:%s", viper.GetString("port")))
+		server := servers.New(fmt.Sprintf("0.0.0.0:%s", viper.GetString("port")))
 		server.Start()
 	},
 }

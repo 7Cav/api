@@ -28,7 +28,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/milpacsProfile"
+              "$ref": "#/definitions/protoProfile"
             }
           },
           "default": {
@@ -43,8 +43,8 @@
             "name": "userId",
             "in": "path",
             "required": true,
-            "type": "integer",
-            "format": "int32"
+            "type": "string",
+            "format": "uint64"
           },
           {
             "name": "username",
@@ -67,7 +67,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/milpacsProfile"
+              "$ref": "#/definitions/protoProfile"
             }
           },
           "default": {
@@ -88,8 +88,8 @@
             "name": "userId",
             "in": "query",
             "required": false,
-            "type": "integer",
-            "format": "int32"
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -106,7 +106,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "$ref": "#/definitions/milpacsRoster"
+              "$ref": "#/definitions/protoRoster"
             }
           },
           "default": {
@@ -123,11 +123,13 @@
             "required": true,
             "type": "string",
             "enum": [
+              "ROSTER_NULL",
               "COMBAT",
-              "ON_ELOA",
               "RESERVE",
-              "PAST_MEMBERS",
-              "WALL_OF_HONOR"
+              "ON_ELOA",
+              "WALL_OF_HONOR",
+              "ARLINGTON",
+              "PAST_MEMBERS"
             ]
           }
         ],
@@ -138,7 +140,7 @@
     }
   },
   "definitions": {
-    "milpacsAward": {
+    "protoAward": {
       "type": "object",
       "properties": {
         "awardDetails": {
@@ -155,7 +157,7 @@
         }
       }
     },
-    "milpacsPosition": {
+    "protoPosition": {
       "type": "object",
       "properties": {
         "positionTitle": {
@@ -163,45 +165,54 @@
         }
       }
     },
-    "milpacsProfile": {
+    "protoProfile": {
       "type": "object",
       "properties": {
         "user": {
-          "$ref": "#/definitions/milpacsUser"
+          "$ref": "#/definitions/protoUser"
         },
         "rank": {
-          "$ref": "#/definitions/milpacsRank"
+          "$ref": "#/definitions/protoRank"
+        },
+        "realName": {
+          "type": "string"
         },
         "uniformUrl": {
           "type": "string"
         },
         "roster": {
-          "$ref": "#/definitions/milpacsRosterType"
+          "$ref": "#/definitions/protoRosterType"
         },
         "primary": {
-          "$ref": "#/definitions/milpacsPosition"
+          "$ref": "#/definitions/protoPosition"
         },
         "secondaries": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/milpacsPosition"
+            "$ref": "#/definitions/protoPosition"
           }
         },
         "records": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/milpacsRecord"
+            "$ref": "#/definitions/protoRecord"
           }
         },
         "awards": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/milpacsAward"
+            "$ref": "#/definitions/protoAward"
           }
+        },
+        "joinDate": {
+          "type": "string"
+        },
+        "promotionDate": {
+          "type": "string"
         }
       }
     },
-    "milpacsRank": {
+    "protoRank": {
       "type": "object",
       "properties": {
         "rankShort": {
@@ -209,26 +220,30 @@
         },
         "rankFull": {
           "type": "string"
+        },
+        "rankImageUrl": {
+          "type": "string"
         }
       }
     },
-    "milpacsRecord": {
+    "protoRecord": {
       "type": "object",
       "properties": {
         "recordDetails": {
           "type": "string"
         },
         "recordType": {
-          "$ref": "#/definitions/milpacsRecordType"
+          "$ref": "#/definitions/protoRecordType"
         },
         "recordDate": {
           "type": "string"
         }
       }
     },
-    "milpacsRecordType": {
+    "protoRecordType": {
       "type": "string",
       "enum": [
+        "RECORD_TYPE_NULL",
         "PROMOTION",
         "TRANSFER",
         "OPERATION",
@@ -239,33 +254,39 @@
         "ELOA",
         "GRADUATION"
       ],
-      "default": "PROMOTION"
+      "default": "RECORD_TYPE_NULL"
     },
-    "milpacsRoster": {
+    "protoRoster": {
       "type": "object",
       "properties": {
         "profiles": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/milpacsProfile"
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/protoProfile"
           }
         }
       }
     },
-    "milpacsRosterType": {
+    "protoRosterType": {
       "type": "string",
       "enum": [
+        "ROSTER_NULL",
         "COMBAT",
-        "ON_ELOA",
         "RESERVE",
-        "PAST_MEMBERS",
-        "WALL_OF_HONOR"
+        "ON_ELOA",
+        "WALL_OF_HONOR",
+        "ARLINGTON",
+        "PAST_MEMBERS"
       ],
-      "default": "COMBAT"
+      "default": "ROSTER_NULL"
     },
-    "milpacsUser": {
+    "protoUser": {
       "type": "object",
       "properties": {
+        "userId": {
+          "type": "string",
+          "format": "uint64"
+        },
         "username": {
           "type": "string"
         }

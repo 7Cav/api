@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  database:
+    container_name: xenforo-db
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "$$MYSQL_USER", "--password=$$MYSQL_PASSWORD" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    restart: always
+    image: mariadb:10.3
+    ports:
+      - '3306:3306'
+    volumes:
+      - xenforo-database:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: xenforo
+      MYSQL_USER: xenforo
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: root_password
+
+volumes:
+  xenforo-database:

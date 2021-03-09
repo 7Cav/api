@@ -1,10 +1,18 @@
+# editors
 .vscode
 .idea
 
+# generated files
 !proto
 proto/*
 !proto/scripts
 proto/*.pb.go
-
 !statik/
 statik/statik.go
+
+# ignore database copy for local dev work
+*.gz
+
+# ignore cert file areas
+certs/
+out/

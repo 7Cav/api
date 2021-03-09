@@ -46,7 +46,7 @@ func init() {
 func initConfig() {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath("./config")
-	viper.SetConfigName("service")
+	viper.SetConfigName("grpc")
 
 	viper.AutomaticEnv() // read in environment variables that match
 
