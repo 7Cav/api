@@ -19,7 +19,8 @@ install:
 		google.golang.org/grpc/cmd/protoc-gen-go-grpc \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
-		github.com/rakyll/statik \
+		github.com/rakyll/statik
+	go get \
 		github.com/bufbuild/buf/cmd/buf \
 		github.com/square/certstrap
 
