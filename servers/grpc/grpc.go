@@ -1,31 +1,57 @@
+/*
+ *  Copyright (C) 2021 7Cav.us
+ *  This file is part of 7Cav-API <https://github.com/7cav/api>.
+ *
+ *  7Cav-API is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  7Cav-API is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with 7Cav-API. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package grpc
 
 import (
 	"context"
 	"errors"
-	"github.com/7cav/api/datastore"
+	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
+	"os"
 )
 
 type MilpacsService struct {
-	Datastore datastore.Datastore
+	Datastore datastores.Datastore
 }
 
-func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.ProfileRequest) (*proto.Profile, error) {
+var (
+	Info  = log.New(os.Stdout, "INFO: ", 0)
+	Warn  = log.New(os.Stdout, "WARNING: ", 0)
+	Error = log.New(os.Stdout, "ERROR: ", 0)
+)
 
+func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.ProfileRequest) (*proto.Profile, error) {
 	if request.Username != "" {
-		log.Print("Requested via username")
+		Info.Println("GetProfile, Requested via username")
 	}
 
 	if request.UserId != 0 {
-		log.Print("Requested via userID")
+		Info.Println("GetProfile, requested via userid")
 	}
 
 	profiles, err := server.Datastore.FindProfilesById(request.UserId)
 
 	if err != nil {
-		// TODO return premadae error var
+		return &proto.Profile{}, status.Errorf(codes.NotFound, "no profile found for %", request.UserId)
 	}
 
 	return profiles[0], nil
@@ -39,7 +65,7 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 	roster, err := server.Datastore.FindRosterByType(request.Roster)
 
 	if err != nil {
-		// TODO return premadae error var
+		return &proto.Roster{}, status.Errorf(codes.NotFound, "no roster found for %", request.Roster)
 	}
 
 	return roster, nil

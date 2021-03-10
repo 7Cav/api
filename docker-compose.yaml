@@ -1,0 +1,65 @@
+version: '3'
+
+services:
+  api:
+    build:
+      dockerfile: "Dockerfile"
+      context: "./"
+    image: 7cav/api:latest
+    container_name: go-api
+    networks:
+      - api
+    ports:
+    - 11000:11000
+    - 10000:10000
+    environment:
+      PORT: 10000
+      DB_USERNAME: xenforo
+      DB_PASSWORD: password
+      DB_HOST: database
+      DB_PORT: 3306
+
+  nginx:
+    networks:
+      - api
+    image: nginx:1.19-alpine
+    container_name: api-nginx
+    ports:
+    - 80:80
+    - 1443:1443
+    restart: always
+    volumes:
+      - api-nginx-conf:/etc/nginx/conf.d/
+      - ./out:/out
+
+  database:
+    container_name: xenforo-db
+    networks:
+      - api
+    healthcheck:
+      test: mysqladmin --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD ping
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    restart: always
+    image: mariadb:10.3
+    ports:
+      - '3306:3306'
+    volumes:
+      - xenforo-database:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: xenforo
+      MYSQL_USER: xenforo
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: root_password
+
+volumes:
+  xenforo-database:
+  api-nginx-conf:
+    driver_opts:
+      type: none
+      o: bind
+      device: $PWD/docker/nginx/
+
+networks:
+  api:

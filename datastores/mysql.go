@@ -1,11 +1,11 @@
-package datastore
+package datastores
 
 import (
+	"fmt"
 	"github.com/7cav/api/milpacs"
 	"github.com/7cav/api/proto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -23,23 +23,32 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 
 	var profile milpacs.Profile
 
-	log.Println("Searching for user: ", userIds[0])
+	Info.Println("Searching for user: ", userIds[0])
 	ds.Db.Preload(clause.Associations).First(&profile, userIds[0])
 
-	milpac := []*proto.Profile{ds.generateProtoProfile(profile)}
+	milpac, err := ds.generateProtoProfile(profile)
 
-	return milpac, nil
+	if err != nil {
+		return nil, fmt.Errorf("error generating profile")
+	}
+
+	return []*proto.Profile{milpac}, nil
 }
 
 func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error) {
 	var rosterProfiles []milpacs.Profile
 
-	log.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
+	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
 	ds.Db.Preload(clause.Associations).Preload("AwardRecords.Award").Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).Find(&rosterProfiles)
 
 	var profiles = make(map[uint64]*proto.Profile, len(rosterProfiles))
 	for _, profile := range rosterProfiles {
-		profiles[profile.RelationId] = ds.generateProtoProfile(profile)
+		milpac, err := ds.generateProtoProfile(profile)
+
+		if err != nil {
+			return nil, fmt.Errorf("error generating profile")
+		}
+		profiles[profile.RelationId] = milpac
 	}
 
 	protoRoster := &proto.Roster{Profiles: profiles}
@@ -47,29 +56,31 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 	return protoRoster, nil
 }
 
-func (ds Mysql) generateProtoProfile(profile milpacs.Profile) *proto.Profile {
-	return &proto.Profile{
-		User:        &proto.User{
-			UserId: profile.XfUser.UserID,
+func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
+	milpac := &proto.Profile{
+		User: &proto.User{
+			UserId:   profile.XfUser.UserID,
 			Username: profile.XfUser.Username,
 		},
-		Rank:        &proto.Rank{
-			RankShort: proto.RankType(profile.RankID).String(),
-			RankFull: profile.Rank.Title,
+		Rank: &proto.Rank{
+			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
+			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
-		RealName: profile.RealName,
-		UniformUrl:  profile.UniformUrl(),
-		Roster:      proto.RosterType(profile.RosterId),
-		Primary:     &proto.Position{
+		RealName:   profile.RealName,
+		UniformUrl: profile.UniformUrl(),
+		Roster:     proto.RosterType(profile.RosterId),
+		Primary: &proto.Position{
 			PositionTitle: profile.Primary.PositionTitle,
 		},
-		Secondaries: ds.collectSecondaryPositions(profile.SecondaryPositionIds),
-		Records: collectRecords(profile.Records),
-		Awards: collectAwards(profile.AwardRecords),
-		JoinDate: profile.UnmarshalCustomFields().JoinDate,
+		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		Records:       collectRecords(profile.Records),
+		Awards:        collectAwards(profile.AwardRecords),
+		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
 	}
+
+	return milpac, nil
 }
 
 func (ds Mysql) collectSecondaryPositions(positionIds string) []*proto.Position {
@@ -94,7 +105,7 @@ func collectRecords(recordRows []milpacs.Record) []*proto.Record {
 		record := &proto.Record{
 			RecordDetails: recordRow.Details,
 			RecordType:    proto.RecordType(recordRow.RecordTypeId),
-			RecordDate: stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
+			RecordDate:    stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
 		}
 		records = append(records, record)
 	}
@@ -107,9 +118,9 @@ func collectAwards(awardRows []milpacs.AwardRecord) []*proto.Award {
 
 	for _, awardRow := range awardRows {
 		award := &proto.Award{
-			AwardName: awardRow.Award.Title,
-			AwardDetails: awardRow.Details,
-			AwardDate: stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
+			AwardName:     awardRow.Award.Title,
+			AwardDetails:  awardRow.Details,
+			AwardDate:     stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
 			AwardImageUrl: awardRow.Award.ImageURL(),
 		}
 		awards = append(awards, award)
@@ -121,10 +132,8 @@ func collectAwards(awardRows []milpacs.AwardRecord) []*proto.Award {
 func stringToTime(s string) time.Time {
 	sec, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		log.Println("error converting time", err)
+		Error.Println("error converting time", err)
 		return time.Time{}
 	}
 	return time.Unix(sec, 0)
 }
-
-

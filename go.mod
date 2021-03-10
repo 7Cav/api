@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/bufbuild/buf v0.37.0
+	github.com/denis-tingajkin/go-header v0.4.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.2.0
 	github.com/rakyll/statik v0.1.7
 	github.com/soheilhy/cmux v0.1.4

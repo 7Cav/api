@@ -16,18 +16,21 @@
  *  along with 7Cav-API. If not, see <http://www.gnu.org/licenses/>.
  */
 
-package milpacs
+package datastores
 
-type Position struct {
-	PositionId        uint64 `gorm:"primaryKey"`
-	PositionTitle     string
-	PositionGroupId   uint64
-	DisplayOrder      uint
-	MaterializedOrder uint
-	ExtraGroupIds     string
-	PossibleSecondary bool
-}
+import (
+	"github.com/7cav/api/proto"
+	"log"
+	"os"
+)
 
-func (Position) TableName() string {
-	return "xf_nf_rosters_position"
+var (
+	Info  = log.New(os.Stdout, "INFO: ", 0)
+	Warn  = log.New(os.Stdout, "WARNING: ", 0)
+	Error = log.New(os.Stdout, "ERROR: ", 0)
+)
+
+type Datastore interface {
+	FindProfilesById(userId ...uint64) ([]*proto.Profile, error)
+	FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error)
 }

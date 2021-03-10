@@ -1,53 +1,57 @@
 /*
-Copyright © 2021 NAME HERE <EMAIL ADDRESS>
+ *  Copyright (C) 2021 7Cav.us
+ *  This file is part of 7Cav-API <https://github.com/7cav/api>.
+ *
+ *  7Cav-API is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  7Cav-API is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with 7Cav-API. If not, see <http://www.gnu.org/licenses/>.
+ */
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
 package cmd
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"github.com/7cav/api/proto"
 	"github.com/spf13/cobra"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/grpclog"
 	"strconv"
 )
 
-// exampleCmd represents the example command
 var exampleCmd = &cobra.Command{
-	Use:   "example",
-	Short: "A brief description of your command",
+	Use:   "getProfile",
+	Short: "example of a golang client to use the API method: getProfile",
 	Run: func(cmd *cobra.Command, args []string) {
-		//rpcCreds := oauth.NewOauthAccess(&oauth2.Token{AccessToken: "<token>"})
-
-		//b, _ := ioutil.ReadFile("out/localhost.crt")
-		//cp := x509.NewCertPool()
-		//if !cp.AppendCertsFromPEM(b) {
-		//	log.Fatal("cannot load TLS credentials")
-		//}
+		token := "NNCCz5jHXWCPpd07Bw0l92Hn8VYdeLEvkyIprbpjpAUHFSrRlG"
+		rpcCreds := oauth.NewOauthAccess(&oauth2.Token{AccessToken: token})
+		creds, err := credentials.NewClientTLSFromFile("out/localhost.crt", "")
+		if err != nil {
+			panic(err)
+		}
 
 		fmt.Println("gathering creds grpc")
 		opts := []grpc.DialOption{
-			//grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(cp, "")),
-			//grpc.WithPerRPCCredentials(rpcCreds),
-			grpc.WithInsecure(),
+			grpc.WithTransportCredentials(creds),
+			grpc.WithPerRPCCredentials(rpcCreds),
+			grpc.WithBlock(),
 		}
+
 		fmt.Println("dialing grpc")
-		conn, err := grpc.Dial("0.0.0.0:10000", opts...)
+		conn, err := grpc.Dial("127.0.0.1:1443", opts...)
+
 		fmt.Println("dialed...")
 		if err != nil {
 			grpclog.Fatalf("fail to dial: %v", err)
@@ -57,7 +61,7 @@ var exampleCmd = &cobra.Command{
 		fmt.Println("creating client")
 		client := proto.NewMilpacsClient(conn)
 
-		if len(args) != 1{
+		if len(args) != 1 {
 			grpclog.Fatalln("must supply id to request as argument")
 		}
 
@@ -70,22 +74,6 @@ var exampleCmd = &cobra.Command{
 		}
 		fmt.Println(msg)
 	},
-}
-
-func loadTLSCredentials() (credentials.TransportCredentials, error) {
-	// Load server's certificate and private key
-	serverCert, err := tls.LoadX509KeyPair("certs/server-cert.pem", "certs/server-key.pem")
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the credentials and return it
-	config := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.NoClientCert,
-	}
-
-	return credentials.NewTLS(config), nil
 }
 
 func init() {
