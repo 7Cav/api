@@ -5,7 +5,7 @@
 # generated files
 !proto
 proto/*
-!proto/scripts
+!proto/milpacs.proto
 proto/*.pb.go
 !statik/
 statik/statik.go
@@ -14,5 +14,4 @@ statik/statik.go
 *.gz
 
 # ignore cert file areas
-certs/
 out/

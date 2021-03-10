@@ -1,0 +1,177 @@
+/*
+ *  Copyright (C) 2021 7Cav.us
+ *  This file is part of 7Cav-API <https://github.com/7cav/api>.
+ *
+ *  7Cav-API is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  7Cav-API is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with 7Cav-API. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+syntax = "proto3";
+
+package proto;
+
+option go_package = "proto";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+// These annotations are used when generating the OpenAPI file.
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    version: "1.0";
+  };
+  external_docs: {
+    url: "https://github.com/7cav/api";
+    description: "7Cav API Repository";
+  }
+  schemes: HTTPS;
+};
+
+service Milpacs {
+  rpc GetProfile(ProfileRequest) returns (Profile){
+    option(google.api.http) = {
+      get: "/api/v1/milpacs/profile/id/{user_id}"
+      additional_bindings: [
+        {
+          get: "/api/v1/milpacs/profile/username/{username}"
+        }
+      ]
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get given user milpac Profile"
+      description: "Get milpac Profile data for a specific user"
+      tags: "Users, Milpacs, Profile"
+    };
+  };
+  rpc GetRoster(RosterRequest) returns (Roster){
+    option(google.api.http) = {
+      get: "/api/v1/roster/{roster}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a given roster"
+      description: "Get all milpac Profile data for a given roster"
+      tags: "Roster, Milpacs"
+    };
+  };
+}
+
+enum RosterType {
+  ROSTER_NULL = 0;
+  COMBAT = 1;
+  RESERVE = 2;
+  ON_ELOA = 3;
+  WALL_OF_HONOR = 4;
+  ARLINGTON = 5;
+  PAST_MEMBERS = 6;
+}
+
+enum RecordType {
+  RECORD_TYPE_NULL = 0;
+  PROMOTION = 1;
+  TRANSFER = 2;
+  OPERATION = 3;
+  DISCIPLINARY = 4;
+  DISCHARGE = 5;
+  ASSIGNMENT = 6;
+  NAME_CHANGE = 7;
+  ELOA = 8;
+  GRADUATION = 9;
+}
+
+enum RankType {
+  RANK_NULL = 0;
+  GOA = 1;
+  GEN = 2;
+  LTG = 3;
+  MG  = 4;
+  BG  = 5;
+  COL = 6;
+  LTC = 7;
+  MAJ = 8;
+  CPT = 9;
+  LT_1 = 10;
+  LT_2 = 11;
+  CSM = 12;
+  SGM = 13;
+  SG_1 = 14;
+  MSG = 15;
+  SFC = 16;
+  SSG = 17;
+  SGT = 18;
+  CPL = 19;
+  SPC = 20;
+  PFC = 21;
+  PVT = 22;
+  RCT = 23;
+  CW5 = 26;
+  CW4 = 27;
+  CW3 = 28;
+  CW2 = 29;
+  WO1 = 30;
+  AR  = 31;
+}
+
+message ProfileRequest {
+  uint64 user_id = 1;
+  string username = 2;
+}
+
+message Rank {
+  string rank_short = 1;
+  string rank_full = 2;
+  string rank_image_url = 3;
+}
+
+message Profile {
+  User user = 1;
+  Rank rank = 2;
+  string real_name = 3;
+  string uniform_url = 4;
+  RosterType roster = 5;
+  Position primary = 6;
+  repeated Position secondaries = 7;
+  repeated Record records = 8;
+  repeated Award awards = 9;
+  string join_date = 10;
+  string promotion_date = 11;
+}
+
+message RosterRequest {
+  RosterType roster = 1;
+}
+
+message Roster {
+  map<uint64, Profile> profiles = 1;
+}
+
+message User {
+  uint64 user_id = 1;
+  string username = 2;
+}
+
+message Record {
+  string record_details = 1;
+  RecordType record_type = 2;
+  string record_date = 3;
+}
+
+message Award {
+  string award_details = 1;
+  string award_name = 2;
+  string award_date = 3;
+  string award_image_url = 4;
+}
+
+message Position {
+  string position_title = 1;
+}
