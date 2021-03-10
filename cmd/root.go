@@ -31,7 +31,7 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "api",
 	Short: "7Cav API",
-	Long: `A Microservice that enables requests over GRPC/protobuf & REST/HTTP for core 7Cav data`,
+	Long:  `A Microservice that enables requests over GRPC/protobuf & REST/HTTP for core 7Cav data`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

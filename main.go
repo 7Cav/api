@@ -1,4 +1,3 @@
-
 /*
  *  Copyright (C) 2021 7Cav.us
  *  This file is part of 7Cav-API <https://github.com/7cav/api>.

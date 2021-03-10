@@ -58,25 +58,25 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 
 func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
 	milpac := &proto.Profile{
-		User:        &proto.User{
-			UserId: profile.XfUser.UserID,
+		User: &proto.User{
+			UserId:   profile.XfUser.UserID,
 			Username: profile.XfUser.Username,
 		},
-		Rank:        &proto.Rank{
-			RankShort: proto.RankType(profile.RankID).String(),
-			RankFull: profile.Rank.Title,
+		Rank: &proto.Rank{
+			RankShort:    proto.RankType(profile.RankID).String(),
+			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
-		RealName: profile.RealName,
-		UniformUrl:  profile.UniformUrl(),
-		Roster:      proto.RosterType(profile.RosterId),
-		Primary:     &proto.Position{
+		RealName:   profile.RealName,
+		UniformUrl: profile.UniformUrl(),
+		Roster:     proto.RosterType(profile.RosterId),
+		Primary: &proto.Position{
 			PositionTitle: profile.Primary.PositionTitle,
 		},
-		Secondaries: ds.collectSecondaryPositions(profile.SecondaryPositionIds),
-		Records: collectRecords(profile.Records),
-		Awards: collectAwards(profile.AwardRecords),
-		JoinDate: profile.UnmarshalCustomFields().JoinDate,
+		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		Records:       collectRecords(profile.Records),
+		Awards:        collectAwards(profile.AwardRecords),
+		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
 	}
 
@@ -105,7 +105,7 @@ func collectRecords(recordRows []milpacs.Record) []*proto.Record {
 		record := &proto.Record{
 			RecordDetails: recordRow.Details,
 			RecordType:    proto.RecordType(recordRow.RecordTypeId),
-			RecordDate: stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
+			RecordDate:    stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
 		}
 		records = append(records, record)
 	}
@@ -118,9 +118,9 @@ func collectAwards(awardRows []milpacs.AwardRecord) []*proto.Award {
 
 	for _, awardRow := range awardRows {
 		award := &proto.Award{
-			AwardName: awardRow.Award.Title,
-			AwardDetails: awardRow.Details,
-			AwardDate: stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
+			AwardName:     awardRow.Award.Title,
+			AwardDetails:  awardRow.Details,
+			AwardDate:     stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
 			AwardImageUrl: awardRow.Award.ImageURL(),
 		}
 		awards = append(awards, award)
@@ -137,5 +137,3 @@ func stringToTime(s string) time.Time {
 	}
 	return time.Unix(sec, 0)
 }
-
-

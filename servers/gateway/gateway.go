@@ -58,7 +58,7 @@ func (service *Service) Server() *http.Server {
 	// 		 If this needed to change in the future, then we will need to refactor this method
 	conn, err := grpc.DialContext(
 		context.Background(),
-		"dns:///" + service.Address,
+		"dns:///"+service.Address,
 		grpc.WithBlock(),
 		grpc.WithInsecure(),
 		//grpc.WithTransportCredentials(creds),

@@ -37,7 +37,7 @@ import (
 )
 
 type MicroServer struct {
-	addr string
+	addr       string
 	httpServer *http.Server
 	grpcServer *grpc.Server
 }
@@ -58,25 +58,30 @@ var (
 
 func setupDatasource() *datastores.Mysql {
 
-	dbUser := viper.GetString("db_username"); if dbUser == "" {
+	dbUser := viper.GetString("db_username")
+	if dbUser == "" {
 		Error.Println("no database username provided")
 	}
 
-	dbPass := viper.GetString("db_password"); if dbPass == "" {
+	dbPass := viper.GetString("db_password")
+	if dbPass == "" {
 		Error.Println("no database password provided")
 	}
 
-	dbHost := viper.GetString("db_host"); if dbHost == "" {
+	dbHost := viper.GetString("db_host")
+	if dbHost == "" {
 		Error.Println("no database host provided")
 	}
 
-	dbPort := viper.GetString("db_port"); if dbPort == "" {
+	dbPort := viper.GetString("db_port")
+	if dbPort == "" {
 		Error.Println("no database port provided")
 	}
 
 	// refer https://github.com/go-sql-driver/mysql#dsn-data-source-name for details
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/xenforo?charset=utf8mb4&parseTime=True&loc=Local", dbUser, dbPass, dbHost, dbPort)
-	conn, err := gorm.Open(mysql.Open(dsn), &gorm.Config{}); if  err != nil {
+	conn, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
 		Error.Println("issue connecting to database", err)
 	}
 
@@ -85,12 +90,12 @@ func setupDatasource() *datastores.Mysql {
 
 func (server *MicroServer) Start() {
 	// Adds gRPC internal logs. This is quite verbose, so adjust as desired!
-	grpcLogger :=grpclog.NewLoggerV2(ioutil.Discard, os.Stdout, os.Stdout)
+	grpcLogger := grpclog.NewLoggerV2(ioutil.Discard, os.Stdout, os.Stdout)
 	grpclog.SetLoggerV2(grpcLogger)
 
 	//create TLS listener for TCP connections
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
-	httpL, err := net.Listen("tcp","0.0.0.0:11000")
+	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
 
 	if err != nil {
 		Error.Fatalf("Failed to listen on %s: %w", server.addr, err)
@@ -136,10 +141,3 @@ func servHTTP(server *MicroServer, lis net.Listener) {
 		Error.Fatalf("unable to start HTTP servers: ", err)
 	}
 }
-
-
-
-
-
-
-

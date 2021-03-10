@@ -24,11 +24,11 @@ import (
 )
 
 type Award struct {
-	AwardId uint64 `gorm:"primaryKey"`
-	Title string
-	AwardImage uint
-	AwardGroupID uint64
-	DisplayOrder uint
+	AwardId           uint64 `gorm:"primaryKey"`
+	Title             string
+	AwardImage        uint
+	AwardGroupID      uint64
+	DisplayOrder      uint
 	MaterializedOrder uint
 }
 
@@ -42,14 +42,14 @@ func (award *Award) ImageURL() string {
 }
 
 type AwardRecord struct {
-	RecordID uint64
-	RelationID uint64
-	AwardID uint64
-	FromUserID uint64
-	Details string
-	AwardDate uint
+	RecordID     uint64
+	RelationID   uint64
+	AwardID      uint64
+	FromUserID   uint64
+	Details      string
+	AwardDate    uint
 	CitationDate uint
-	Award Award `gorm:"foreignKey:AwardID;references:award_id"`
+	Award        Award `gorm:"foreignKey:AwardID;references:award_id"`
 }
 
 func (AwardRecord) TableName() string {

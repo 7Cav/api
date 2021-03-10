@@ -24,12 +24,13 @@ import (
 )
 
 type Rank struct {
-	RankId uint64 `gorm:"primaryKey"`
-	Title string
-	RankImage uint
-	DisplayOrder uint
+	RankId        uint64 `gorm:"primaryKey"`
+	Title         string
+	RankImage     uint
+	DisplayOrder  uint
 	ExtraGroupIds string
 }
+
 func (Rank) TableName() string {
 	return "xf_nf_rosters_rank"
 }

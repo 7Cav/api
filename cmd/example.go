@@ -20,7 +20,6 @@ package cmd
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"github.com/7cav/api/proto"
 	"github.com/spf13/cobra"
@@ -38,7 +37,7 @@ var exampleCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		token := "NNCCz5jHXWCPpd07Bw0l92Hn8VYdeLEvkyIprbpjpAUHFSrRlG"
 		rpcCreds := oauth.NewOauthAccess(&oauth2.Token{AccessToken: token})
-		creds, err:= credentials.NewClientTLSFromFile("out/localhost.crt", "")
+		creds, err := credentials.NewClientTLSFromFile("out/localhost.crt", "")
 		if err != nil {
 			panic(err)
 		}
@@ -62,7 +61,7 @@ var exampleCmd = &cobra.Command{
 		fmt.Println("creating client")
 		client := proto.NewMilpacsClient(conn)
 
-		if len(args) != 1{
+		if len(args) != 1 {
 			grpclog.Fatalln("must supply id to request as argument")
 		}
 
@@ -75,22 +74,6 @@ var exampleCmd = &cobra.Command{
 		}
 		fmt.Println(msg)
 	},
-}
-
-func loadTLSCredentials() (credentials.TransportCredentials, error) {
-	// Load server's certificate and private key
-	serverCert, err := tls.LoadX509KeyPair("certs/server-cert.pem", "certs/server-key.pem")
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the credentials and return it
-	config := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.NoClientCert,
-	}
-
-	return credentials.NewTLS(config), nil
 }
 
 func init() {

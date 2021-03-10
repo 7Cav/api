@@ -26,25 +26,26 @@ import (
 )
 
 type Profile struct {
-	RelationId uint64 `gorm:"primaryKey"`
-	RosterId uint64
-	UserID uint64
-	Username string
-	RealName string
-	PositionID uint64
+	RelationId           uint64 `gorm:"primaryKey"`
+	RosterId             uint64
+	UserID               uint64
+	Username             string
+	RealName             string
+	PositionID           uint64
 	SecondaryPositionIds string
-	RankID uint64
-	Bio string
-	UniformDate int
-	AddedDate int
-	CustomFields string
+	RankID               uint64
+	Bio                  string
+	UniformDate          int
+	AddedDate            int
+	CustomFields         string
 
-	XfUser XfUser `gorm:"foreignKey:UserID;references:user_id"`
-	Primary Position `gorm:"foreignKey:PositionID;references:position_id"`
-	Rank Rank `gorm:"foreignKey:RankID;references:rank_id"`
-	Records []Record `gorm:"foreignKey:RelationID"`
+	XfUser       XfUser        `gorm:"foreignKey:UserID;references:user_id"`
+	Primary      Position      `gorm:"foreignKey:PositionID;references:position_id"`
+	Rank         Rank          `gorm:"foreignKey:RankID;references:rank_id"`
+	Records      []Record      `gorm:"foreignKey:RelationID"`
 	AwardRecords []AwardRecord `gorm:"foreignKey:RelationID"`
 }
+
 func (Profile) TableName() string {
 	return "xf_nf_rosters_user"
 }
