@@ -50,10 +50,3 @@ func (profile *Profile) UnmarshalCustomFields() CustomFields {
 	}
 	return fields
 }
-
-
-//
-//func (profile *Profile) SecondaryPositions() []position {
-//	positionIds := strings.Split(profile.SecondaryPositionIds, ",")
-//
-//}

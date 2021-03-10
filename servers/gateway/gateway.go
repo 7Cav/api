@@ -2,13 +2,15 @@ package gateway
 
 import (
 	"context"
-	"fmt"
-	milpacs "github.com/7cav/api/proto"
+	"github.com/7cav/api/proto"
+	_ "github.com/7cav/api/statik" // static files import - unused in the codebase, but required cuz reasons
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/rakyll/statik/fs"
 	"google.golang.org/grpc"
+	"log"
 	"mime"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -16,39 +18,51 @@ type Service struct {
 	Address string
 }
 
-func getOpenAPIHandler() http.Handler {
-	mime.AddExtensionType(".svg", "image/svg+xml")
+var (
+	Info  = log.New(os.Stdout, "INFO: ", 0)
+	Warn  = log.New(os.Stdout, "WARNING: ", 0)
+	Error = log.New(os.Stdout, "ERROR: ", 0)
+)
 
+func getOpenAPIHandler() http.Handler {
+	Info.Println("setting up OpenAPI Handler")
+	mime.AddExtensionType(".svg", "image/svg+xml")
 	statikFs, err := fs.New()
 	if err != nil {
-		panic("creating OpenAPI filesystem: " + err.Error())
+		Error.Println("creating OpenAPI filesystem: ", err)
 	}
-
 	return http.FileServer(statikFs)
 }
 
-func (service *Service) Server() (*http.Server, error) {
-
+func (service *Service) Server() *http.Server {
+	// relevant Grpc _dialing_ options
+	// note: commenting out the TransportCredentials option, because internally (nginx <-> golang) traffic is not encrypted.
+	// 		 If this needed to change in the future, then we will need to refactor this method
 	conn, err := grpc.DialContext(
 		context.Background(),
 		"dns:///" + service.Address,
-		grpc.WithInsecure(),
 		grpc.WithBlock(),
+		grpc.WithInsecure(),
+		//grpc.WithTransportCredentials(creds),
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial servers: %w", err)
+		Error.Println("failed to dial servers: ", err)
+		return nil
 	}
 
 	gwMux := runtime.NewServeMux()
-	err = milpacs.RegisterMilpacsHandler(context.Background(), gwMux, conn)
+	err = proto.RegisterMilpacsHandler(context.Background(), gwMux, conn)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to register gateway: %w", err)
+		Error.Println("failed to register gateway: ", err)
+		return nil
 	}
 
 	openApi := getOpenAPIHandler()
 
+	// if requests start with /api then forward it on to the grpc-gateway client
+	// otherwise, just serve it as norma (basically the OpenAPI)
 	return &http.Server{
 		Addr: service.Address,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,5 +72,5 @@ func (service *Service) Server() (*http.Server, error) {
 			}
 			openApi.ServeHTTP(w, r)
 		}),
-	}, nil
+	}
 }
