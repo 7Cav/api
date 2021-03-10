@@ -2,7 +2,6 @@ generate:
 	buf generate
 	# Generate static assets for OpenAPI UI
 	statik -m -f -src third_party/OpenAPI/
-#	go run proto/scripts/includetxt.go
 
 lint:
 	buf lint
@@ -26,7 +25,7 @@ install:
 
 evans:
 	evans \
-	--tls -cert certs/server-cert.pem --certkey certs/server-key.pem --cacert certs/ca-cert.pem --host localhost \
+	--tls -cert out/localhost.crt --certkey out/localhost.key --cacert out/ExampleCA.crt \
 	--path /home/jarvis/.cache/buf/mod/grpc-ecosystem/grpc-gateway/240eb01580e34380ae1d138426e0174f/ \
 	--path /home/jarvis/.cache/buf/mod/beta/googleapis/1dc4674e3cb949b388204fa2dc321be7 \
 	--path . proto/milpacs.proto \
