@@ -8,8 +8,11 @@ lint:
 	buf lint
 	buf breaking --against 'https://github.com/7cav/api.git#branch=develop'
 
-cert:
-	cd certs; ./gen.sh; cd ..
+certs:
+	rm -rf out/
+	certstrap init --common-name "ExampleCA" --passphrase ""
+	certstrap request-cert --common-name localhost --ip 0.0.0.0,127.0.0.1 --passphrase ""
+	certstrap sign localhost --CA "ExampleCA"
 
 install:
 	go install \
@@ -18,7 +21,8 @@ install:
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
 		github.com/rakyll/statik \
-		github.com/bufbuild/buf/cmd/buf
+		github.com/bufbuild/buf/cmd/buf \
+		github.com/square/certstrap
 
 evans:
 	evans \
