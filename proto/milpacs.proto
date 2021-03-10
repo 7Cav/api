@@ -37,8 +37,8 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   schemes: HTTPS;
 };
 
-service Milpacs {
-  rpc GetProfile(ProfileRequest) returns (Profile){
+service MilpacService {
+  rpc Profile(ProfileRequest) returns (Profile){
     option(google.api.http) = {
       get: "/api/v1/milpacs/profile/id/{user_id}"
       additional_bindings: [
@@ -53,7 +53,7 @@ service Milpacs {
       tags: "Users, Milpacs, Profile"
     };
   };
-  rpc GetRoster(RosterRequest) returns (Roster){
+  rpc Roster(RosterRequest) returns (Roster){
     option(google.api.http) = {
       get: "/api/v1/roster/{roster}"
     };
@@ -66,59 +66,59 @@ service Milpacs {
 }
 
 enum RosterType {
-  ROSTER_NULL = 0;
-  COMBAT = 1;
-  RESERVE = 2;
-  ON_ELOA = 3;
-  WALL_OF_HONOR = 4;
-  ARLINGTON = 5;
-  PAST_MEMBERS = 6;
+  ROSTER_TYPE_UNSPECIFIED = 0;
+  ROSTER_TYPE_COMBAT = 1;
+  ROSTER_TYPE_RESERVE = 2;
+  ROSTER_TYPE_ELOA = 3;
+  ROSTER_TYPE_WALL_OF_HONOR = 4;
+  ROSTER_TYPE_ARLINGTON = 5;
+  ROSTER_TYPE_PAST_MEMBERS = 6;
 }
 
 enum RecordType {
-  RECORD_TYPE_NULL = 0;
-  PROMOTION = 1;
-  TRANSFER = 2;
-  OPERATION = 3;
-  DISCIPLINARY = 4;
-  DISCHARGE = 5;
-  ASSIGNMENT = 6;
-  NAME_CHANGE = 7;
-  ELOA = 8;
-  GRADUATION = 9;
+  RECORD_TYPE_UNSPECIFIED = 0;
+  RECORD_TYPE_PROMOTION = 1;
+  RECORD_TYPE_TRANSFER = 2;
+  RECORD_TYPE_OPERATION = 3;
+  RECORD_TYPE_DISCIPLINARY = 4;
+  RECORD_TYPE_DISCHARGE = 5;
+  RECORD_TYPE_ASSIGNMENT = 6;
+  RECORD_TYPE_NAME_CHANGE = 7;
+  RECORD_TYPE_ELOA = 8;
+  RECORD_TYPE_GRADUATION = 9;
 }
 
 enum RankType {
-  RANK_NULL = 0;
-  GOA = 1;
-  GEN = 2;
-  LTG = 3;
-  MG  = 4;
-  BG  = 5;
-  COL = 6;
-  LTC = 7;
-  MAJ = 8;
-  CPT = 9;
-  LT_1 = 10;
-  LT_2 = 11;
-  CSM = 12;
-  SGM = 13;
-  SG_1 = 14;
-  MSG = 15;
-  SFC = 16;
-  SSG = 17;
-  SGT = 18;
-  CPL = 19;
-  SPC = 20;
-  PFC = 21;
-  PVT = 22;
-  RCT = 23;
-  CW5 = 26;
-  CW4 = 27;
-  CW3 = 28;
-  CW2 = 29;
-  WO1 = 30;
-  AR  = 31;
+  RANK_TYPE_UNSPECIFIED = 0;
+  RANK_TYPE_GOA = 1;
+  RANK_TYPE_GEN = 2;
+  RANK_TYPE_LTG = 3;
+  RANK_TYPE_MG  = 4;
+  RANK_TYPE_BG  = 5;
+  RANK_TYPE_COL = 6;
+  RANK_TYPE_LTC = 7;
+  RANK_TYPE_MAJ = 8;
+  RANK_TYPE_CPT = 9;
+  RANK_TYPE_2LT = 10;
+  RANK_TYPE_1LT = 11;
+  RANK_TYPE_CSM = 12;
+  RANK_TYPE_SGM = 13;
+  RANK_TYPE_1SG = 14;
+  RANK_TYPE_MSG = 15;
+  RANK_TYPE_SFC = 16;
+  RANK_TYPE_SSG = 17;
+  RANK_TYPE_SGT = 18;
+  RANK_TYPE_CPL = 19;
+  RANK_TYPE_SPC = 20;
+  RANK_TYPE_PFC = 21;
+  RANK_TYPE_PVT = 22;
+  RANK_TYPE_RCT = 23;
+  RANK_TYPE_CW5 = 26;
+  RANK_TYPE_CW4 = 27;
+  RANK_TYPE_CW3 = 28;
+  RANK_TYPE_CW2 = 29;
+  RANK_TYPE_WO1 = 30;
+  RANK_TYPE_AR  = 31;
 }
 
 message ProfileRequest {

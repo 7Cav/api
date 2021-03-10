@@ -63,7 +63,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 			Username: profile.XfUser.Username,
 		},
 		Rank: &proto.Rank{
-			RankShort:    proto.RankType(profile.RankID).String(),
+			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
