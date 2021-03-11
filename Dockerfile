@@ -24,7 +24,6 @@ RUN go build -a -installsuffix cgo -o /api
 FROM scratch
 COPY --from=build-env /api /
 
-COPY out out
 EXPOSE 10000
 EXPOSE 11000
 CMD ["/api", "serve"]
