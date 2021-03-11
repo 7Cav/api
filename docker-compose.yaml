@@ -9,6 +9,9 @@ services:
     container_name: go-api
     networks:
       - api
+    depends_on:
+      - database
+      - nginx
     ports:
     - 11000:11000
     - 10000:10000
@@ -26,10 +29,11 @@ services:
     container_name: api-nginx
     ports:
     - 80:80
-    - 1443:1443
+    - 443:443
     restart: always
     volumes:
       - api-nginx-conf:/etc/nginx/conf.d/
+      # use `make certs` to generate self-signed certs for nginx TLS
       - ./out:/out
 
   database:
