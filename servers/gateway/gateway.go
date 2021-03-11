@@ -70,7 +70,7 @@ func (service *Service) Server() *http.Server {
 	}
 
 	gwMux := runtime.NewServeMux()
-	err = proto.RegisterMilpacsHandler(context.Background(), gwMux, conn)
+	err = proto.RegisterMilpacServiceHandler(context.Background(), gwMux, conn)
 
 	if err != nil {
 		Error.Println("failed to register gateway: ", err)

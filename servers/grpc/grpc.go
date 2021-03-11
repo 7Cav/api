@@ -39,7 +39,7 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", 0)
 )
 
-func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.ProfileRequest) (*proto.Profile, error) {
+func (server *MilpacsService) Profile(ctx context.Context, request *proto.ProfileRequest) (*proto.Profile, error) {
 	if request.Username != "" {
 		Info.Println("GetProfile, Requested via username")
 	}
@@ -57,8 +57,8 @@ func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.Pro
 	return profiles[0], nil
 }
 
-func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.RosterRequest) (*proto.Roster, error) {
-	if request.Roster == proto.RosterType_ROSTER_NULL {
+func (server *MilpacsService) Roster(ctx context.Context, request *proto.RosterRequest) (*proto.Roster, error) {
+	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
 		return nil, errors.New("cannot request null roster type")
 	}
 
