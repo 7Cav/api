@@ -15,3 +15,6 @@ statik/statik.go
 
 # ignore cert file areas
 out/
+
+# don't accidentally publish the binary
+api
