@@ -12,6 +12,9 @@ RUN go mod download
 # COPY the source code as the last step
 COPY . .
 
+RUN make install
+RUN make generate
+
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
