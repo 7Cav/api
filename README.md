@@ -20,6 +20,8 @@ You can view the automatically generated documentation via [api.7cav.us](https:/
 
 Wrap the requests in whichever flavour of language/HTTP client you wish:
 
+#### NodeJS
+
 ```js
 const axios = require('axios');
 const token = "<your token>";
@@ -39,6 +41,8 @@ client.get("milpacs/profile/id/1")
         console.log(res.data)
     });
 ```
+
+#### Go
 
 ```go
 package main
