@@ -20,9 +20,10 @@ install:
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2 \
 		github.com/rakyll/statik
-	go get \
+	go get -u \
 		github.com/bufbuild/buf/cmd/buf \
-		github.com/square/certstrap
+		github.com/square/certstrap \
+		github.com/spf13/cobra
 
 evans:
 	evans \
