@@ -20,6 +20,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"github.com/7cav/api/proto"
 	"github.com/spf13/cobra"
@@ -32,25 +33,25 @@ import (
 )
 
 var exampleCmd = &cobra.Command{
-	Use:   "getProfile",
+	Use:   "example",
 	Short: "example of a golang client to use the API method: getProfile",
 	Run: func(cmd *cobra.Command, args []string) {
 		token := "NNCCz5jHXWCPpd07Bw0l92Hn8VYdeLEvkyIprbpjpAUHFSrRlG"
 		rpcCreds := oauth.NewOauthAccess(&oauth2.Token{AccessToken: token})
-		creds, err := credentials.NewClientTLSFromFile("out/localhost.crt", "")
-		if err != nil {
-			panic(err)
+
+		config := &tls.Config{
+			InsecureSkipVerify: false,
 		}
 
 		fmt.Println("gathering creds grpc")
 		opts := []grpc.DialOption{
-			grpc.WithTransportCredentials(creds),
+			grpc.WithTransportCredentials(credentials.NewTLS(config)),
 			grpc.WithPerRPCCredentials(rpcCreds),
 			grpc.WithBlock(),
 		}
 
 		fmt.Println("dialing grpc")
-		conn, err := grpc.Dial("127.0.0.1:1443", opts...)
+		conn, err := grpc.Dial("0.0.0.0:443", opts...)
 
 		fmt.Println("dialed...")
 		if err != nil {
