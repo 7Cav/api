@@ -6,7 +6,7 @@
   },
   "tags": [
     {
-      "name": "Milpacs"
+      "name": "MilpacService"
     }
   ],
   "schemes": [
@@ -23,7 +23,7 @@
       "get": {
         "summary": "Get given user milpac Profile",
         "description": "Get milpac Profile data for a specific user",
-        "operationId": "Milpacs_GetProfile",
+        "operationId": "MilpacService_Profile",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -62,7 +62,7 @@
       "get": {
         "summary": "Get given user milpac Profile",
         "description": "Get milpac Profile data for a specific user",
-        "operationId": "Milpacs_GetProfile2",
+        "operationId": "MilpacService_Profile2",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -101,7 +101,7 @@
       "get": {
         "summary": "Get a given roster",
         "description": "Get all milpac Profile data for a given roster",
-        "operationId": "Milpacs_GetRoster",
+        "operationId": "MilpacService_Roster",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -123,13 +123,13 @@
             "required": true,
             "type": "string",
             "enum": [
-              "ROSTER_NULL",
-              "COMBAT",
-              "RESERVE",
-              "ON_ELOA",
-              "WALL_OF_HONOR",
-              "ARLINGTON",
-              "PAST_MEMBERS"
+              "ROSTER_TYPE_UNSPECIFIED",
+              "ROSTER_TYPE_COMBAT",
+              "ROSTER_TYPE_RESERVE",
+              "ROSTER_TYPE_ELOA",
+              "ROSTER_TYPE_WALL_OF_HONOR",
+              "ROSTER_TYPE_ARLINGTON",
+              "ROSTER_TYPE_PAST_MEMBERS"
             ]
           }
         ],
@@ -243,18 +243,18 @@
     "protoRecordType": {
       "type": "string",
       "enum": [
-        "RECORD_TYPE_NULL",
-        "PROMOTION",
-        "TRANSFER",
-        "OPERATION",
-        "DISCIPLINARY",
-        "DISCHARGE",
-        "ASSIGNMENT",
-        "NAME_CHANGE",
-        "ELOA",
-        "GRADUATION"
+        "RECORD_TYPE_UNSPECIFIED",
+        "RECORD_TYPE_PROMOTION",
+        "RECORD_TYPE_TRANSFER",
+        "RECORD_TYPE_OPERATION",
+        "RECORD_TYPE_DISCIPLINARY",
+        "RECORD_TYPE_DISCHARGE",
+        "RECORD_TYPE_ASSIGNMENT",
+        "RECORD_TYPE_NAME_CHANGE",
+        "RECORD_TYPE_ELOA",
+        "RECORD_TYPE_GRADUATION"
       ],
-      "default": "RECORD_TYPE_NULL"
+      "default": "RECORD_TYPE_UNSPECIFIED"
     },
     "protoRoster": {
       "type": "object",
@@ -270,15 +270,15 @@
     "protoRosterType": {
       "type": "string",
       "enum": [
-        "ROSTER_NULL",
-        "COMBAT",
-        "RESERVE",
-        "ON_ELOA",
-        "WALL_OF_HONOR",
-        "ARLINGTON",
-        "PAST_MEMBERS"
+        "ROSTER_TYPE_UNSPECIFIED",
+        "ROSTER_TYPE_COMBAT",
+        "ROSTER_TYPE_RESERVE",
+        "ROSTER_TYPE_ELOA",
+        "ROSTER_TYPE_WALL_OF_HONOR",
+        "ROSTER_TYPE_ARLINGTON",
+        "ROSTER_TYPE_PAST_MEMBERS"
       ],
-      "default": "ROSTER_NULL"
+      "default": "ROSTER_TYPE_UNSPECIFIED"
     },
     "protoUser": {
       "type": "object",

@@ -20,7 +20,7 @@ syntax = "proto3";
 
 package proto;
 
-option go_package = "proto";
+option go_package = "github.com/7cav/api/proto";
 
 import "google/api/annotations.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
