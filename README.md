@@ -16,7 +16,7 @@ We still maintain a simple HTTP API which routes to the underlying gRPC API. The
 
 You can view the automatically generated documentation via [api.7cav.us](https://api.7cav.us)
 
-> The 'execute' buttons won't work due to the requests being unauthenticated via the documentation server
+> If you want to 'try out' the API, ensure you use your bearer token by clicking the 'Authorize' button at the top of the page 
 
 Wrap the requests in whichever flavour of language/HTTP client you wish:
 
