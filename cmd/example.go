@@ -36,7 +36,7 @@ var exampleCmd = &cobra.Command{
 	Use:   "example",
 	Short: "example of a golang client to use the API method: getProfile",
 	Run: func(cmd *cobra.Command, args []string) {
-		token := "NNCCz5jHXWCPpd07Bw0l92Hn8VYdeLEvkyIprbpjpAUHFSrRlG"
+		token := "<token>"
 		rpcCreds := oauth.NewOauthAccess(&oauth2.Token{AccessToken: token})
 
 		config := &tls.Config{
