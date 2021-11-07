@@ -141,6 +141,8 @@ This will also install [Cobra](https://github.com/spf13/cobra), which is used fo
 
 When making changes to the proto file, be sure to run the relevant make file to regenerate the exported server interfaces:
 
+> You'll need to install the `buf` cli first from [here](https://github.com/bufbuild/buf)
+
 ```shell
 make generate
 ```
