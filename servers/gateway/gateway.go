@@ -56,11 +56,15 @@ func (service *Service) Server() *http.Server {
 	// relevant Grpc _dialing_ options
 	// note: commenting out the TransportCredentials option, because internally (nginx <-> golang) traffic is not encrypted.
 	// 		 If this needed to change in the future, then we will need to refactor this method
+
+	var sendMessageInMB = 10
+
 	conn, err := grpc.DialContext(
 		context.Background(),
 		"dns:///"+service.Address,
 		grpc.WithBlock(),
 		grpc.WithInsecure(),
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1024*1024*sendMessageInMB)),
 		//grpc.WithTransportCredentials(creds),
 	)
 
