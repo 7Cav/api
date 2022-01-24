@@ -69,7 +69,7 @@ var exampleCmd = &cobra.Command{
 		id, _ := strconv.ParseUint(args[0], 10, 64)
 
 		fmt.Println("Searching for client with ID:", id)
-		msg, err := client.Profile(context.Background(), &proto.ProfileRequest{UserId: id})
+		msg, err := client.GetProfile(context.Background(), &proto.ProfileRequest{UserId: id})
 		if err != nil {
 			grpclog.Fatalf("fail to get profile: %v", err)
 		}

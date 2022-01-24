@@ -13,14 +13,14 @@ services:
       - database
       - nginx
     ports:
-    - 11000:11000
-    - 10000:10000
+    - "11000:11000"
+    - "10000:10000"
     environment:
       PORT: 10000
       DB_USERNAME: xenforo
-      DB_PASSWORD: password
-      DB_HOST: database
-      DB_PORT: 3306
+      DB_PASSWORD: ***REMOVED***
+      DB_HOST: jtchance.7cav.us
+      DB_PORT: 9999
 
   nginx:
     networks:
@@ -28,8 +28,8 @@ services:
     image: nginx:1.19-alpine
     container_name: api-nginx
     ports:
-    - 80:80
-    - 443:443
+    - "8080:80"
+    - "4443:443"
     restart: always
     volumes:
       - api-nginx-conf:/etc/nginx/conf.d/
@@ -48,7 +48,7 @@ services:
     restart: always
     image: mariadb:10.3
     ports:
-      - '3306:3306'
+      - "3306:3306"
     volumes:
       - xenforo-database:/var/lib/mysql
     environment:

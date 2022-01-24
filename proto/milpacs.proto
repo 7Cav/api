@@ -54,7 +54,7 @@ option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
 };
 
 service MilpacService {
-  rpc Profile(ProfileRequest) returns (Profile){
+  rpc GetProfile(ProfileRequest) returns (Profile){
     option(google.api.http) = {
       get: "/api/v1/milpacs/profile/id/{user_id}"
       additional_bindings: [
@@ -69,7 +69,7 @@ service MilpacService {
       tags: "Users, Milpacs, Profile"
     };
   };
-  rpc Roster(RosterRequest) returns (Roster){
+  rpc GetRoster(RosterRequest) returns (Roster){
     option(google.api.http) = {
       get: "/api/v1/roster/{roster}"
     };
@@ -146,6 +146,10 @@ message Rank {
   string rank_short = 1;
   string rank_full = 2;
   string rank_image_url = 3;
+}
+
+message Thingy {
+  string ack = 1;
 }
 
 message Profile {

@@ -23,7 +23,7 @@
       "get": {
         "summary": "Get given user milpac Profile",
         "description": "Get milpac Profile data for a specific user",
-        "operationId": "MilpacService_Profile",
+        "operationId": "MilpacService_GetProfile",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -62,7 +62,7 @@
       "get": {
         "summary": "Get given user milpac Profile",
         "description": "Get milpac Profile data for a specific user",
-        "operationId": "MilpacService_Profile2",
+        "operationId": "MilpacService_GetProfile2",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -101,7 +101,7 @@
       "get": {
         "summary": "Get a given roster",
         "description": "Get all milpac Profile data for a given roster",
-        "operationId": "MilpacService_Roster",
+        "operationId": "MilpacService_GetRoster",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -323,6 +323,19 @@
       }
     }
   },
+  "securityDefinitions": {
+    "bearer": {
+      "type": "apiKey",
+      "description": "Authentication token, prefixed by Bearer: Bearer \u003ctoken\u003e",
+      "name": "Authorization",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
   "externalDocs": {
     "description": "7Cav API Repository",
     "url": "https://github.com/7cav/api"
