@@ -19,6 +19,38 @@
     "application/json"
   ],
   "paths": {
+    "/api/v1/milpac/keycloak/{keycloakId}": {
+      "get": {
+        "summary": "Get a Milpac profile via keycloak ID",
+        "description": "Get all milpac Profile data for a given user via their Keycloak ID",
+        "operationId": "MilpacService_GetUserViaKeycloakId",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoProfile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "keycloakId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Roster, Milpacs, Keycloak"
+        ]
+      }
+    },
     "/api/v1/milpacs/profile/id/{userId}": {
       "get": {
         "summary": "Get given user milpac Profile",
@@ -209,6 +241,9 @@
         },
         "promotionDate": {
           "type": "string"
+        },
+        "keycloakId": {
+          "type": "string"
         }
       }
     },
@@ -245,8 +280,8 @@
       "enum": [
         "RECORD_TYPE_UNSPECIFIED",
         "RECORD_TYPE_PROMOTION",
-        "RECORD_TYPE_TRANSFER",
         "RECORD_TYPE_OPERATION",
+        "RECORD_TYPE_TRANSFER",
         "RECORD_TYPE_DISCIPLINARY",
         "RECORD_TYPE_DISCHARGE",
         "RECORD_TYPE_ASSIGNMENT",

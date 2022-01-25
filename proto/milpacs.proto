@@ -79,6 +79,16 @@ service MilpacService {
       tags: "Roster, Milpacs"
     };
   };
+  rpc GetUserViaKeycloakId(KeycloakIdRequest) returns (Profile){
+    option(google.api.http) = {
+      get: "/api/v1/milpac/keycloak/{keycloak_id}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a Milpac profile via keycloak ID"
+      description: "Get all milpac Profile data for a given user via their Keycloak ID"
+      tags: "Roster, Milpacs, Keycloak"
+    };
+  };
 }
 
 enum RosterType {
@@ -94,8 +104,8 @@ enum RosterType {
 enum RecordType {
   RECORD_TYPE_UNSPECIFIED = 0;
   RECORD_TYPE_PROMOTION = 1;
-  RECORD_TYPE_TRANSFER = 2;
-  RECORD_TYPE_OPERATION = 3;
+  RECORD_TYPE_OPERATION = 2;
+  RECORD_TYPE_TRANSFER = 3;
   RECORD_TYPE_DISCIPLINARY = 4;
   RECORD_TYPE_DISCHARGE = 5;
   RECORD_TYPE_ASSIGNMENT = 6;
@@ -142,6 +152,10 @@ message ProfileRequest {
   string username = 2;
 }
 
+message KeycloakIdRequest {
+  string keycloak_id = 1;
+}
+
 message Rank {
   string rank_short = 1;
   string rank_full = 2;
@@ -164,6 +178,7 @@ message Profile {
   repeated Award awards = 9;
   string join_date = 10;
   string promotion_date = 11;
+  string keycloak_id = 12;
 }
 
 message RosterRequest {

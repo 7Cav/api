@@ -21,6 +21,7 @@ package milpacs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/7cav/api/xenforo"
 	"log"
 	"math"
 )
@@ -39,11 +40,12 @@ type Profile struct {
 	AddedDate            int
 	CustomFields         string
 
-	XfUser       XfUser        `gorm:"foreignKey:UserID;references:user_id"`
-	Primary      Position      `gorm:"foreignKey:PositionID;references:position_id"`
-	Rank         Rank          `gorm:"foreignKey:RankID;references:rank_id"`
-	Records      []Record      `gorm:"foreignKey:RelationID"`
-	AwardRecords []AwardRecord `gorm:"foreignKey:RelationID"`
+	XfUser           XfUser                     `gorm:"foreignKey:UserID;references:user_id"`
+	Primary          Position                   `gorm:"foreignKey:PositionID;references:position_id"`
+	Rank             Rank                       `gorm:"foreignKey:RankID;references:rank_id"`
+	Records          []Record                   `gorm:"foreignKey:RelationID"`
+	AwardRecords     []AwardRecord              `gorm:"foreignKey:RelationID"`
+	ConnectedAccount []xenforo.ConnectedAccount `gorm:"foreignKey:UserID;references:user_id"`
 }
 
 func (Profile) TableName() string {

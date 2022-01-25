@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/7cav/api/milpacs"
 	"github.com/7cav/api/proto"
+	"github.com/7cav/api/xenforo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"strconv"
@@ -24,7 +25,7 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 	var profile milpacs.Profile
 
 	Info.Println("Searching for user: ", userIds[0])
-	ds.Db.Preload(clause.Associations).First(&profile, userIds[0])
+	ds.Db.Preload(clause.Associations).Joins(xenforo.ConnectedAccountJoin).First(&profile, userIds[0])
 
 	milpac, err := ds.generateProtoProfile(profile)
 
@@ -39,7 +40,7 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).Preload("AwardRecords.Award").Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).Find(&rosterProfiles)
+	ds.Db.Preload(clause.Associations).Preload("AwardRecords.Award").Joins(xenforo.ConnectedAccountJoin).Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).Find(&rosterProfiles)
 
 	var profiles = make(map[uint64]*proto.Profile, len(rosterProfiles))
 	for _, profile := range rosterProfiles {
@@ -54,6 +55,24 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 	protoRoster := &proto.Roster{Profiles: profiles}
 
 	return protoRoster, nil
+}
+
+func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error) {
+	var profile milpacs.Profile
+
+	Info.Println("Searching for milpac profiles with keycloak IDs of: %s", keycloakId)
+
+	query := map[string]interface{}{"xf_user_connected_account.provider_key": keycloakId, "xf_user_connected_account.provider": "keycloak"}
+
+	ds.Db.Preload(clause.Associations).Joins(xenforo.ConnectedAccountJoin).Where(query).First(&profile)
+
+	milpac, err := ds.generateProtoProfile(profile)
+
+	if err != nil {
+		return nil, fmt.Errorf("error generating profile")
+	}
+
+	return milpac, nil
 }
 
 func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
@@ -78,9 +97,20 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		Awards:        collectAwards(profile.AwardRecords),
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
+		KeycloakId:    extractKeycloakID(profile),
 	}
 
 	return milpac, nil
+}
+
+func extractKeycloakID(profile milpacs.Profile) string {
+	for _, connection := range profile.ConnectedAccount {
+		if connection.Provider == "keycloak" {
+			return connection.ProviderKey
+		}
+	}
+
+	return ""
 }
 
 func (ds Mysql) collectSecondaryPositions(positionIds string) []*proto.Position {
