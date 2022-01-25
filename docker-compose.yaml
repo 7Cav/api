@@ -17,10 +17,10 @@ services:
     - "10000:10000"
     environment:
       PORT: 10000
-      DB_USERNAME: xenforo
-      DB_PASSWORD: ***REMOVED***
-      DB_HOST: jtchance.7cav.us
-      DB_PORT: 9999
+      DB_USERNAME:
+      DB_PASSWORD:
+      DB_HOST: 
+      DB_PORT: 
 
   nginx:
     networks:
