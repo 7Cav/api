@@ -3,10 +3,10 @@
 .idea
 
 # generated files
-!proto
-proto/*
-!proto/milpacs.proto
-proto/*.pb.go
+#!proto
+#proto/*
+#!proto/milpacs.proto
+#proto/*.pb.go
 !statik/
 statik/statik.go
 
