@@ -160,6 +160,7 @@ message Rank {
   string rank_short = 1;
   string rank_full = 2;
   string rank_image_url = 3;
+  uint64 rank_id = 4;
 }
 
 message Thingy {

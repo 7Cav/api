@@ -262,6 +262,10 @@
         },
         "rankImageUrl": {
           "type": "string"
+        },
+        "rankId": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
