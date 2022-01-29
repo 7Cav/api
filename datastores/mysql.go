@@ -91,6 +91,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		Roster:     proto.RosterType(profile.RosterId),
 		Primary: &proto.Position{
 			PositionTitle: profile.Primary.PositionTitle,
+			PositionId:    profile.Primary.PositionId,
 		},
 		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
 		Records:       collectRecords(profile.Records),
@@ -123,7 +124,10 @@ func (ds Mysql) collectSecondaryPositions(positionIds string) []*proto.Position 
 	for _, id := range strings.Split(positionIds, ",") {
 		var position milpacs.Position
 		ds.Db.First(&position, id)
-		positions = append(positions, &proto.Position{PositionTitle: position.PositionTitle})
+		positions = append(positions, &proto.Position{
+			PositionTitle: position.PositionTitle,
+			PositionId:    position.PositionId,
+		})
 	}
 	return positions
 }
