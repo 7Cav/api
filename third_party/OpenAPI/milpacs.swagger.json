@@ -194,6 +194,10 @@
       "properties": {
         "positionTitle": {
           "type": "string"
+        },
+        "positionId": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },

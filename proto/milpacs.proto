@@ -209,4 +209,5 @@ message Award {
 
 message Position {
   string position_title = 1;
+  uint64 position_id = 2;
 }
