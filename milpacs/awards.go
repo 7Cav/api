@@ -49,7 +49,7 @@ type AwardRecord struct {
 	Details      string
 	AwardDate    uint
 	CitationDate uint
-	Award        Award `gorm:"foreignKey:AwardID;references:award_id"`
+	Award        Award `gorm:"foreignKey:AwardID;references:AwardId"`
 }
 
 func (AwardRecord) TableName() string {
