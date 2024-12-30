@@ -57,7 +57,7 @@ func (service *Service) Server() *http.Server {
 	// note: commenting out the TransportCredentials option, because internally (nginx <-> golang) traffic is not encrypted.
 	// 		 If this needed to change in the future, then we will need to refactor this method
 
-	var sendMessageInMB = 10
+	var sendMessageInMB = 20
 
 	conn, err := grpc.DialContext(
 		context.Background(),
