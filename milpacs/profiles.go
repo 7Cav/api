@@ -65,9 +65,13 @@ type CustomFields struct {
 func (profile *Profile) UnmarshalCustomFields() CustomFields {
 	s := profile.CustomFields
 	fields := CustomFields{}
+	if s == "" {
+		log.Println("CustomFields is empty")
+		return fields
+	}
 	err := json.Unmarshal([]byte(s), &fields)
 	if err != nil {
-		log.Print("Error unmarshalling profile custom fields")
+		log.Print("Error unmarshalling profile custom fields: %v", err)
 	}
 	return fields
 }
