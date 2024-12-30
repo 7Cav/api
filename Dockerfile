@@ -9,6 +9,13 @@ COPY go.sum .
 # Get dependancies - will also be cached if we won't change mod/sum
 RUN go mod download
 
+# Install buf (protobuf generation tool)
+RUN curl -sSL https://github.com/bufbuild/buf/releases/latest/download/buf-Linux-x86_64 -o /usr/local/bin/buf && \
+    chmod +x /usr/local/bin/buf && \
+    /usr/local/bin/buf --version
+
+RUN buf --version
+
 # COPY the source code as the last step
 COPY . .
 
@@ -18,6 +25,7 @@ RUN make generate
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
+RUN go mod tidy
 RUN go build -a -installsuffix cgo -o /api
 
 # Production stage
