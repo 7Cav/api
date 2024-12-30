@@ -40,15 +40,19 @@ var (
 )
 
 func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.ProfileRequest) (*proto.Profile, error) {
+	var (
+		profiles []*proto.Profile
+		err      error
+	)
 	if request.Username != "" {
 		Info.Println("GetProfile, Requested via username")
-	}
-
-	if request.UserId != 0 {
+		profiles, err = server.Datastore.FindProfilesByUsername(request.Username)
+	} else if request.UserId != 0 {
 		Info.Println("GetProfile, requested via userid")
+		profiles, err = server.Datastore.FindProfilesById(request.UserId)
+	} else {
+		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "no username or user ID provided")
 	}
-
-	profiles, err := server.Datastore.FindProfilesById(request.UserId)
 
 	if err != nil {
 		return &proto.Profile{}, status.Errorf(codes.NotFound, "no profile found for %", request.UserId)

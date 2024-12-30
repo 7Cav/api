@@ -32,6 +32,7 @@ var (
 
 type Datastore interface {
 	FindProfilesById(userId ...uint64) ([]*proto.Profile, error)
+	FindProfilesByUsername(username string) ([]*proto.Profile, error)
 	FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error)
 	FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error)
 }

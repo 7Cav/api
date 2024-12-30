@@ -36,6 +36,32 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 	return []*proto.Profile{milpac}, nil
 }
 
+func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
+	var profile milpacs.Profile
+
+	Info.Println("Searching for user with username: ", username)
+
+	result := ds.Db.Preload(clause.Associations).
+		Joins("JOIN xf_user ON xf_user.user_id = xf_nf_rosters_user.user_id").
+		Joins(xenforo.ConnectedAccountJoin).
+		Where("xf_user.username = ?", username).
+		First(&profile)
+
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("no profile found for username: %s", username)
+		}
+		return nil, result.Error
+	}
+
+	milpac, err := ds.generateProtoProfile(profile)
+	if err != nil {
+		return nil, fmt.Errorf("error generating profile: %w", err)
+	}
+
+	return []*proto.Profile{milpac}, nil
+}
+
 func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error) {
 	var rosterProfiles []milpacs.Profile
 
