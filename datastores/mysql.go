@@ -25,7 +25,10 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 	var profile milpacs.Profile
 
 	Info.Println("Searching for user: ", userIds[0])
-	ds.Db.Preload(clause.Associations).Joins(xenforo.ConnectedAccountJoin).First(&profile, userIds[0])
+	ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
+		Joins(xenforo.ConnectedAccountJoin).
+		First(&profile, userIds[0])
 
 	milpac, err := ds.generateProtoProfile(profile)
 
@@ -42,6 +45,7 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 	Info.Println("Searching for user with username: ", username)
 
 	result := ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
 		Joins("JOIN xf_user ON xf_user.user_id = xf_nf_rosters_user.user_id").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where("xf_user.username = ?", username).
@@ -66,7 +70,11 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).Preload("AwardRecords.Award").Joins(xenforo.ConnectedAccountJoin).Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).Find(&rosterProfiles)
+	ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
+		Joins(xenforo.ConnectedAccountJoin).
+		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
+		Find(&rosterProfiles)
 
 	var profiles = make(map[uint64]*proto.Profile, len(rosterProfiles))
 	for _, profile := range rosterProfiles {
