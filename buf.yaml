@@ -1,22 +1,33 @@
-version: v1beta1
-name: github.com/7cav/api
-build:
-  roots:
-    - proto
+version: v2
+modules:
+  - path: proto
+    name: github.com/7cav/api
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/grpc-ecosystem/grpc-gateway
 lint:
   use:
     - STANDARD
+  except:
+    - ENUM_FIRST_VALUE_ZERO
+    - FIELD_NOT_REQUIRED
+    - IMPORT_USED
+    - PACKAGE_NO_IMPORT_CYCLE
+    - PROTOVALIDATE
+    - SYNTAX_SPECIFIED
   ignore_only:
     PACKAGE_DIRECTORY_MATCH:
-      - milpacs.proto
+      - proto/milpacs.proto
     PACKAGE_VERSION_SUFFIX:
-      - milpacs.proto
+      - proto/milpacs.proto
     RPC_REQUEST_RESPONSE_UNIQUE:
-      - milpacs.proto
-    RPC_RESPONSE_STANDARD_NAME:
-      - milpacs.proto
+      - proto/milpacs.proto
     RPC_REQUEST_STANDARD_NAME:
-      - milpacs.proto
-deps:
-  - buf.build/beta/googleapis
-  - buf.build/grpc-ecosystem/grpc-gateway
+      - proto/milpacs.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/milpacs.proto
+  disallow_comment_ignores: true
+breaking:
+  except:
+    - EXTENSION_NO_DELETE
+    - FIELD_SAME_DEFAULT
