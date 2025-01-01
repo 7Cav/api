@@ -11,10 +11,7 @@ RUN go mod download
 
 # Install buf (protobuf generation tool)
 RUN curl -sSL https://github.com/bufbuild/buf/releases/latest/download/buf-Linux-x86_64 -o /usr/local/bin/buf && \
-    chmod +x /usr/local/bin/buf && \
-    /usr/local/bin/buf --version
-
-RUN buf --version
+    chmod +x /usr/local/bin/buf
 
 # COPY the source code as the last step
 COPY . .
