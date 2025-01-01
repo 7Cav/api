@@ -10,7 +10,7 @@ jobs:
     - name: Install tools
       run: |
         make install
-        echo "PATH=$(go env GOPATH)/bin:\$PATH" >> $GITHUB_ENV
+        echo "PATH=$(go env GOPATH)/bin:$PATH" >> $GITHUB_ENV
     - name: Install buf
       run: |
         curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | grep "browser_download_url.*buf-Linux-x86_64" | cut -d '"' -f 4) -o /usr/local/bin/buf
