@@ -12,8 +12,7 @@ jobs:
       run: make install
     - name: Install buf
       run: |
-        LATEST_VERSION=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.tag_name')
-        curl -sSL https://github.com/bufbuild/buf/releases/download/${LATEST_VERSION}/buf-Linux-x86_64 -o /usr/local/bin/buf
+        curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | grep "browser_download_url.*buf-Linux-x86_64" | cut -d '"' -f 4) -o /usr/local/bin/buf
         chmod +x /usr/local/bin/buf
     - name: Regenerate files
       run: make generate
@@ -33,8 +32,7 @@ jobs:
       run: make install
     - name: Install buf
       run: |
-        LATEST_VERSION=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.tag_name')
-        curl -sSL https://github.com/bufbuild/buf/releases/download/${LATEST_VERSION}/buf-Linux-x86_64 -o /usr/local/bin/buf
+        curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | grep "browser_download_url.*buf-Linux-x86_64" | cut -d '"' -f 4) -o /usr/local/bin/buf
         chmod +x /usr/local/bin/buf
     - name: Lint
       run: make lint
