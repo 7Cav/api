@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "tags": [
     {
@@ -225,18 +225,21 @@
         "secondaries": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/protoPosition"
           }
         },
         "records": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/protoRecord"
           }
         },
         "awards": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/protoAward"
           }
         },
@@ -338,14 +341,11 @@
     "protobufAny": {
       "type": "object",
       "properties": {
-        "typeUrl": {
+        "@type": {
           "type": "string"
-        },
-        "value": {
-          "type": "string",
-          "format": "byte"
         }
-      }
+      },
+      "additionalProperties": {}
     },
     "rpcStatus": {
       "type": "object",
@@ -360,6 +360,7 @@
         "details": {
           "type": "array",
           "items": {
+            "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
         }
