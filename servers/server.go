@@ -61,21 +61,25 @@ func setupDatasource() *datastores.Mysql {
 	dbUser := viper.GetString("db_username")
 	if dbUser == "" {
 		Error.Println("no database username provided")
+		os.Exit(1)
 	}
 
 	dbPass := viper.GetString("db_password")
 	if dbPass == "" {
 		Error.Println("no database password provided")
+		os.Exit(1)
 	}
 
 	dbHost := viper.GetString("db_host")
 	if dbHost == "" {
 		Error.Println("no database host provided")
+		os.Exit(1)
 	}
 
 	dbPort := viper.GetString("db_port")
 	if dbPort == "" {
 		Error.Println("no database port provided")
+		os.Exit(1)
 	}
 
 	// refer https://github.com/go-sql-driver/mysql#dsn-data-source-name for details
@@ -83,6 +87,7 @@ func setupDatasource() *datastores.Mysql {
 	conn, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		Error.Println("issue connecting to database", err)
+		os.Exit(1)
 	}
 
 	return &datastores.Mysql{Db: conn}
