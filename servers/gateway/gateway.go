@@ -21,6 +21,7 @@ package gateway
 import (
 	"compress/gzip"
 	"context"
+	"fmt"
 	"github.com/7cav/api/proto"
 	_ "github.com/7cav/api/statik" // static files import - unused in the codebase, but required cuz reasons
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -45,7 +46,9 @@ var (
 
 func getOpenAPIHandler() http.Handler {
 	Info.Println("setting up OpenAPI Handler")
-	mime.AddExtensionType(".svg", "image/svg+xml")
+	if err := mime.AddExtensionType(".svg", "image/svg+xml"); err != nil {
+		Error.Println("failed to add MIME extension type for .svg: ", err)
+	}
 	statikFs, err := fs.New()
 	if err != nil {
 		Error.Println("creating OpenAPI filesystem: ", err)
@@ -58,7 +61,11 @@ func compressionMiddleware(next http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			w.Header().Set("Content-Encoding", "gzip")
 			gz := gzip.NewWriter(w)
-			defer gz.Close()
+			defer func() {
+				if err := gz.Close(); err != nil {
+					fmt.Printf("Failed to close gzip writer: %v\n", err)
+				}
+			}()
 			gzw := &gzipResponseWriter{ResponseWriter: w, Writer: gz}
 			next.ServeHTTP(gzw, r)
 			return
@@ -73,7 +80,7 @@ type gzipResponseWriter struct {
 }
 
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	w.Header().Del("Content-Length") // This is necessary as otherwise it will have the uncompressed header
+	w.Header().Del("Content-Length") // This is necessary as otherwise it will have the uncompressed length
 	return w.Writer.Write(b)
 }
 
