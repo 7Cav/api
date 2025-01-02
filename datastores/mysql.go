@@ -25,10 +25,17 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 	var profile milpacs.Profile
 
 	Info.Println("Searching for user: ", userIds[0])
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		First(&profile, userIds[0])
+
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("no profile found for userid: %d", userIds)
+		}
+		return nil, result.Error
+	}
 
 	milpac, err := ds.generateProtoProfile(profile)
 
