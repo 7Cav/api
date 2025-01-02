@@ -115,8 +115,7 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	apiHandler := compressionMiddleware(gwMux)
-	openApiHandler := compressionMiddleware(openApi)
+	gwMuxHandler := compressionMiddleware(gwMux)
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)
@@ -124,10 +123,10 @@ func (service *Service) Server() *http.Server {
 		Addr: service.Address,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/api") {
-				apiHandler.ServeHTTP(w, r)
+				gwMuxHandler.ServeHTTP(w, r)
 				return
 			}
-			openApiHandler.ServeHTTP(w, r)
+			openApi.ServeHTTP(w, r)
 		}),
 	}
 }
