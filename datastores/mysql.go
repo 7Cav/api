@@ -105,7 +105,11 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 
 	query := map[string]interface{}{"xf_user_connected_account.provider_key": keycloakId, "xf_user_connected_account.provider": "keycloak"}
 
-	ds.Db.Preload(clause.Associations).Joins(xenforo.ConnectedAccountJoin).Where(query).First(&profile)
+	ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
+		Joins(xenforo.ConnectedAccountJoin).
+		Where(query).
+		First(&profile)
 
 	milpac, err := ds.generateProtoProfile(profile)
 
