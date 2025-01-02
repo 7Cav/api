@@ -19,6 +19,7 @@
 package gateway
 
 import (
+	"compress/gzip"
 	"context"
 	"github.com/7cav/api/proto"
 	_ "github.com/7cav/api/statik" // static files import - unused in the codebase, but required cuz reasons
@@ -52,6 +53,30 @@ func getOpenAPIHandler() http.Handler {
 	return http.FileServer(statikFs)
 }
 
+func compressionMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+			gzw := &gzipResponseWriter{ResponseWriter: w, Writer: gz}
+			next.ServeHTTP(gzw, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	Writer *gzip.Writer
+}
+
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	w.Header().Del("Content-Length") // This is necessary as otherwise it will have the uncompressed header
+	return w.Writer.Write(b)
+}
+
 func (service *Service) Server() *http.Server {
 	// relevant Grpc _dialing_ options
 	// note: commenting out the TransportCredentials option, because internally (nginx <-> golang) traffic is not encrypted.
@@ -83,16 +108,19 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
+	apiHandler := compressionMiddleware(gwMux)
+	openApiHandler := compressionMiddleware(openApi)
+
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)
 	return &http.Server{
 		Addr: service.Address,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/api") {
-				gwMux.ServeHTTP(w, r)
+				apiHandler.ServeHTTP(w, r)
 				return
 			}
-			openApi.ServeHTTP(w, r)
+			openApiHandler.ServeHTTP(w, r)
 		}),
 	}
 }
