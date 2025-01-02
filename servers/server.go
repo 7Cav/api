@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -95,7 +95,7 @@ func setupDatasource() *datastores.Mysql {
 
 func (server *MicroServer) Start() {
 	// Adds gRPC internal logs. This is quite verbose, so adjust as desired!
-	grpcLogger := grpclog.NewLoggerV2(ioutil.Discard, os.Stdout, os.Stdout)
+	grpcLogger := grpclog.NewLoggerV2(io.Discard, os.Stdout, os.Stdout)
 	grpclog.SetLoggerV2(grpcLogger)
 
 	//create TLS listener for TCP connections
