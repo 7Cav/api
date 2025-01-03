@@ -145,6 +145,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
 		KeycloakId:    extractKeycloakID(profile),
+		DiscordId:     extractDiscordID(profile),
 	}
 
 	return milpac, nil
@@ -153,6 +154,16 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 func extractKeycloakID(profile milpacs.Profile) string {
 	for _, connection := range profile.ConnectedAccount {
 		if connection.Provider == "keycloak" {
+			return connection.ProviderKey
+		}
+	}
+
+	return ""
+}
+
+func extractDiscordID(profile milpacs.Profile) string {
+	for _, connection := range profile.ConnectedAccount {
+		if connection.Provider == "nfDiscord" {
 			return connection.ProviderKey
 		}
 	}

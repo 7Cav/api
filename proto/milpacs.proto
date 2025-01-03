@@ -180,6 +180,7 @@ message Profile {
   string join_date = 10;
   string promotion_date = 11;
   string keycloak_id = 12;
+  string discord_id = 13;
 }
 
 message RosterRequest {

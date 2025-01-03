@@ -255,6 +255,9 @@
         },
         "keycloakId": {
           "type": "string"
+        },
+        "discordId": {
+          "type": "string"
         }
       }
     },
