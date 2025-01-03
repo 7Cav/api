@@ -19,6 +19,38 @@
     "application/json"
   ],
   "paths": {
+    "/api/v1/milpac/discord/{discordId}": {
+      "get": {
+        "summary": "Get a Milpac profile via Discord ID",
+        "description": "Get all milpac Profile data for a given user via their Discord ID",
+        "operationId": "MilpacService_GetUserViaDiscordId",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoProfile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "discordId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Roster, Milpacs, Discord"
+        ]
+      }
+    },
     "/api/v1/milpac/keycloak/{keycloakId}": {
       "get": {
         "summary": "Get a Milpac profile via keycloak ID",
@@ -187,7 +219,7 @@
         "awardImageUrl": {
           "type": "string"
         },
-        "recordId": {
+        "awardUid": {
           "type": "string",
           "format": "uint64"
         }
@@ -291,7 +323,7 @@
         "recordDate": {
           "type": "string"
         },
-        "recordId": {
+        "recordUid": {
           "type": "string",
           "format": "uint64"
         }

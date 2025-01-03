@@ -80,13 +80,28 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request *proto.KeycloakIdRequest) (*proto.Profile, error) {
 
 	if request.GetKeycloakId() == "" {
-		Warn.Println("Empty discord ID provided, cannot return profile")
+		Warn.Println("Empty Keycloak ID provided, cannot return profile")
 	}
 
 	profile, err := server.Datastore.FindProfileByKeycloakID(request.GetKeycloakId())
 
 	if err != nil {
 		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for %", request.GetKeycloakId())
+	}
+
+	return profile, nil
+}
+
+func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *proto.DiscordIdRequest) (*proto.Profile, error) {
+
+	if request.GetDiscordId() == "" {
+		Warn.Println("Empty Discord ID provided, cannot return profile")
+	}
+
+	profile, err := server.Datastore.FindProfileByDiscordID(request.GetDiscordId())
+
+	if err != nil {
+		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for %", request.GetDiscordId())
 	}
 
 	return profile, nil

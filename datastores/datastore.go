@@ -35,4 +35,5 @@ type Datastore interface {
 	FindProfilesByUsername(username string) ([]*proto.Profile, error)
 	FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error)
 	FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error)
+	FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 }

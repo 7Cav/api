@@ -120,6 +120,28 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 	return milpac, nil
 }
 
+func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
+	var profile milpacs.Profile
+
+	Info.Println("Searching for milpac profiles with discord IDs of: %s", discordId)
+
+	query := map[string]interface{}{"xf_user_connected_account.provider_key": discordId, "xf_user_connected_account.provider": "nfDiscord"}
+
+	ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
+		Joins(xenforo.ConnectedAccountJoin).
+		Where(query).
+		First(&profile)
+
+	milpac, err := ds.generateProtoProfile(profile)
+
+	if err != nil {
+		return nil, fmt.Errorf("error generating profile")
+	}
+
+	return milpac, nil
+}
+
 func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
 	milpac := &proto.Profile{
 		User: &proto.User{
@@ -197,7 +219,7 @@ func collectRecords(recordRows []milpacs.Record) []*proto.Record {
 			RecordDetails: recordRow.Details,
 			RecordType:    proto.RecordType(recordRow.RecordTypeId),
 			RecordDate:    stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
-			RecordId:      recordRow.RecordID,
+			RecordUid:     recordRow.RecordID,
 		}
 		records = append(records, record)
 	}
@@ -214,7 +236,7 @@ func collectAwards(awardRows []milpacs.AwardRecord) []*proto.Award {
 			AwardDetails:  awardRow.Details,
 			AwardDate:     stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
 			AwardImageUrl: awardRow.Award.ImageURL(),
-			RecordId:      awardRow.RecordID,
+			AwardUid:      awardRow.RecordID,
 		}
 		awards = append(awards, award)
 	}
