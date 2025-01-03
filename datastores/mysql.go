@@ -186,6 +186,7 @@ func collectRecords(recordRows []milpacs.Record) []*proto.Record {
 			RecordDetails: recordRow.Details,
 			RecordType:    proto.RecordType(recordRow.RecordTypeId),
 			RecordDate:    stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
+			RecordId:      recordRow.RecordID,
 		}
 		records = append(records, record)
 	}
@@ -202,6 +203,7 @@ func collectAwards(awardRows []milpacs.AwardRecord) []*proto.Award {
 			AwardDetails:  awardRow.Details,
 			AwardDate:     stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
 			AwardImageUrl: awardRow.Award.ImageURL(),
+			RecordId:      awardRow.RecordID,
 		}
 		awards = append(awards, award)
 	}

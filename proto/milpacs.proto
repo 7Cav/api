@@ -199,6 +199,7 @@ message Record {
   string record_details = 1;
   RecordType record_type = 2;
   string record_date = 3;
+  uint64 record_id = 4;
 }
 
 message Award {
@@ -206,6 +207,7 @@ message Award {
   string award_name = 2;
   string award_date = 3;
   string award_image_url = 4;
+  uint64 record_id = 5;
 }
 
 message Position {

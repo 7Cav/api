@@ -186,6 +186,10 @@
         },
         "awardImageUrl": {
           "type": "string"
+        },
+        "recordId": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
@@ -283,6 +287,10 @@
         },
         "recordDate": {
           "type": "string"
+        },
+        "recordId": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
