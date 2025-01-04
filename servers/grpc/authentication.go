@@ -84,7 +84,11 @@ func isValidToken(authHeader string) bool {
 		Warn.Printf("Auth server unreachable: %v", err)
 		return false
 	}
-	defer res.Body.Close()
+	defer func() {
+		if err := res.Body.Close(); err != nil {
+			Warn.Printf("Error closing response body: %v", err)
+		}
+	}()
 
 	return res.StatusCode == http.StatusOK
 }
