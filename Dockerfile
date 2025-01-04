@@ -23,10 +23,11 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
 RUN go mod tidy
-RUN go build -a -installsuffix cgo -o /api
+RUN go build -a -ldflags="-s -w" -installsuffix cgo -o /api
 
 # Production stage
-FROM scratch
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates
 COPY --from=build-env /api /
 
 EXPOSE 10000
