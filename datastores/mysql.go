@@ -105,11 +105,18 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 
 	query := map[string]interface{}{"xf_user_connected_account.provider_key": keycloakId, "xf_user_connected_account.provider": "keycloak"}
 
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(query).
 		First(&profile)
+
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("no profile found for KeycloakID: %s", keycloakId)
+		}
+		return nil, result.Error
+	}
 
 	milpac, err := ds.generateProtoProfile(profile)
 
@@ -127,11 +134,18 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 
 	query := map[string]interface{}{"xf_user_connected_account.provider_key": discordId, "xf_user_connected_account.provider": "nfDiscord"}
 
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(query).
 		First(&profile)
+
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("no profile found for discordID: %s", discordId)
+		}
+		return nil, result.Error
+	}
 
 	milpac, err := ds.generateProtoProfile(profile)
 
