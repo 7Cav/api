@@ -71,7 +71,7 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 	roster, err := server.Datastore.FindRosterByType(request.Roster)
 
 	if err != nil {
-		return &proto.Roster{}, status.Errorf(codes.NotFound, "no roster found for %", request.Roster)
+		return &proto.Roster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
 	}
 
 	return roster, nil
@@ -86,7 +86,7 @@ func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request 
 	profile, err := server.Datastore.FindProfileByKeycloakID(request.GetKeycloakId())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for %", request.GetKeycloakId())
+		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for keycloakid: %s", request.GetKeycloakId())
 	}
 
 	return profile, nil
@@ -101,7 +101,7 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 	profile, err := server.Datastore.FindProfileByDiscordID(request.GetDiscordId())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for %", request.GetDiscordId())
+		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for discordid: %s", request.GetDiscordId())
 	}
 
 	return profile, nil
