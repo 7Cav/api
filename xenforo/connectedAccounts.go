@@ -1,7 +1,7 @@
 package xenforo
 
 const (
-	ConnectedAccountJoin = "JOIN xf_user_connected_account on xf_user_connected_account.user_id = xf_nf_rosters_user.user_id"
+	ConnectedAccountJoin = "LEFT JOIN xf_user_connected_account on xf_user_connected_account.user_id = xf_nf_rosters_user.user_id"
 )
 
 type ConnectedAccount struct {
