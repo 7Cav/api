@@ -266,3 +266,56 @@ func stringToTime(s string) time.Time {
 	}
 	return time.Unix(sec, 0)
 }
+
+func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRoster, error) {
+	var rosterProfiles []milpacs.Profile
+
+	Info.Println("Searching for lite roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
+	ds.Db.Preload(clause.Associations).
+		Omit("Records", "AwardRecords").
+		Joins(xenforo.ConnectedAccountJoin).
+		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
+		Find(&rosterProfiles)
+
+	var profiles = make(map[uint64]*proto.LiteProfile, len(rosterProfiles))
+	for _, profile := range rosterProfiles {
+		milpac, err := ds.generateLiteProtoProfile(profile)
+
+		if err != nil {
+			return nil, fmt.Errorf("error generating lite profile")
+		}
+		profiles[profile.RelationId] = milpac
+	}
+
+	protoRoster := &proto.LiteRoster{Profiles: profiles}
+
+	return protoRoster, nil
+}
+func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LiteProfile, error) {
+	milpac := &proto.LiteProfile{
+		User: &proto.User{
+			UserId:   profile.XfUser.UserID,
+			Username: profile.XfUser.Username,
+		},
+		Rank: &proto.Rank{
+			RankId:       profile.RankID,
+			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
+			RankFull:     profile.Rank.Title,
+			RankImageUrl: profile.Rank.ImageURL(),
+		},
+		RealName:   profile.RealName,
+		UniformUrl: profile.UniformUrl(),
+		Roster:     proto.RosterType(profile.RosterId),
+		Primary: &proto.Position{
+			PositionTitle: profile.Primary.PositionTitle,
+			PositionId:    profile.Primary.PositionId,
+		},
+		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
+		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
+		KeycloakId:    extractKeycloakID(profile),
+		DiscordId:     extractDiscordID(profile),
+	}
+
+	return milpac, nil
+}

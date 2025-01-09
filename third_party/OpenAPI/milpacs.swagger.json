@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.1.2"
+    "version": "1.2"
   },
   "tags": [
     {
@@ -201,6 +201,47 @@
           "Roster, Milpacs"
         ]
       }
+    },
+    "/api/v1/roster/{roster}/lite": {
+      "get": {
+        "summary": "Get a given roster with minimal profile data",
+        "description": "Get basic milpac Profile data for a given roster, excluding records and awards",
+        "operationId": "MilpacService_GetLiteRoster",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoLiteRoster"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "roster",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ROSTER_TYPE_UNSPECIFIED",
+              "ROSTER_TYPE_COMBAT",
+              "ROSTER_TYPE_RESERVE",
+              "ROSTER_TYPE_ELOA",
+              "ROSTER_TYPE_WALL_OF_HONOR",
+              "ROSTER_TYPE_ARLINGTON",
+              "ROSTER_TYPE_PAST_MEMBERS"
+            ]
+          }
+        ],
+        "tags": [
+          "Roster, Milpacs"
+        ]
+      }
     }
   },
   "definitions": {
@@ -222,6 +263,59 @@
         "awardUid": {
           "type": "string",
           "format": "uint64"
+        }
+      }
+    },
+    "protoLiteProfile": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "$ref": "#/definitions/protoUser"
+        },
+        "rank": {
+          "$ref": "#/definitions/protoRank"
+        },
+        "realName": {
+          "type": "string"
+        },
+        "uniformUrl": {
+          "type": "string"
+        },
+        "roster": {
+          "$ref": "#/definitions/protoRosterType"
+        },
+        "primary": {
+          "$ref": "#/definitions/protoPosition"
+        },
+        "secondaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoPosition"
+          }
+        },
+        "joinDate": {
+          "type": "string"
+        },
+        "promotionDate": {
+          "type": "string"
+        },
+        "keycloakId": {
+          "type": "string"
+        },
+        "discordId": {
+          "type": "string"
+        }
+      }
+    },
+    "protoLiteRoster": {
+      "type": "object",
+      "properties": {
+        "profiles": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/protoLiteProfile"
+          }
         }
       }
     },

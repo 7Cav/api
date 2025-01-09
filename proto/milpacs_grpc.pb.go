@@ -40,6 +40,7 @@ const (
 	MilpacService_GetRoster_FullMethodName            = "/proto.MilpacService/GetRoster"
 	MilpacService_GetUserViaKeycloakId_FullMethodName = "/proto.MilpacService/GetUserViaKeycloakId"
 	MilpacService_GetUserViaDiscordId_FullMethodName  = "/proto.MilpacService/GetUserViaDiscordId"
+	MilpacService_GetLiteRoster_FullMethodName        = "/proto.MilpacService/GetLiteRoster"
 )
 
 // MilpacServiceClient is the client API for MilpacService service.
@@ -50,6 +51,7 @@ type MilpacServiceClient interface {
 	GetRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*Roster, error)
 	GetUserViaKeycloakId(ctx context.Context, in *KeycloakIdRequest, opts ...grpc.CallOption) (*Profile, error)
 	GetUserViaDiscordId(ctx context.Context, in *DiscordIdRequest, opts ...grpc.CallOption) (*Profile, error)
+	GetLiteRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*LiteRoster, error)
 }
 
 type milpacServiceClient struct {
@@ -100,6 +102,16 @@ func (c *milpacServiceClient) GetUserViaDiscordId(ctx context.Context, in *Disco
 	return out, nil
 }
 
+func (c *milpacServiceClient) GetLiteRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*LiteRoster, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LiteRoster)
+	err := c.cc.Invoke(ctx, MilpacService_GetLiteRoster_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MilpacServiceServer is the server API for MilpacService service.
 // All implementations should embed UnimplementedMilpacServiceServer
 // for forward compatibility.
@@ -108,6 +120,7 @@ type MilpacServiceServer interface {
 	GetRoster(context.Context, *RosterRequest) (*Roster, error)
 	GetUserViaKeycloakId(context.Context, *KeycloakIdRequest) (*Profile, error)
 	GetUserViaDiscordId(context.Context, *DiscordIdRequest) (*Profile, error)
+	GetLiteRoster(context.Context, *RosterRequest) (*LiteRoster, error)
 }
 
 // UnimplementedMilpacServiceServer should be embedded to have
@@ -128,6 +141,9 @@ func (UnimplementedMilpacServiceServer) GetUserViaKeycloakId(context.Context, *K
 }
 func (UnimplementedMilpacServiceServer) GetUserViaDiscordId(context.Context, *DiscordIdRequest) (*Profile, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetUserViaDiscordId not implemented")
+}
+func (UnimplementedMilpacServiceServer) GetLiteRoster(context.Context, *RosterRequest) (*LiteRoster, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLiteRoster not implemented")
 }
 func (UnimplementedMilpacServiceServer) testEmbeddedByValue() {}
 
@@ -221,6 +237,24 @@ func _MilpacService_GetUserViaDiscordId_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MilpacService_GetLiteRoster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RosterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MilpacServiceServer).GetLiteRoster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MilpacService_GetLiteRoster_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MilpacServiceServer).GetLiteRoster(ctx, req.(*RosterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MilpacService_ServiceDesc is the grpc.ServiceDesc for MilpacService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -243,6 +277,10 @@ var MilpacService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetUserViaDiscordId",
 			Handler:    _MilpacService_GetUserViaDiscordId_Handler,
+		},
+		{
+			MethodName: "GetLiteRoster",
+			Handler:    _MilpacService_GetLiteRoster_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

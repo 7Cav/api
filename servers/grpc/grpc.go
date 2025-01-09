@@ -106,3 +106,16 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 
 	return profile, nil
 }
+func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.RosterRequest) (*proto.LiteRoster, error) {
+	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
+		return nil, errors.New("cannot request null roster type")
+	}
+
+	roster, err := server.Datastore.FindLiteRosterByType(request.Roster)
+
+	if err != nil {
+		return &proto.LiteRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+	}
+
+	return roster, nil
+}
