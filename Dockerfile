@@ -8,6 +8,8 @@ COPY go.sum .
 
 # Get dependancies - will also be cached if we won't change mod/sum
 RUN go mod download
+COPY Makefile ./
+RUN make install
 
 # Install buf (protobuf generation tool)
 RUN curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | grep "browser_download_url.*buf-Linux-x86_64" | cut -d '"' -f 4) -o /usr/local/bin/buf \
@@ -16,7 +18,7 @@ RUN curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/lates
 # COPY the source code as the last step
 COPY . .
 
-RUN make install
+# RUN make install
 RUN make generate
 
 ENV CGO_ENABLED=0
