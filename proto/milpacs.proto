@@ -28,7 +28,7 @@ import "protoc-gen-openapiv2/options/annotations.proto";
 // These annotations are used when generating the OpenAPI file.
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
-    version: "1.1.3";
+    version: "1.2";
   };
   external_docs: {
     url: "https://github.com/7cav/api";
@@ -99,7 +99,18 @@ service MilpacService {
       tags: "Roster, Milpacs, Discord"
     };
   };
+  rpc GetLiteRoster(RosterRequest) returns (LiteRoster){
+    option(google.api.http) = {
+      get: "/api/v1/roster/{roster}/lite"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a given roster with minimal profile data"
+      description: "Get basic milpac Profile data for a given roster, excluding records and awards"
+      tags: "Roster, Milpacs"
+    };
+  };
 }
+
 
 enum RosterType {
   ROSTER_TYPE_UNSPECIFIED = 0;
@@ -228,4 +239,22 @@ message Award {
 message Position {
   string position_title = 1;
   uint64 position_id = 2;
+}
+
+message LiteProfile {
+  User user = 1;
+  Rank rank = 2;
+  string real_name = 3;
+  string uniform_url = 4;
+  RosterType roster = 5;
+  Position primary = 6;
+  repeated Position secondaries = 7;
+  string join_date = 8;
+  string promotion_date = 9;
+  string keycloak_id = 10;
+  string discord_id = 11;
+}
+
+message LiteRoster {
+  map<uint64, LiteProfile> profiles = 1;
 }
