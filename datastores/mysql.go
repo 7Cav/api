@@ -319,3 +319,36 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 
 	return milpac, nil
 }
+
+func (ds Mysql) FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfile, error) {
+	var profiles []milpacs.Profile
+
+	Info.Printf("Searching for profiles with position matching: %s", positionQuery)
+
+	escaped := strings.ReplaceAll(positionQuery, "%", "\\%")
+	escaped = strings.ReplaceAll(escaped, "_", "\\_")
+	likeQuery := "%" + escaped + "%"
+
+	result := ds.Db.Preload(clause.Associations).
+		Omit("Records", "AwardRecords").
+		Joins(xenforo.ConnectedAccountJoin).
+		Joins("LEFT JOIN xf_nf_rosters_position pos ON pos.position_id = xf_nf_rosters_user.position_id OR FIND_IN_SET(pos.position_id, xf_nf_rosters_user.secondary_position_ids)").
+		Where("pos.position_title LIKE ? AND (pos.position_id = xf_nf_rosters_user.position_id OR pos.possible_secondary = ?)",
+			likeQuery, true).
+		Find(&profiles)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	var protoProfiles []*proto.LiteProfile
+	for _, profile := range profiles {
+		protoProfile, err := ds.generateLiteProtoProfile(profile)
+		if err != nil {
+			return nil, fmt.Errorf("error generating lite profile: %w", err)
+		}
+		protoProfiles = append(protoProfiles, protoProfile)
+	}
+
+	return protoProfiles, nil
+}

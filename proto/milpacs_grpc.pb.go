@@ -41,6 +41,7 @@ const (
 	MilpacService_GetUserViaKeycloakId_FullMethodName = "/proto.MilpacService/GetUserViaKeycloakId"
 	MilpacService_GetUserViaDiscordId_FullMethodName  = "/proto.MilpacService/GetUserViaDiscordId"
 	MilpacService_GetLiteRoster_FullMethodName        = "/proto.MilpacService/GetLiteRoster"
+	MilpacService_SearchByPosition_FullMethodName     = "/proto.MilpacService/SearchByPosition"
 )
 
 // MilpacServiceClient is the client API for MilpacService service.
@@ -52,6 +53,7 @@ type MilpacServiceClient interface {
 	GetUserViaKeycloakId(ctx context.Context, in *KeycloakIdRequest, opts ...grpc.CallOption) (*Profile, error)
 	GetUserViaDiscordId(ctx context.Context, in *DiscordIdRequest, opts ...grpc.CallOption) (*Profile, error)
 	GetLiteRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*LiteRoster, error)
+	SearchByPosition(ctx context.Context, in *PositionSearchRequest, opts ...grpc.CallOption) (*LiteProfileSearchResponse, error)
 }
 
 type milpacServiceClient struct {
@@ -112,6 +114,16 @@ func (c *milpacServiceClient) GetLiteRoster(ctx context.Context, in *RosterReque
 	return out, nil
 }
 
+func (c *milpacServiceClient) SearchByPosition(ctx context.Context, in *PositionSearchRequest, opts ...grpc.CallOption) (*LiteProfileSearchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LiteProfileSearchResponse)
+	err := c.cc.Invoke(ctx, MilpacService_SearchByPosition_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MilpacServiceServer is the server API for MilpacService service.
 // All implementations should embed UnimplementedMilpacServiceServer
 // for forward compatibility.
@@ -121,6 +133,7 @@ type MilpacServiceServer interface {
 	GetUserViaKeycloakId(context.Context, *KeycloakIdRequest) (*Profile, error)
 	GetUserViaDiscordId(context.Context, *DiscordIdRequest) (*Profile, error)
 	GetLiteRoster(context.Context, *RosterRequest) (*LiteRoster, error)
+	SearchByPosition(context.Context, *PositionSearchRequest) (*LiteProfileSearchResponse, error)
 }
 
 // UnimplementedMilpacServiceServer should be embedded to have
@@ -144,6 +157,9 @@ func (UnimplementedMilpacServiceServer) GetUserViaDiscordId(context.Context, *Di
 }
 func (UnimplementedMilpacServiceServer) GetLiteRoster(context.Context, *RosterRequest) (*LiteRoster, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLiteRoster not implemented")
+}
+func (UnimplementedMilpacServiceServer) SearchByPosition(context.Context, *PositionSearchRequest) (*LiteProfileSearchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchByPosition not implemented")
 }
 func (UnimplementedMilpacServiceServer) testEmbeddedByValue() {}
 
@@ -255,6 +271,24 @@ func _MilpacService_GetLiteRoster_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MilpacService_SearchByPosition_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PositionSearchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MilpacServiceServer).SearchByPosition(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MilpacService_SearchByPosition_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MilpacServiceServer).SearchByPosition(ctx, req.(*PositionSearchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MilpacService_ServiceDesc is the grpc.ServiceDesc for MilpacService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -281,6 +315,10 @@ var MilpacService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLiteRoster",
 			Handler:    _MilpacService_GetLiteRoster_Handler,
+		},
+		{
+			MethodName: "SearchByPosition",
+			Handler:    _MilpacService_SearchByPosition_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
