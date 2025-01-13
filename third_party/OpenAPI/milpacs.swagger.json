@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.2"
+    "version": "1.3"
   },
   "tags": [
     {
@@ -80,6 +80,38 @@
         ],
         "tags": [
           "Roster, Milpacs, Keycloak"
+        ]
+      }
+    },
+    "/api/v1/milpacs/position/search/{positionQuery}": {
+      "get": {
+        "summary": "Search for profiles by position title",
+        "description": "Search for profiles using fuzzy matching on primary and secondary position titles, returns lite profiles for efficiency",
+        "operationId": "MilpacService_SearchByPosition",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoLiteProfileSearchResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "positionQuery",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Users, Milpacs, Position"
         ]
       }
     },
@@ -305,6 +337,22 @@
         },
         "discordId": {
           "type": "string"
+        }
+      }
+    },
+    "protoLiteProfileSearchResponse": {
+      "type": "object",
+      "properties": {
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoLiteProfile"
+          }
+        },
+        "totalCount": {
+          "type": "integer",
+          "format": "int32"
         }
       }
     },
