@@ -432,6 +432,9 @@
         },
         "discordId": {
           "type": "string"
+        },
+        "uniformDate": {
+          "type": "string"
         }
       }
     },
