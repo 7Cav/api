@@ -216,7 +216,6 @@ message Profile {
   string promotion_date = 11;
   string keycloak_id = 12;
   string discord_id = 13;
-  string uniform_date = 14;
 }
 
 message RosterRequest {

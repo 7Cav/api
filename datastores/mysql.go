@@ -168,10 +168,9 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
-		RealName:    profile.RealName,
-		UniformUrl:  profile.UniformUrl(),
-		UniformDate: getUniformDate(profile),
-		Roster:      proto.RosterType(profile.RosterId),
+		RealName:   profile.RealName,
+		UniformUrl: profile.UniformUrl(),
+		Roster:     proto.RosterType(profile.RosterId),
 		Primary: &proto.Position{
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
@@ -186,13 +185,6 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 	}
 
 	return milpac, nil
-}
-
-func getUniformDate(profile milpacs.Profile) string {
-	if profile.UniformDate <= 0 {
-		return ""
-	}
-	return time.Unix(int64(profile.UniformDate), 0).Format("2006-01-02 15:04:05")
 }
 
 func extractKeycloakID(profile milpacs.Profile) string {
@@ -360,3 +352,10 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfi
 
 	return protoProfiles, nil
 }
+
+//func getUniformDate(profile milpacs.Profile) string {
+//	if profile.UniformDate <= 0 {
+//		return ""
+//	}
+//	return time.Unix(int64(profile.UniformDate), 0).Format("2006-01-02 15:04:05")
+//}
