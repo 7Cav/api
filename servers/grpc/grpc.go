@@ -131,3 +131,16 @@ func (server *MilpacsService) SearchByPosition(ctx context.Context, request *pro
 
 	return roster, nil
 }
+
+func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *proto.RosterRequest) (*proto.S1UniformsRoster, error) {
+	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
+		return nil, errors.New("cannot request null roster type")
+	}
+
+	roster, err := server.Datastore.FindS1UniformsRosterByType(request.Roster)
+
+	if err != nil {
+		return &proto.S1UniformsRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+	}
+	return roster, nil
+}

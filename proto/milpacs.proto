@@ -119,7 +119,20 @@ service MilpacService {
       tags: "Users, Milpacs, Position"
     };
   };
+  rpc GetS1UniformsRoster(RosterRequest) returns (S1UniformsRoster){
+    option(google.api.http) = {
+      get: "/api/v1/s1/uniforms/{roster}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a given roster with minimal profile data"
+      description: "Get the specified roster with data tailored for S1 Uniforms"
+      tags: "Roster, Milpacs, S1"
+    };
+  };
 }
+
+
+
 
 
 enum RosterType {
@@ -273,7 +286,30 @@ message PositionSearchRequest {
   string position_query = 1;
 }
 
-message LiteProfileSearchResponse {
-  repeated LiteProfile profiles = 1;
-  int32 total_count = 2;
+message S1UniformsRoster {
+  map<uint64, S1UniformsProfile> profiles = 1;
+}
+
+message S1UniformsProfile {
+  User user = 1;
+  S1UniformsRank rank = 2;
+  string real_name = 3;
+  string uniform_url = 4;
+  string uniform_date = 5;
+  string uniform_update_trigger_date = 6;
+  RosterType roster = 7;
+  string primary_position_title = 8;
+  repeated S1UniformsPosition secondaries = 9;
+  string join_date = 10;
+  string promotion_date = 11;
+}
+
+message S1UniformsRank {
+  string rank_short = 1;
+  string rank_full = 2;
+  string rank_image_url = 3;
+}
+
+message S1UniformsPosition {
+  string position_title = 1;
 }

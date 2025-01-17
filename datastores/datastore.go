@@ -37,5 +37,6 @@ type Datastore interface {
 	FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRoster, error)
 	FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error)
 	FindProfileByDiscordID(discordId string) (*proto.Profile, error)
-	FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfile, error)
+	FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error)
+	FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.S1UniformsRoster, error)
 }
