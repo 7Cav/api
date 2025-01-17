@@ -320,7 +320,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 	return milpac, nil
 }
 
-func (ds Mysql) FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfile, error) {
+func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error) {
 	var profiles []milpacs.Profile
 
 	Info.Printf("Searching for profiles with position matching: %s", positionQuery)
@@ -341,14 +341,117 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfi
 		return nil, result.Error
 	}
 
-	var protoProfiles []*proto.LiteProfile
+	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
 	for _, profile := range profiles {
 		protoProfile, err := ds.generateLiteProtoProfile(profile)
 		if err != nil {
 			return nil, fmt.Errorf("error generating lite profile: %w", err)
 		}
-		protoProfiles = append(protoProfiles, protoProfile)
+		profileMap[profile.RelationId] = protoProfile
+	}
+	return &proto.LiteRoster{Profiles: profileMap}, nil
+}
+
+func (ds Mysql) FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.S1UniformsRoster, error) {
+	var rosterProfiles []milpacs.Profile
+
+	Info.Println("Searching for S1 Uniforms roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
+	ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
+		Joins(xenforo.ConnectedAccountJoin).
+		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
+		Find(&rosterProfiles)
+
+	var profiles = make(map[uint64]*proto.S1UniformsProfile, len(rosterProfiles))
+	for _, profile := range rosterProfiles {
+		milpac, err := ds.generateS1UniformsProtoProfile(profile)
+
+		if err != nil {
+			return nil, fmt.Errorf("error generating profile")
+		}
+		profiles[profile.RelationId] = milpac
 	}
 
-	return protoProfiles, nil
+	protoRoster := &proto.S1UniformsRoster{Profiles: profiles}
+
+	return protoRoster, nil
+}
+
+func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*proto.S1UniformsProfile, error) {
+	milpac := &proto.S1UniformsProfile{
+		User: &proto.User{
+			UserId:   profile.XfUser.UserID,
+			Username: profile.XfUser.Username,
+		},
+		Rank: &proto.S1UniformsRank{
+			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
+			RankFull:     profile.Rank.Title,
+			RankImageUrl: profile.Rank.ImageURL(),
+		},
+		RealName:                 profile.RealName,
+		UniformUrl:               profile.UniformUrl(),
+		UniformDate:              getUniformDate(profile),
+		UniformUpdateTriggerDate: getUniformUpdateTriggerDate(profile),
+		Roster:                   proto.RosterType(profile.RosterId),
+		PrimaryPositionTitle:     profile.Primary.PositionTitle,
+		Secondaries:              ds.collectS1UniformsSecondaryPositions(profile.SecondaryPositionIds),
+		JoinDate:                 profile.UnmarshalCustomFields().JoinDate,
+		PromotionDate:            profile.UnmarshalCustomFields().PromoDate,
+	}
+
+	return milpac, nil
+}
+
+func (ds Mysql) collectS1UniformsSecondaryPositions(positionIds string) []*proto.S1UniformsPosition {
+	var positions []*proto.S1UniformsPosition
+
+	if positionIds == "" {
+		return positions
+	}
+
+	for _, id := range strings.Split(positionIds, ",") {
+		var position milpacs.Position
+		ds.Db.First(&position, id)
+		positions = append(positions, &proto.S1UniformsPosition{
+			PositionTitle: position.PositionTitle,
+		})
+	}
+	return positions
+}
+
+func getUniformDate(profile milpacs.Profile) string {
+	if profile.UniformDate <= 0 {
+		return ""
+	}
+	return time.Unix(int64(profile.UniformDate), 0).Format("2006-01-02 15:04:05")
+}
+
+func getUniformUpdateTriggerDate(profile milpacs.Profile) string {
+	relevantRecordTypes := map[proto.RecordType]bool{
+		proto.RecordType_RECORD_TYPE_PROMOTION:   true,
+		proto.RecordType_RECORD_TYPE_TRANSFER:    true,
+		proto.RecordType_RECORD_TYPE_ASSIGNMENT:  true,
+		proto.RecordType_RECORD_TYPE_ELOA:        true,
+		proto.RecordType_RECORD_TYPE_NAME_CHANGE: true,
+		proto.RecordType_RECORD_TYPE_GRADUATION:  true,
+	}
+
+	var latestTimestamp int64
+
+	for _, award := range profile.AwardRecords {
+		if int64(award.AwardDate) > latestTimestamp {
+			latestTimestamp = int64(award.AwardDate)
+		}
+	}
+
+	for _, record := range profile.Records {
+		if relevantRecordTypes[proto.RecordType(record.RecordTypeId)] && int64(record.RecordDate) > latestTimestamp {
+			latestTimestamp = int64(record.RecordDate)
+		}
+	}
+
+	if latestTimestamp == 0 {
+		return ""
+	}
+	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
 }

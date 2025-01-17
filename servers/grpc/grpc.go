@@ -119,20 +119,28 @@ func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.
 
 	return roster, nil
 }
-func (server *MilpacsService) SearchByPosition(ctx context.Context, request *proto.PositionSearchRequest) (*proto.LiteProfileSearchResponse, error) {
+func (server *MilpacsService) SearchByPosition(ctx context.Context, request *proto.PositionSearchRequest) (*proto.LiteRoster, error) {
 	if request.GetPositionQuery() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "position query cannot be empty")
 	}
 
-	profiles, err := server.Datastore.FindProfilesByPosition(request.GetPositionQuery())
+	roster, err := server.Datastore.FindProfilesByPosition(request.GetPositionQuery())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error searching profiles by position: %v", err)
 	}
 
-	response := &proto.LiteProfileSearchResponse{
-		Profiles:   profiles,
-		TotalCount: int32(len(profiles)),
+	return roster, nil
+}
+
+func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *proto.RosterRequest) (*proto.S1UniformsRoster, error) {
+	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
+		return nil, errors.New("cannot request null roster type")
 	}
 
-	return response, nil
+	roster, err := server.Datastore.FindS1UniformsRosterByType(request.Roster)
+
+	if err != nil {
+		return &proto.S1UniformsRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+	}
+	return roster, nil
 }
