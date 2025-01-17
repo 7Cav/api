@@ -109,9 +109,9 @@ service MilpacService {
       tags: "Roster, Milpacs"
     };
   };
-  rpc SearchByPosition(PositionSearchRequest) returns (LiteProfileSearchResponse) {
+  rpc SearchByPosition(PositionSearchRequest) returns (LiteRoster) {
     option(google.api.http) = {
-      get: "/api/v1/milpacs/position/search/{position_query}"
+      get: "/api/v1/milpacs/position/search/{position_query=**}"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
       summary: "Search for profiles by position title"

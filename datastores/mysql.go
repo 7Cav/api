@@ -320,7 +320,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 	return milpac, nil
 }
 
-func (ds Mysql) FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfile, error) {
+func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error) {
 	var profiles []milpacs.Profile
 
 	Info.Printf("Searching for profiles with position matching: %s", positionQuery)
@@ -341,16 +341,15 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) ([]*proto.LiteProfi
 		return nil, result.Error
 	}
 
-	var protoProfiles []*proto.LiteProfile
+	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
 	for _, profile := range profiles {
 		protoProfile, err := ds.generateLiteProtoProfile(profile)
 		if err != nil {
 			return nil, fmt.Errorf("error generating lite profile: %w", err)
 		}
-		protoProfiles = append(protoProfiles, protoProfile)
+		profileMap[profile.RelationId] = protoProfile
 	}
-
-	return protoProfiles, nil
+	return &proto.LiteRoster{Profiles: profileMap}, nil
 }
 
 //func getUniformDate(profile milpacs.Profile) string {
