@@ -7,7 +7,6 @@ import (
 	"github.com/7cav/api/xenforo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -478,7 +477,7 @@ func getPositionGroup(profile milpacs.Profile) string {
 }
 
 func (ds Mysql) FindAllRanks() ([]*proto.RankExpanded, error) {
-	log.Println("Searching for all ranks")
+	Info.Println("Searching for all ranks")
 	var ranks []milpacs.Rank
 
 	result := ds.Db.Order("display_order").Find(&ranks)
@@ -501,7 +500,7 @@ func (ds Mysql) FindAllRanks() ([]*proto.RankExpanded, error) {
 }
 
 func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
-	log.Println("Searching for all position groups")
+	Info.Println("Searching for all position groups")
 	var groups []milpacs.PositionGroups
 
 	result := ds.Db.Order("display_order").Find(&groups)
