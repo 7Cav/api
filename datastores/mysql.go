@@ -277,20 +277,14 @@ func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRo
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
 
-	var profiles = make(map[uint64]*proto.LiteProfile, len(rosterProfiles))
-	for _, profile := range rosterProfiles {
-		milpac, err := ds.generateLiteProtoProfile(profile)
-
-		if err != nil {
-			return nil, fmt.Errorf("error generating lite profile")
-		}
-		profiles[profile.RelationId] = milpac
+	profiles, err := ds.processLiteProfiles(rosterProfiles)
+	if err != nil {
+		return nil, err
 	}
 
-	protoRoster := &proto.LiteRoster{Profiles: profiles}
-
-	return protoRoster, nil
+	return &proto.LiteRoster{Profiles: profiles}, nil
 }
+
 func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LiteProfile, error) {
 	milpac := &proto.LiteProfile{
 		User: &proto.User{
@@ -310,11 +304,14 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
-		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
-		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
-		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
-		KeycloakId:    extractKeycloakID(profile),
-		DiscordId:     extractDiscordID(profile),
+		Secondaries:     ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		JoinDate:        profile.UnmarshalCustomFields().JoinDate,
+		PromotionDate:   profile.UnmarshalCustomFields().PromoDate,
+		KeycloakId:      extractKeycloakID(profile),
+		DiscordId:       extractDiscordID(profile),
+		AwardTimestamp:  getLatestAwardDate(profile),
+		RecordTimestamp: getLatestServiceRecordDate(profile),
+		// Last forum post timestamp generated externally to use batch processing
 	}
 
 	return milpac, nil
@@ -341,14 +338,11 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster,
 		return nil, result.Error
 	}
 
-	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
-	for _, profile := range profiles {
-		protoProfile, err := ds.generateLiteProtoProfile(profile)
-		if err != nil {
-			return nil, fmt.Errorf("error generating lite profile: %w", err)
-		}
-		profileMap[profile.RelationId] = protoProfile
+	profileMap, err := ds.processLiteProfiles(profiles)
+	if err != nil {
+		return nil, err
 	}
+
 	return &proto.LiteRoster{Profiles: profileMap}, nil
 }
 
@@ -541,4 +535,96 @@ func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
 	}
 
 	return protoGroups, nil
+}
+
+func getLatestServiceRecordDate(profile milpacs.Profile) string {
+	var latestTimestamp int64
+
+	for _, record := range profile.Records {
+		if int64(record.RecordDate) > latestTimestamp {
+			latestTimestamp = int64(record.RecordDate)
+		}
+	}
+
+	if latestTimestamp == 0 {
+		return ""
+	}
+	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
+}
+
+func getLatestAwardDate(profile milpacs.Profile) string {
+	var latestTimestamp int64
+
+	for _, award := range profile.AwardRecords {
+		if int64(award.AwardDate) > latestTimestamp {
+			latestTimestamp = int64(award.AwardDate)
+		}
+	}
+
+	if latestTimestamp == 0 {
+		return ""
+	}
+	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
+}
+
+// bear witness to my despair, as i try to optimize queries to a table with a gazillion rows
+func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]string {
+	const batchSize = 50
+	dates := make(map[uint64]string)
+
+	seen := make(map[uint64]bool)
+	uniqueIDs := make([]uint64, 0, len(profiles))
+	for _, profile := range profiles {
+		if !seen[profile.UserID] {
+			seen[profile.UserID] = true
+			uniqueIDs = append(uniqueIDs, profile.UserID)
+		}
+	}
+
+	for i := 0; i < len(uniqueIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(uniqueIDs) {
+			end = len(uniqueIDs)
+		}
+
+		var results []struct {
+			UserID   uint64
+			PostDate uint32
+		}
+
+		subquery := ds.Db.Table("xf_post").
+			Select("user_id, MAX(post_date) as post_date").
+			Where("user_id IN ?", uniqueIDs[i:end]).
+			Group("user_id")
+
+		if err := subquery.Find(&results).Error; err != nil {
+			Error.Printf("Error fetching forum post dates for batch: %v", err)
+			continue
+		}
+
+		for _, result := range results {
+			if result.PostDate > 0 {
+				dates[result.UserID] = time.Unix(int64(result.PostDate), 0).Format("2006-01-02 15:04:05")
+			}
+		}
+	}
+
+	return dates
+}
+
+func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*proto.LiteProfile, error) {
+	forumPostDates := ds.getLatestForumPostDates(profiles)
+
+	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
+	for _, profile := range profiles {
+		protoProfile, err := ds.generateLiteProtoProfile(profile)
+		if err != nil {
+			return nil, fmt.Errorf("error generating lite profile: %w", err)
+		}
+
+		protoProfile.LastForumPostTimestamp = forumPostDates[profile.UserID]
+		profileMap[profile.RelationId] = protoProfile
+	}
+
+	return profileMap, nil
 }

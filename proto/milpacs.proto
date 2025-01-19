@@ -298,6 +298,9 @@ message LiteProfile {
   string promotion_date = 9;
   string keycloak_id = 10;
   string discord_id = 11;
+  string award_timestamp = 12;
+  string record_timestamp = 13;
+  string last_forum_post_timestamp = 14;
 }
 
 message LiteRoster {

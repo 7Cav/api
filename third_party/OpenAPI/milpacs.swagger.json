@@ -427,6 +427,15 @@
         },
         "discordId": {
           "type": "string"
+        },
+        "awardTimestamp": {
+          "type": "string"
+        },
+        "recordTimestamp": {
+          "type": "string"
+        },
+        "lastForumPostTimestamp": {
+          "type": "string"
         }
       }
     },
