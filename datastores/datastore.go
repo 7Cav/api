@@ -39,4 +39,6 @@ type Datastore interface {
 	FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 	FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error)
 	FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.S1UniformsRoster, error)
+	FindAllRanks() ([]*proto.RankExpanded, error)
+	FindAllPositionGroups() ([]*proto.PositionGroup, error)
 }

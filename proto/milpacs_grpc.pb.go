@@ -28,6 +28,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -43,6 +44,8 @@ const (
 	MilpacService_GetLiteRoster_FullMethodName        = "/proto.MilpacService/GetLiteRoster"
 	MilpacService_SearchByPosition_FullMethodName     = "/proto.MilpacService/SearchByPosition"
 	MilpacService_GetS1UniformsRoster_FullMethodName  = "/proto.MilpacService/GetS1UniformsRoster"
+	MilpacService_GetAllRanks_FullMethodName          = "/proto.MilpacService/GetAllRanks"
+	MilpacService_GetPositionGroups_FullMethodName    = "/proto.MilpacService/GetPositionGroups"
 )
 
 // MilpacServiceClient is the client API for MilpacService service.
@@ -56,6 +59,8 @@ type MilpacServiceClient interface {
 	GetLiteRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*LiteRoster, error)
 	SearchByPosition(ctx context.Context, in *PositionSearchRequest, opts ...grpc.CallOption) (*LiteRoster, error)
 	GetS1UniformsRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*S1UniformsRoster, error)
+	GetAllRanks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RanksResponse, error)
+	GetPositionGroups(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PositionGroupsResponse, error)
 }
 
 type milpacServiceClient struct {
@@ -136,6 +141,26 @@ func (c *milpacServiceClient) GetS1UniformsRoster(ctx context.Context, in *Roste
 	return out, nil
 }
 
+func (c *milpacServiceClient) GetAllRanks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RanksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RanksResponse)
+	err := c.cc.Invoke(ctx, MilpacService_GetAllRanks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *milpacServiceClient) GetPositionGroups(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PositionGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PositionGroupsResponse)
+	err := c.cc.Invoke(ctx, MilpacService_GetPositionGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MilpacServiceServer is the server API for MilpacService service.
 // All implementations should embed UnimplementedMilpacServiceServer
 // for forward compatibility.
@@ -147,6 +172,8 @@ type MilpacServiceServer interface {
 	GetLiteRoster(context.Context, *RosterRequest) (*LiteRoster, error)
 	SearchByPosition(context.Context, *PositionSearchRequest) (*LiteRoster, error)
 	GetS1UniformsRoster(context.Context, *RosterRequest) (*S1UniformsRoster, error)
+	GetAllRanks(context.Context, *emptypb.Empty) (*RanksResponse, error)
+	GetPositionGroups(context.Context, *emptypb.Empty) (*PositionGroupsResponse, error)
 }
 
 // UnimplementedMilpacServiceServer should be embedded to have
@@ -176,6 +203,12 @@ func (UnimplementedMilpacServiceServer) SearchByPosition(context.Context, *Posit
 }
 func (UnimplementedMilpacServiceServer) GetS1UniformsRoster(context.Context, *RosterRequest) (*S1UniformsRoster, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetS1UniformsRoster not implemented")
+}
+func (UnimplementedMilpacServiceServer) GetAllRanks(context.Context, *emptypb.Empty) (*RanksResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAllRanks not implemented")
+}
+func (UnimplementedMilpacServiceServer) GetPositionGroups(context.Context, *emptypb.Empty) (*PositionGroupsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPositionGroups not implemented")
 }
 func (UnimplementedMilpacServiceServer) testEmbeddedByValue() {}
 
@@ -323,6 +356,42 @@ func _MilpacService_GetS1UniformsRoster_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MilpacService_GetAllRanks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MilpacServiceServer).GetAllRanks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MilpacService_GetAllRanks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MilpacServiceServer).GetAllRanks(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MilpacService_GetPositionGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MilpacServiceServer).GetPositionGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MilpacService_GetPositionGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MilpacServiceServer).GetPositionGroups(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MilpacService_ServiceDesc is the grpc.ServiceDesc for MilpacService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -357,6 +426,14 @@ var MilpacService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetS1UniformsRoster",
 			Handler:    _MilpacService_GetS1UniformsRoster_Handler,
+		},
+		{
+			MethodName: "GetAllRanks",
+			Handler:    _MilpacService_GetAllRanks_Handler,
+		},
+		{
+			MethodName: "GetPositionGroups",
+			Handler:    _MilpacService_GetPositionGroups_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

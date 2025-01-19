@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.3.1"
+    "version": "1.4.0"
   },
   "tags": [
     {
@@ -80,6 +80,30 @@
         ],
         "tags": [
           "Roster, Milpacs, Keycloak"
+        ]
+      }
+    },
+    "/api/v1/milpacs/position/groups": {
+      "get": {
+        "summary": "Get all position groups with positions",
+        "description": "Get a hierarchical list of all position groups and their associated positions",
+        "operationId": "MilpacService_GetPositionGroups",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoPositionGroupsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Positions, Milpacs"
         ]
       }
     },
@@ -191,6 +215,30 @@
         ],
         "tags": [
           "Users, Milpacs, Profile"
+        ]
+      }
+    },
+    "/api/v1/milpacs/ranks": {
+      "get": {
+        "summary": "Get all ranks",
+        "description": "Get a list of all ranks and their details",
+        "operationId": "MilpacService_GetAllRanks",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoRanksResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Ranks, Milpacs"
         ]
       }
     },
@@ -405,6 +453,60 @@
         }
       }
     },
+    "protoPositionExpanded": {
+      "type": "object",
+      "properties": {
+        "positionTitle": {
+          "type": "string"
+        },
+        "positionId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "positionDisplayOrder": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "positionPossibleSecondary": {
+          "type": "boolean"
+        }
+      }
+    },
+    "protoPositionGroup": {
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "groupTitle": {
+          "type": "string"
+        },
+        "groupDisplayOrder": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "positions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoPositionExpanded"
+          }
+        }
+      }
+    },
+    "protoPositionGroupsResponse": {
+      "type": "object",
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoPositionGroup"
+          }
+        }
+      }
+    },
     "protoProfile": {
       "type": "object",
       "properties": {
@@ -476,6 +578,40 @@
         "rankId": {
           "type": "string",
           "format": "uint64"
+        }
+      }
+    },
+    "protoRankExpanded": {
+      "type": "object",
+      "properties": {
+        "rankShort": {
+          "type": "string"
+        },
+        "rankFull": {
+          "type": "string"
+        },
+        "rankImageUrl": {
+          "type": "string"
+        },
+        "rankId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "rankDisplayOrder": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "protoRanksResponse": {
+      "type": "object",
+      "properties": {
+        "ranks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoRankExpanded"
+          }
         }
       }
     },
