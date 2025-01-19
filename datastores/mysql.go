@@ -569,47 +569,41 @@ func getLatestAwardDate(profile milpacs.Profile) string {
 
 // bear witness to my despair, as i try to optimize queries to a table with a gazillion rows
 func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]string {
-	const batchSize = 50
 	dates := make(map[uint64]string)
 
-	seen := make(map[uint64]bool)
-	uniqueIDs := make([]uint64, 0, len(profiles))
-	for _, profile := range profiles {
-		if !seen[profile.UserID] {
-			seen[profile.UserID] = true
-			uniqueIDs = append(uniqueIDs, profile.UserID)
-		}
+	var results []struct {
+		UserID   uint64 `gorm:"column:user_id"`
+		PostDate uint32 `gorm:"column:date"`
 	}
 
-	for i := 0; i < len(uniqueIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(uniqueIDs) {
-			end = len(uniqueIDs)
-		}
+	query := ds.Db.Table("xf_nf_rosters_user as milpacs").
+		Select("milpacs.user_id, posts.date").
+		Joins("LEFT JOIN (SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id) as posts ON milpacs.user_id = posts.user_id").
+		Where("milpacs.user_id IN ?", getUserIDs(profiles))
 
-		var results []struct {
-			UserID   uint64
-			PostDate uint32
-		}
+	if err := query.Find(&results).Error; err != nil {
+		Error.Printf("Error fetching forum post dates: %v", err)
+		return dates
+	}
 
-		subquery := ds.Db.Table("xf_post").
-			Select("user_id, MAX(post_date) as post_date").
-			Where("user_id IN ?", uniqueIDs[i:end]).
-			Group("user_id")
-
-		if err := subquery.Find(&results).Error; err != nil {
-			Error.Printf("Error fetching forum post dates for batch: %v", err)
-			continue
-		}
-
-		for _, result := range results {
-			if result.PostDate > 0 {
-				dates[result.UserID] = time.Unix(int64(result.PostDate), 0).Format("2006-01-02 15:04:05")
-			}
+	for _, result := range results {
+		if result.PostDate > 0 {
+			dates[result.UserID] = time.Unix(int64(result.PostDate), 0).Format("2006-01-02 15:04:05")
+		} else {
+			dates[result.UserID] = ""
 		}
 	}
 
 	return dates
+}
+
+// oh god
+func getUserIDs(profiles []milpacs.Profile) []uint64 {
+	userIDs := make([]uint64, len(profiles))
+	for i, profile := range profiles {
+		userIDs[i] = profile.UserID
+	}
+	return userIDs
 }
 
 func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*proto.LiteProfile, error) {
