@@ -429,7 +429,6 @@ func getUniformDate(profile milpacs.Profile) string {
 func getUniformUpdateTriggerDate(profile milpacs.Profile) string {
 	relevantRecordTypes := map[proto.RecordType]bool{
 		proto.RecordType_RECORD_TYPE_PROMOTION:   true,
-		proto.RecordType_RECORD_TYPE_TRANSFER:    true,
 		proto.RecordType_RECORD_TYPE_ASSIGNMENT:  true,
 		proto.RecordType_RECORD_TYPE_ELOA:        true,
 		proto.RecordType_RECORD_TYPE_NAME_CHANGE: true,
