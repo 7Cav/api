@@ -24,11 +24,12 @@ option go_package = "github.com/7cav/api/proto";
 
 import "google/api/annotations.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
+import "google/protobuf/empty.proto";
 
 // These annotations are used when generating the OpenAPI file.
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
-    version: "1.3.1";
+    version: "1.4.0";
   };
   external_docs: {
     url: "https://github.com/7cav/api";
@@ -127,6 +128,27 @@ service MilpacService {
       summary: "Get a given roster with minimal profile data"
       description: "Get the specified roster with data tailored for S1 Uniforms"
       tags: "Roster, Milpacs, S1"
+    };
+  };
+  rpc GetAllRanks(google.protobuf.Empty) returns (RanksResponse) {
+    option(google.api.http) = {
+      get: "/api/v1/milpacs/ranks"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get all ranks"
+      description: "Get a list of all ranks and their details"
+      tags: "Ranks, Milpacs"
+    };
+  };
+
+  rpc GetPositionGroups(google.protobuf.Empty) returns (PositionGroupsResponse) {
+    option(google.api.http) = {
+      get: "/api/v1/milpacs/position/groups"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get all position groups with positions"
+      description: "Get a hierarchical list of all position groups and their associated positions"
+      tags: "Positions, Milpacs"
     };
   };
 }
@@ -313,4 +335,35 @@ message S1UniformsRank {
 
 message S1UniformsPosition {
   string position_title = 1;
+}
+
+message RanksResponse {
+  repeated RankExpanded ranks = 1;
+}
+
+message PositionGroupsResponse {
+  repeated PositionGroup groups = 1;
+}
+
+message PositionGroup {
+  uint64 group_id = 1;
+  string title = 2;
+  uint32 display_order = 3;
+  repeated PositionExpanded positions = 4;
+}
+
+message RankExpanded {
+  string rank_short = 1;
+  string rank_full = 2;
+  string rank_image_url = 3;
+  uint64 rank_id = 4;
+  uint32 rank_display_order = 5;
+}
+
+message PositionExpanded {
+  string position_title = 1;
+  uint64 position_id = 2;
+  uint32 position_display_order = 3;
+  uint64 position_group_id = 4;
+  bool position_possible_secondary = 5;
 }

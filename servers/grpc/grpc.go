@@ -25,6 +25,7 @@ import (
 	"github.com/7cav/api/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"os"
 )
@@ -143,4 +144,26 @@ func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *
 		return &proto.S1UniformsRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
 	}
 	return roster, nil
+}
+
+func (server *MilpacsService) GetAllRanks(ctx context.Context, _ *emptypb.Empty) (*proto.RanksResponse, error) {
+	ranks, err := server.Datastore.FindAllRanks()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error fetching ranks: %v", err)
+	}
+
+	return &proto.RanksResponse{
+		Ranks: ranks,
+	}, nil
+}
+
+func (server *MilpacsService) GetPositionGroups(ctx context.Context, _ *emptypb.Empty) (*proto.PositionGroupsResponse, error) {
+	groups, err := server.Datastore.FindAllPositionGroups()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error fetching position groups: %v", err)
+	}
+
+	return &proto.PositionGroupsResponse{
+		Groups: groups,
+	}, nil
 }

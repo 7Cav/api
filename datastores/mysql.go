@@ -475,3 +475,69 @@ func getPositionGroup(profile milpacs.Profile) string {
 
 	return primaryGroup
 }
+
+func (ds Mysql) FindAllRanks() ([]*proto.RankExpanded, error) {
+	var ranks []milpacs.Rank
+
+	result := ds.Db.Order("display_order").Find(&ranks)
+	if result.Error != nil {
+		return nil, fmt.Errorf("error fetching ranks: %w", result.Error)
+	}
+
+	protoRanks := make([]*proto.RankExpanded, len(ranks))
+	for i, rank := range ranks {
+		protoRanks[i] = &proto.RankExpanded{
+			RankId:           rank.RankId,
+			RankShort:        strings.TrimPrefix(proto.RankType(rank.RankId).String(), "RANK_TYPE_"),
+			RankFull:         rank.Title,
+			RankImageUrl:     rank.ImageURL(),
+			RankDisplayOrder: uint32(rank.DisplayOrder),
+		}
+	}
+
+	return protoRanks, nil
+}
+
+func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
+	var groups []milpacs.PositionGroups
+
+	result := ds.Db.Order("display_order").Find(&groups)
+	if result.Error != nil {
+		return nil, fmt.Errorf("error fetching position groups: %w", result.Error)
+	}
+
+	protoGroups := make([]*proto.PositionGroup, len(groups))
+
+	for i, group := range groups {
+		var positions []milpacs.Position
+
+		posResult := ds.Db.Where("position_group_id = ? AND position_title NOT LIKE ?", group.PositionGroupId, "%----%").
+			Order("display_order").
+			Find(&positions)
+
+		if posResult.Error != nil {
+			return nil, fmt.Errorf("error fetching positions for group %d: %w",
+				group.PositionGroupId, posResult.Error)
+		}
+
+		protoPositions := make([]*proto.PositionExpanded, len(positions))
+		for j, pos := range positions {
+			protoPositions[j] = &proto.PositionExpanded{
+				PositionId:                pos.PositionId,
+				PositionTitle:             pos.PositionTitle,
+				PositionDisplayOrder:      uint32(pos.DisplayOrder),
+				PositionGroupId:           group.PositionGroupId,
+				PositionPossibleSecondary: pos.PossibleSecondary,
+			}
+		}
+
+		protoGroups[i] = &proto.PositionGroup{
+			GroupId:      group.PositionGroupId,
+			Title:        group.Title,
+			DisplayOrder: uint32(group.DisplayOrder),
+			Positions:    protoPositions,
+		}
+	}
+
+	return protoGroups, nil
+}
