@@ -347,8 +347,8 @@ message PositionGroupsResponse {
 
 message PositionGroup {
   uint64 group_id = 1;
-  string title = 2;
-  uint32 display_order = 3;
+  string group_title = 2;
+  uint32 group_display_order = 3;
   repeated PositionExpanded positions = 4;
 }
 
@@ -364,6 +364,5 @@ message PositionExpanded {
   string position_title = 1;
   uint64 position_id = 2;
   uint32 position_display_order = 3;
-  uint64 position_group_id = 4;
-  bool position_possible_secondary = 5;
+  bool position_possible_secondary = 4;
 }

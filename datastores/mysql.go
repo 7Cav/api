@@ -526,16 +526,15 @@ func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
 				PositionId:                pos.PositionId,
 				PositionTitle:             pos.PositionTitle,
 				PositionDisplayOrder:      uint32(pos.DisplayOrder),
-				PositionGroupId:           group.PositionGroupId,
 				PositionPossibleSecondary: pos.PossibleSecondary,
 			}
 		}
 
 		protoGroups[i] = &proto.PositionGroup{
-			GroupId:      group.PositionGroupId,
-			Title:        group.Title,
-			DisplayOrder: uint32(group.DisplayOrder),
-			Positions:    protoPositions,
+			GroupId:           group.PositionGroupId,
+			GroupTitle:        group.Title,
+			GroupDisplayOrder: uint32(group.DisplayOrder),
+			Positions:         protoPositions,
 		}
 	}
 
