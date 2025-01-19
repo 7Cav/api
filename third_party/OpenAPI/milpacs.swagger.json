@@ -584,6 +584,9 @@
         },
         "promotionDate": {
           "type": "string"
+        },
+        "areaOfResponsibility": {
+          "type": "string"
         }
       }
     },

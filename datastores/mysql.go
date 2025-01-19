@@ -357,6 +357,7 @@ func (ds Mysql) FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.
 
 	Info.Println("Searching for S1 Uniforms roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
 	ds.Db.Preload(clause.Associations).
+		Preload("Primary.Group").
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
@@ -397,6 +398,7 @@ func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*proto.
 		Secondaries:              ds.collectS1UniformsSecondaryPositions(profile.SecondaryPositionIds),
 		JoinDate:                 profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate:            profile.UnmarshalCustomFields().PromoDate,
+		AreaOfResponsibility:     getPositionGroup(profile),
 	}
 
 	return milpac, nil
@@ -453,4 +455,23 @@ func getUniformUpdateTriggerDate(profile milpacs.Profile) string {
 		return ""
 	}
 	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
+}
+
+func getPositionGroup(profile milpacs.Profile) string {
+	primaryGroup := profile.Primary.Group.Title
+
+	switch primaryGroup {
+	case "Regimental HQ", "Support Attachment":
+		return "HHQ"
+	case "New Recruits":
+		return "Recruit"
+	case "Extended Leave Of Absence":
+		return "ELOA"
+	}
+
+	if strings.Contains(primaryGroup, "Command") {
+		return "HHQ"
+	}
+
+	return primaryGroup
 }

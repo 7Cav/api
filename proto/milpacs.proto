@@ -302,6 +302,7 @@ message S1UniformsProfile {
   repeated S1UniformsPosition secondaries = 9;
   string join_date = 10;
   string promotion_date = 11;
+  string area_of_responsibility = 12;
 }
 
 message S1UniformsRank {

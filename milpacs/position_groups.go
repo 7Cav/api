@@ -18,18 +18,12 @@
 
 package milpacs
 
-type Position struct {
-	PositionId        uint64 `gorm:"primaryKey"`
-	PositionTitle     string
-	PositionGroupId   uint64
-	DisplayOrder      uint
-	MaterializedOrder uint
-	ExtraGroupIds     string
-	PossibleSecondary bool
-
-	Group PositionGroups `gorm:"foreignKey:PositionGroupId;references:position_group_id"`
+type PositionGroups struct {
+	PositionGroupId uint64 `gorm:"primaryKey"`
+	Title           string
+	DisplayOrder    uint
 }
 
-func (Position) TableName() string {
-	return "xf_nf_rosters_position"
+func (PositionGroups) TableName() string {
+	return "xf_nf_rosters_position_group"
 }
