@@ -41,4 +41,5 @@ type Datastore interface {
 	FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.S1UniformsRoster, error)
 	FindAllRanks() ([]*proto.RankExpanded, error)
 	FindAllPositionGroups() ([]*proto.PositionGroup, error)
+	FindAwol() ([]*proto.Awol, error)
 }

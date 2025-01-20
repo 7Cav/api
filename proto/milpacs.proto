@@ -29,7 +29,7 @@ import "google/protobuf/empty.proto";
 // These annotations are used when generating the OpenAPI file.
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
-    version: "1.4.1";
+    version: "1.5.0";
   };
   external_docs: {
     url: "https://github.com/7cav/api";
@@ -149,6 +149,16 @@ service MilpacService {
       summary: "Get all position groups with positions"
       description: "Get a hierarchical list of all position groups and their associated positions"
       tags: "Positions, Milpacs"
+    };
+  };
+  rpc GetAwol(google.protobuf.Empty) returns (AwolResponse) {
+    option(google.api.http) = {
+      get: "/api/v1/milpacs/awol"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get all AWOL troopers"
+      description: "Get a list of all troopers that havent posted in the last 7 days"
+      tags: "AWOLs, Milpacs"
     };
   };
 }
@@ -369,4 +379,18 @@ message PositionExpanded {
   uint64 position_id = 2;
   uint32 position_display_order = 3;
   bool position_possible_secondary = 4;
+}
+
+message AwolResponse {
+  repeated Awol awols = 1;
+}
+
+message Awol {
+  string group_name = 1;
+  string rank_name = 2;
+  string username = 3;
+  uint64 user_id = 4;
+  string human_date = 5;
+  uint64 date = 6;
+  uint64 post_id = 7;
 }

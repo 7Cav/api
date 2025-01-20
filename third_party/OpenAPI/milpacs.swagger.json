@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.4.1"
+    "version": "1.5.0"
   },
   "tags": [
     {
@@ -80,6 +80,30 @@
         ],
         "tags": [
           "Roster, Milpacs, Keycloak"
+        ]
+      }
+    },
+    "/api/v1/milpacs/awol": {
+      "get": {
+        "summary": "Get all AWOL troopers",
+        "description": "Get a list of all troopers that havent posted in the last 7 days",
+        "operationId": "MilpacService_GetAwol",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoAwolResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "AWOLs, Milpacs"
         ]
       }
     },
@@ -385,6 +409,47 @@
         "awardUid": {
           "type": "string",
           "format": "uint64"
+        }
+      }
+    },
+    "protoAwol": {
+      "type": "object",
+      "properties": {
+        "groupName": {
+          "type": "string"
+        },
+        "rankName": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "humanDate": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "postId": {
+          "type": "string",
+          "format": "uint64"
+        }
+      }
+    },
+    "protoAwolResponse": {
+      "type": "object",
+      "properties": {
+        "awols": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoAwol"
+          }
         }
       }
     },

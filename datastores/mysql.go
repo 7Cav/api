@@ -631,3 +631,56 @@ func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.P
 
 	return profileMap, nil
 }
+
+func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
+	var awols []struct {
+		GroupName string `gorm:"column:group_name"`
+		RankName  string `gorm:"column:rank_name"`
+		Username  string `gorm:"column:username"`
+		UserID    uint64 `gorm:"column:user_id"`
+		Date      uint64 `gorm:"column:date"`
+		PostID    uint64 `gorm:"column:post_id"`
+		HumanDate string `gorm:"column:human_date"`
+	}
+
+	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
+	cutoffTimestamp := sevenDaysAgo.Unix()
+
+	result := ds.Db.Table("xf_nf_rosters_user as milpacs").
+		Select(`
+            pGroup.title as group_name,
+            ranks.title as rank_name,
+            users.username,
+            milpacs.user_id,
+            posts.date,
+            posts.post_id,
+            FROM_UNIXTIME(posts.date, '%Y-%m-%d') as human_date
+        `).
+		Joins("LEFT JOIN (SELECT user_id, MAX(post_date) as date, MAX(post_id) as post_id FROM xf_post GROUP BY user_id) as posts ON milpacs.user_id = posts.user_id").
+		Joins("LEFT JOIN xf_user as users ON milpacs.user_id = users.user_id").
+		Joins("INNER JOIN xf_nf_rosters_rank as ranks ON milpacs.rank_id = ranks.rank_id").
+		Joins("INNER JOIN xf_nf_rosters_position position ON milpacs.position_id = position.position_id").
+		Joins("INNER JOIN xf_nf_rosters_position_group pGroup ON position.position_group_id = pGroup.position_group_id").
+		Where("milpacs.roster_id = ?", 1).
+		Where("posts.date <= ?", cutoffTimestamp).
+		Find(&awols)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("error finding AWOL users: %w", result.Error)
+	}
+
+	protoAwols := make([]*proto.Awol, len(awols))
+	for i, awol := range awols {
+		protoAwols[i] = &proto.Awol{
+			GroupName: awol.GroupName,
+			RankName:  awol.RankName,
+			Username:  awol.Username,
+			UserId:    awol.UserID,
+			Date:      awol.Date,
+			PostId:    awol.PostID,
+			HumanDate: awol.HumanDate,
+		}
+	}
+
+	return protoAwols, nil
+}
