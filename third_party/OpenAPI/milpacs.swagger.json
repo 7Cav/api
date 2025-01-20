@@ -569,6 +569,9 @@
         },
         "discordId": {
           "type": "string"
+        },
+        "lastForumPostTimestamp": {
+          "type": "string"
         }
       }
     },

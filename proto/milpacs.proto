@@ -251,6 +251,7 @@ message Profile {
   string promotion_date = 11;
   string keycloak_id = 12;
   string discord_id = 13;
+  string last_forum_post_timestamp = 14;
 }
 
 message RosterRequest {

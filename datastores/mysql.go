@@ -37,13 +37,13 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
-
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
-		return nil, fmt.Errorf("error generating profile")
+		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
-	return []*proto.Profile{milpac}, nil
+	return []*proto.Profile{profiles[profile.RelationId]}, nil
+
 }
 
 func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
@@ -65,12 +65,13 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
 		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
-	return []*proto.Profile{milpac}, nil
+	return []*proto.Profile{profiles[profile.RelationId]}, nil
+
 }
 
 func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error) {
@@ -83,25 +84,18 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
 
-	var profiles = make(map[uint64]*proto.Profile, len(rosterProfiles))
-	for _, profile := range rosterProfiles {
-		milpac, err := ds.generateProtoProfile(profile)
-
-		if err != nil {
-			return nil, fmt.Errorf("error generating profile")
-		}
-		profiles[profile.RelationId] = milpac
+	profiles, err := ds.processProfiles(rosterProfiles)
+	if err != nil {
+		return nil, fmt.Errorf("error generating profiles: %w", err)
 	}
 
-	protoRoster := &proto.Roster{Profiles: profiles}
-
-	return protoRoster, nil
+	return &proto.Roster{Profiles: profiles}, nil
 }
 
 func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error) {
 	var profile milpacs.Profile
 
-	Info.Println("Searching for milpac profiles with keycloak IDs of: %s", keycloakId)
+	Info.Println("Searching for milpac profiles with keycloak IDs of: ", keycloakId)
 
 	query := map[string]interface{}{"xf_user_connected_account.provider_key": keycloakId, "xf_user_connected_account.provider": "keycloak"}
 
@@ -118,13 +112,12 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
-
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
 		return nil, fmt.Errorf("error generating profile")
 	}
 
-	return milpac, nil
+	return profiles[profile.RelationId], nil
 }
 
 func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
@@ -147,13 +140,12 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
-
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
 		return nil, fmt.Errorf("error generating profile")
 	}
 
-	return milpac, nil
+	return profiles[profile.RelationId], nil
 }
 
 func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
@@ -597,7 +589,6 @@ func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]s
 	return dates
 }
 
-// oh god
 func getUserIDs(profiles []milpacs.Profile) []uint64 {
 	userIDs := make([]uint64, len(profiles))
 	for i, profile := range profiles {
@@ -606,12 +597,30 @@ func getUserIDs(profiles []milpacs.Profile) []uint64 {
 	return userIDs
 }
 
+// ohgodwhy
 func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*proto.LiteProfile, error) {
 	forumPostDates := ds.getLatestForumPostDates(profiles)
 
 	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
 	for _, profile := range profiles {
 		protoProfile, err := ds.generateLiteProtoProfile(profile)
+		if err != nil {
+			return nil, fmt.Errorf("error generating lite profile: %w", err)
+		}
+
+		protoProfile.LastForumPostTimestamp = forumPostDates[profile.UserID]
+		profileMap[profile.RelationId] = protoProfile
+	}
+
+	return profileMap, nil
+}
+
+func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.Profile, error) {
+	forumPostDates := ds.getLatestForumPostDates(profiles)
+
+	var profileMap = make(map[uint64]*proto.Profile, len(profiles))
+	for _, profile := range profiles {
+		protoProfile, err := ds.generateProtoProfile(profile)
 		if err != nil {
 			return nil, fmt.Errorf("error generating lite profile: %w", err)
 		}
