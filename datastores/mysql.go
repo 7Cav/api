@@ -37,13 +37,13 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
-
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
-		return nil, fmt.Errorf("error generating profile")
+		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
-	return []*proto.Profile{milpac}, nil
+	return []*proto.Profile{profiles[profile.RelationId]}, nil
+
 }
 
 func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
@@ -65,12 +65,13 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
 		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
-	return []*proto.Profile{milpac}, nil
+	return []*proto.Profile{profiles[profile.RelationId]}, nil
+
 }
 
 func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error) {
@@ -83,25 +84,18 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
 
-	var profiles = make(map[uint64]*proto.Profile, len(rosterProfiles))
-	for _, profile := range rosterProfiles {
-		milpac, err := ds.generateProtoProfile(profile)
-
-		if err != nil {
-			return nil, fmt.Errorf("error generating profile")
-		}
-		profiles[profile.RelationId] = milpac
+	profiles, err := ds.processProfiles(rosterProfiles)
+	if err != nil {
+		return nil, fmt.Errorf("error generating profiles: %w", err)
 	}
 
-	protoRoster := &proto.Roster{Profiles: profiles}
-
-	return protoRoster, nil
+	return &proto.Roster{Profiles: profiles}, nil
 }
 
 func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error) {
 	var profile milpacs.Profile
 
-	Info.Println("Searching for milpac profiles with keycloak IDs of: %s", keycloakId)
+	Info.Println("Searching for milpac profiles with keycloak IDs of: ", keycloakId)
 
 	query := map[string]interface{}{"xf_user_connected_account.provider_key": keycloakId, "xf_user_connected_account.provider": "keycloak"}
 
@@ -118,13 +112,12 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
-
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
 		return nil, fmt.Errorf("error generating profile")
 	}
 
-	return milpac, nil
+	return profiles[profile.RelationId], nil
 }
 
 func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
@@ -147,13 +140,12 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 		return nil, result.Error
 	}
 
-	milpac, err := ds.generateProtoProfile(profile)
-
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
 		return nil, fmt.Errorf("error generating profile")
 	}
 
-	return milpac, nil
+	return profiles[profile.RelationId], nil
 }
 
 func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
@@ -277,20 +269,14 @@ func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRo
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
 
-	var profiles = make(map[uint64]*proto.LiteProfile, len(rosterProfiles))
-	for _, profile := range rosterProfiles {
-		milpac, err := ds.generateLiteProtoProfile(profile)
-
-		if err != nil {
-			return nil, fmt.Errorf("error generating lite profile")
-		}
-		profiles[profile.RelationId] = milpac
+	profiles, err := ds.processLiteProfiles(rosterProfiles)
+	if err != nil {
+		return nil, err
 	}
 
-	protoRoster := &proto.LiteRoster{Profiles: profiles}
-
-	return protoRoster, nil
+	return &proto.LiteRoster{Profiles: profiles}, nil
 }
+
 func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LiteProfile, error) {
 	milpac := &proto.LiteProfile{
 		User: &proto.User{
@@ -310,11 +296,14 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
-		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
-		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
-		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
-		KeycloakId:    extractKeycloakID(profile),
-		DiscordId:     extractDiscordID(profile),
+		Secondaries:     ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		JoinDate:        profile.UnmarshalCustomFields().JoinDate,
+		PromotionDate:   profile.UnmarshalCustomFields().PromoDate,
+		KeycloakId:      extractKeycloakID(profile),
+		DiscordId:       extractDiscordID(profile),
+		AwardTimestamp:  getLatestAwardDate(profile),
+		RecordTimestamp: getLatestServiceRecordDate(profile),
+		// Last forum post timestamp generated externally to use batch processing
 	}
 
 	return milpac, nil
@@ -341,14 +330,11 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster,
 		return nil, result.Error
 	}
 
-	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
-	for _, profile := range profiles {
-		protoProfile, err := ds.generateLiteProtoProfile(profile)
-		if err != nil {
-			return nil, fmt.Errorf("error generating lite profile: %w", err)
-		}
-		profileMap[profile.RelationId] = protoProfile
+	profileMap, err := ds.processLiteProfiles(profiles)
+	if err != nil {
+		return nil, err
 	}
+
 	return &proto.LiteRoster{Profiles: profileMap}, nil
 }
 
@@ -541,4 +527,160 @@ func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
 	}
 
 	return protoGroups, nil
+}
+
+func getLatestServiceRecordDate(profile milpacs.Profile) string {
+	var latestTimestamp int64
+
+	for _, record := range profile.Records {
+		if int64(record.RecordDate) > latestTimestamp {
+			latestTimestamp = int64(record.RecordDate)
+		}
+	}
+
+	if latestTimestamp == 0 {
+		return ""
+	}
+	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
+}
+
+func getLatestAwardDate(profile milpacs.Profile) string {
+	var latestTimestamp int64
+
+	for _, award := range profile.AwardRecords {
+		if int64(award.AwardDate) > latestTimestamp {
+			latestTimestamp = int64(award.AwardDate)
+		}
+	}
+
+	if latestTimestamp == 0 {
+		return ""
+	}
+	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
+}
+
+// bear witness to my despair, as i try to optimize queries to a table with a gazillion rows
+func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]string {
+	dates := make(map[uint64]string)
+
+	var results []struct {
+		UserID   uint64 `gorm:"column:user_id"`
+		PostDate uint32 `gorm:"column:date"`
+	}
+
+	query := ds.Db.Table("xf_nf_rosters_user as milpacs").
+		Select("milpacs.user_id, posts.date").
+		Joins("LEFT JOIN (SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id) as posts ON milpacs.user_id = posts.user_id").
+		Where("milpacs.user_id IN ?", getUserIDs(profiles))
+
+	if err := query.Find(&results).Error; err != nil {
+		Error.Printf("Error fetching forum post dates: %v", err)
+		return dates
+	}
+
+	for _, result := range results {
+		if result.PostDate > 0 {
+			dates[result.UserID] = time.Unix(int64(result.PostDate), 0).Format("2006-01-02 15:04:05")
+		} else {
+			dates[result.UserID] = ""
+		}
+	}
+
+	return dates
+}
+
+func getUserIDs(profiles []milpacs.Profile) []uint64 {
+	userIDs := make([]uint64, len(profiles))
+	for i, profile := range profiles {
+		userIDs[i] = profile.UserID
+	}
+	return userIDs
+}
+
+// ohgodwhy
+func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*proto.LiteProfile, error) {
+	forumPostDates := ds.getLatestForumPostDates(profiles)
+
+	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
+	for _, profile := range profiles {
+		protoProfile, err := ds.generateLiteProtoProfile(profile)
+		if err != nil {
+			return nil, fmt.Errorf("error generating lite profile: %w", err)
+		}
+
+		protoProfile.LastForumPostTimestamp = forumPostDates[profile.UserID]
+		profileMap[profile.RelationId] = protoProfile
+	}
+
+	return profileMap, nil
+}
+
+func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.Profile, error) {
+	forumPostDates := ds.getLatestForumPostDates(profiles)
+
+	var profileMap = make(map[uint64]*proto.Profile, len(profiles))
+	for _, profile := range profiles {
+		protoProfile, err := ds.generateProtoProfile(profile)
+		if err != nil {
+			return nil, fmt.Errorf("error generating lite profile: %w", err)
+		}
+
+		protoProfile.LastForumPostTimestamp = forumPostDates[profile.UserID]
+		profileMap[profile.RelationId] = protoProfile
+	}
+
+	return profileMap, nil
+}
+
+func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
+	var awols []struct {
+		GroupName string `gorm:"column:group_name"`
+		RankName  string `gorm:"column:rank_name"`
+		Username  string `gorm:"column:username"`
+		UserID    uint64 `gorm:"column:user_id"`
+		Date      uint64 `gorm:"column:date"`
+		PostID    uint64 `gorm:"column:post_id"`
+		HumanDate string `gorm:"column:human_date"`
+	}
+
+	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
+	cutoffTimestamp := sevenDaysAgo.Unix()
+
+	result := ds.Db.Table("xf_nf_rosters_user as milpacs").
+		Select(`
+            pGroup.title as group_name,
+            ranks.title as rank_name,
+            users.username,
+            milpacs.user_id,
+            posts.date,
+            posts.post_id,
+            FROM_UNIXTIME(posts.date, '%Y-%m-%d') as human_date
+        `).
+		Joins("LEFT JOIN (SELECT user_id, MAX(post_date) as date, MAX(post_id) as post_id FROM xf_post GROUP BY user_id) as posts ON milpacs.user_id = posts.user_id").
+		Joins("LEFT JOIN xf_user as users ON milpacs.user_id = users.user_id").
+		Joins("INNER JOIN xf_nf_rosters_rank as ranks ON milpacs.rank_id = ranks.rank_id").
+		Joins("INNER JOIN xf_nf_rosters_position position ON milpacs.position_id = position.position_id").
+		Joins("INNER JOIN xf_nf_rosters_position_group pGroup ON position.position_group_id = pGroup.position_group_id").
+		Where("milpacs.roster_id = ?", 1).
+		Where("posts.date <= ?", cutoffTimestamp).
+		Find(&awols)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("error finding AWOL users: %w", result.Error)
+	}
+
+	protoAwols := make([]*proto.Awol, len(awols))
+	for i, awol := range awols {
+		protoAwols[i] = &proto.Awol{
+			GroupName: awol.GroupName,
+			RankName:  awol.RankName,
+			Username:  awol.Username,
+			UserId:    awol.UserID,
+			Date:      awol.Date,
+			PostId:    awol.PostID,
+			HumanDate: awol.HumanDate,
+		}
+	}
+
+	return protoAwols, nil
 }

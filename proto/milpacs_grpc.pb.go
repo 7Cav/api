@@ -46,6 +46,7 @@ const (
 	MilpacService_GetS1UniformsRoster_FullMethodName  = "/proto.MilpacService/GetS1UniformsRoster"
 	MilpacService_GetAllRanks_FullMethodName          = "/proto.MilpacService/GetAllRanks"
 	MilpacService_GetPositionGroups_FullMethodName    = "/proto.MilpacService/GetPositionGroups"
+	MilpacService_GetAwol_FullMethodName              = "/proto.MilpacService/GetAwol"
 )
 
 // MilpacServiceClient is the client API for MilpacService service.
@@ -61,6 +62,7 @@ type MilpacServiceClient interface {
 	GetS1UniformsRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*S1UniformsRoster, error)
 	GetAllRanks(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RanksResponse, error)
 	GetPositionGroups(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PositionGroupsResponse, error)
+	GetAwol(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*AwolResponse, error)
 }
 
 type milpacServiceClient struct {
@@ -161,6 +163,16 @@ func (c *milpacServiceClient) GetPositionGroups(ctx context.Context, in *emptypb
 	return out, nil
 }
 
+func (c *milpacServiceClient) GetAwol(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*AwolResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AwolResponse)
+	err := c.cc.Invoke(ctx, MilpacService_GetAwol_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MilpacServiceServer is the server API for MilpacService service.
 // All implementations should embed UnimplementedMilpacServiceServer
 // for forward compatibility.
@@ -174,6 +186,7 @@ type MilpacServiceServer interface {
 	GetS1UniformsRoster(context.Context, *RosterRequest) (*S1UniformsRoster, error)
 	GetAllRanks(context.Context, *emptypb.Empty) (*RanksResponse, error)
 	GetPositionGroups(context.Context, *emptypb.Empty) (*PositionGroupsResponse, error)
+	GetAwol(context.Context, *emptypb.Empty) (*AwolResponse, error)
 }
 
 // UnimplementedMilpacServiceServer should be embedded to have
@@ -209,6 +222,9 @@ func (UnimplementedMilpacServiceServer) GetAllRanks(context.Context, *emptypb.Em
 }
 func (UnimplementedMilpacServiceServer) GetPositionGroups(context.Context, *emptypb.Empty) (*PositionGroupsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPositionGroups not implemented")
+}
+func (UnimplementedMilpacServiceServer) GetAwol(context.Context, *emptypb.Empty) (*AwolResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAwol not implemented")
 }
 func (UnimplementedMilpacServiceServer) testEmbeddedByValue() {}
 
@@ -392,6 +408,24 @@ func _MilpacService_GetPositionGroups_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MilpacService_GetAwol_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MilpacServiceServer).GetAwol(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MilpacService_GetAwol_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MilpacServiceServer).GetAwol(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MilpacService_ServiceDesc is the grpc.ServiceDesc for MilpacService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -434,6 +468,10 @@ var MilpacService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPositionGroups",
 			Handler:    _MilpacService_GetPositionGroups_Handler,
+		},
+		{
+			MethodName: "GetAwol",
+			Handler:    _MilpacService_GetAwol_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

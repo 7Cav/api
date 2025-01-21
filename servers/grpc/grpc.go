@@ -167,3 +167,14 @@ func (server *MilpacsService) GetPositionGroups(ctx context.Context, _ *emptypb.
 		Groups: groups,
 	}, nil
 }
+
+func (server *MilpacsService) GetAwol(ctx context.Context, _ *emptypb.Empty) (*proto.AwolResponse, error) {
+	awols, err := server.Datastore.FindAwol()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error fetching AWOL list: %v", err)
+	}
+
+	return &proto.AwolResponse{
+		Awols: awols,
+	}, nil
+}

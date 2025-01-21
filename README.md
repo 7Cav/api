@@ -146,3 +146,21 @@ When making changes to the proto file, be sure to run the relevant make file to 
 ```shell
 make generate
 ```
+
+### Windows
+
+If you're developing on Windows, we have added a mage file to help you replicate some of the make commands without having access to make.
+
+You will need to install [mage](https://magefile.org/) first.
+
+```shell
+mage install
+```
+
+The available commands are:
+`` mage generate ``
+`` mage lint ``
+`` mage install ``
+
+Notably missing is the certs command, which is used to generate self-signed certs for nginx TLS.
+Without this you will not be able to test the API via the swagger page, however you can still test the gateway with curl.
