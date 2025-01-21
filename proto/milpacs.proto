@@ -261,7 +261,7 @@ message Profile {
   string promotion_date = 11;
   string keycloak_id = 12;
   string discord_id = 13;
-  string last_forum_post_timestamp = 14;
+  string last_forum_post_date = 14;
 }
 
 message RosterRequest {
@@ -309,9 +309,9 @@ message LiteProfile {
   string promotion_date = 9;
   string keycloak_id = 10;
   string discord_id = 11;
-  string award_timestamp = 12;
-  string record_timestamp = 13;
-  string last_forum_post_timestamp = 14;
+  string award_date = 12;
+  string record_date = 13;
+  string last_forum_post_date = 14;
 }
 
 message LiteRoster {
@@ -391,6 +391,6 @@ message Awol {
   string username = 3;
   uint64 user_id = 4;
   string human_date = 5;
-  uint64 date = 6;
+  uint64 timestamp = 6;
   uint64 post_id = 7;
 }

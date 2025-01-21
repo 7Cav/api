@@ -296,13 +296,13 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
-		Secondaries:     ds.collectSecondaryPositions(profile.SecondaryPositionIds),
-		JoinDate:        profile.UnmarshalCustomFields().JoinDate,
-		PromotionDate:   profile.UnmarshalCustomFields().PromoDate,
-		KeycloakId:      extractKeycloakID(profile),
-		DiscordId:       extractDiscordID(profile),
-		AwardTimestamp:  getLatestAwardDate(profile),
-		RecordTimestamp: getLatestServiceRecordDate(profile),
+		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
+		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
+		KeycloakId:    extractKeycloakID(profile),
+		DiscordId:     extractDiscordID(profile),
+		AwardDate:     getLatestAwardDate(profile),
+		RecordDate:    getLatestServiceRecordDate(profile),
 		// Last forum post timestamp generated externally to use batch processing
 	}
 
@@ -608,7 +608,7 @@ func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*pro
 			return nil, fmt.Errorf("error generating lite profile: %w", err)
 		}
 
-		protoProfile.LastForumPostTimestamp = forumPostDates[profile.UserID]
+		protoProfile.LastForumPostDate = forumPostDates[profile.UserID]
 		profileMap[profile.RelationId] = protoProfile
 	}
 
@@ -625,7 +625,7 @@ func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.P
 			return nil, fmt.Errorf("error generating lite profile: %w", err)
 		}
 
-		protoProfile.LastForumPostTimestamp = forumPostDates[profile.UserID]
+		protoProfile.LastForumPostDate = forumPostDates[profile.UserID]
 		profileMap[profile.RelationId] = protoProfile
 	}
 
@@ -633,6 +633,7 @@ func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.P
 }
 
 func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
+	Info.Println("Searching for AWOL troopers")
 	var awols []struct {
 		GroupName string `gorm:"column:group_name"`
 		RankName  string `gorm:"column:rank_name"`
@@ -676,7 +677,7 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 			RankName:  awol.RankName,
 			Username:  awol.Username,
 			UserId:    awol.UserID,
-			Date:      awol.Date,
+			Timestamp: awol.Date,
 			PostId:    awol.PostID,
 			HumanDate: awol.HumanDate,
 		}

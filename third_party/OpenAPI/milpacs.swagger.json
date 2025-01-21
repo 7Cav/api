@@ -431,7 +431,7 @@
         "humanDate": {
           "type": "string"
         },
-        "date": {
+        "timestamp": {
           "type": "string",
           "format": "uint64"
         },
@@ -493,13 +493,13 @@
         "discordId": {
           "type": "string"
         },
-        "awardTimestamp": {
+        "awardDate": {
           "type": "string"
         },
-        "recordTimestamp": {
+        "recordDate": {
           "type": "string"
         },
-        "lastForumPostTimestamp": {
+        "lastForumPostDate": {
           "type": "string"
         }
       }
@@ -635,7 +635,7 @@
         "discordId": {
           "type": "string"
         },
-        "lastForumPostTimestamp": {
+        "lastForumPostDate": {
           "type": "string"
         }
       }
