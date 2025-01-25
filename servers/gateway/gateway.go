@@ -22,6 +22,8 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"github.com/7cav/api/cache"
+	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/proto"
 	_ "github.com/7cav/api/statik" // static files import - unused in the codebase, but required cuz reasons
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -36,6 +38,7 @@ import (
 
 type Service struct {
 	Address string
+	Cache   *cache.RedisCache
 }
 
 var (
@@ -115,7 +118,7 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	gwMuxHandler := compressionMiddleware(gwMux)
+	handler := middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux))
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)
@@ -123,7 +126,7 @@ func (service *Service) Server() *http.Server {
 		Addr: service.Address,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/api") {
-				gwMuxHandler.ServeHTTP(w, r)
+				handler.ServeHTTP(w, r)
 				return
 			}
 			openApi.ServeHTTP(w, r)

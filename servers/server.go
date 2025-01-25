@@ -20,6 +20,7 @@ package servers
 
 import (
 	"fmt"
+	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	milpacs "github.com/7cav/api/proto"
 	httpServices "github.com/7cav/api/servers/gateway"
@@ -40,6 +41,7 @@ type MicroServer struct {
 	addr       string
 	httpServer *http.Server
 	grpcServer *grpc.Server
+	cache      *cache.RedisCache
 }
 
 // New initializes a new Backend struct.
@@ -55,6 +57,28 @@ var (
 	Warn  = log.New(os.Stdout, "WARNING: ", 0)
 	Error = log.New(os.Stdout, "ERROR: ", 0)
 )
+
+func setupRedis() *cache.RedisCache {
+	redisHost := viper.GetString("REDIS_HOST")
+	if redisHost == "" {
+		Error.Println("no redis host provided")
+		os.Exit(1)
+	}
+
+	redisPort := viper.GetString("REDIS_PORT")
+	if redisPort == "" {
+		Error.Println("no redis port provided")
+		os.Exit(1)
+	}
+
+	redisPassword := viper.GetString("REDIS_PASSWORD")
+	if redisPassword == "" {
+		Error.Println("no redis password provided")
+		os.Exit(1)
+	}
+
+	return cache.NewRedisCache(redisHost, redisPort, redisPassword)
+}
 
 func setupDatasource() *datastores.Mysql {
 
@@ -107,6 +131,7 @@ func (server *MicroServer) Start() {
 	}
 
 	ds := setupDatasource()
+	server.cache = setupRedis()
 
 	// relevant Grpc options
 	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.
@@ -139,9 +164,8 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 }
 
 func servHTTP(server *MicroServer, lis net.Listener) {
-	service := httpServices.Service{Address: server.addr}
+	service := httpServices.Service{Address: server.addr, Cache: server.cache}
 	server.httpServer = service.Server()
-
 	if err := server.httpServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start HTTP servers: ", err)
 	}
