@@ -685,3 +685,11 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 
 	return protoAwols, nil
 }
+
+func (ds Mysql) GetTableUpdates() ([]xenforo.TableInfo, error) {
+	var updates []xenforo.TableInfo
+	ds.Db.Table("information_schema.tables").
+		Select("table_name, update_time").
+		Find(&updates)
+	return updates, nil
+}

@@ -37,6 +37,8 @@ import (
 	"os"
 )
 
+const version = "1.6.0"
+
 type MicroServer struct {
 	addr       string
 	httpServer *http.Server
@@ -53,9 +55,9 @@ func New(addr string) *MicroServer {
 }
 
 var (
-	Info  = log.New(os.Stdout, "INFO: ", 0)
-	Warn  = log.New(os.Stdout, "WARNING: ", 0)
-	Error = log.New(os.Stdout, "ERROR: ", 0)
+	Info  = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
 func setupRedis() *cache.RedisCache {
@@ -122,6 +124,8 @@ func (server *MicroServer) Start() {
 	grpcLogger := grpclog.NewLoggerV2(io.Discard, os.Stdout, os.Stdout)
 	grpclog.SetLoggerV2(grpcLogger)
 
+	Info.Println("Starting 7Cav API version:", version)
+
 	//create TLS listener for TCP connections
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
 	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
@@ -132,6 +136,7 @@ func (server *MicroServer) Start() {
 
 	ds := setupDatasource()
 	server.cache = setupRedis()
+	go cache.CacheManager(server.cache, ds)
 
 	// relevant Grpc options
 	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.

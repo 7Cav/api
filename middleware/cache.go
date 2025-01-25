@@ -12,14 +12,17 @@ import (
 )
 
 var (
-	Info  = log.New(os.Stdout, "INFO: ", 0)
-	Warn  = log.New(os.Stdout, "WARNING: ", 0)
-	Error = log.New(os.Stdout, "ERROR: ", 0)
+	Info  = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
 func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		acceptEncoding := r.Header.Get("Accept-Encoding")
+		r.Header.Del("Accept-Encoding")
+		endodeGzip := strings.Contains(acceptEncoding, "gzip")
 		defer func() {
 			Info.Printf("[CACHE] Request completed in %v", time.Since(start))
 		}()
@@ -38,7 +41,7 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Cache", "HIT")
 
-			if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			if endodeGzip {
 				Info.Printf("[CACHE] Compressing cached response with gzip")
 				w.Header().Set("Content-Encoding", "gzip")
 				gz := gzip.NewWriter(w)
@@ -54,8 +57,6 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 		}
 
 		rec := httptest.NewRecorder()
-		acceptEncoding := r.Header.Get("Accept-Encoding")
-		r.Header.Del("Accept-Encoding")
 
 		Info.Printf("[CACHE] Forwarding request to handler: %s", r.URL.Path)
 		next.ServeHTTP(rec, r)
@@ -65,7 +66,7 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(rec.Code)
 
-			if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			if endodeGzip {
 				Info.Printf("[CACHE] Compressing error response with gzip")
 				w.Header().Set("Content-Encoding", "gzip")
 				gz := gzip.NewWriter(w)
@@ -90,7 +91,7 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Cache", "MISS")
 
-		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") || rec.Code == http.StatusOK {
+		if endodeGzip {
 			Info.Printf("[CACHE] Compressing response with gzip")
 			w.Header().Set("Content-Encoding", "gzip")
 			gz := gzip.NewWriter(w)

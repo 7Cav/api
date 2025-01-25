@@ -10,9 +10,9 @@ import (
 )
 
 var (
-	Info  = log.New(os.Stdout, "INFO: ", 0)
-	Warn  = log.New(os.Stdout, "WARNING: ", 0)
-	Error = log.New(os.Stdout, "ERROR: ", 0)
+	Info  = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
 type RedisCache struct {
@@ -44,4 +44,11 @@ func (c *RedisCache) Get(key string) ([]byte, error) {
 
 func (c *RedisCache) GenerateCacheKey(path string) string {
 	return "api:response:" + path
+}
+
+func (c *RedisCache) flush() {
+	ctx := context.Background()
+	c.client.FlushAll(ctx).Err()
+	Info.Println("Flushed Redis cache")
+	return
 }
