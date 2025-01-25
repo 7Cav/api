@@ -42,9 +42,9 @@ type Service struct {
 }
 
 var (
-	Info  = log.New(os.Stdout, "INFO: ", 0)
-	Warn  = log.New(os.Stdout, "WARNING: ", 0)
-	Error = log.New(os.Stdout, "ERROR: ", 0)
+	Info  = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
 func getOpenAPIHandler() http.Handler {
