@@ -82,6 +82,6 @@ func CacheManager(cache *RedisCache, ds datastores.Datastore) {
 		} else {
 			Info.Println("Cached table updates are up to date, not invalidating")
 		}
-		time.Sleep(time.Minute)
+		time.Sleep(5 * time.Minute)
 	}
 }
