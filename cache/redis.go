@@ -34,7 +34,7 @@ func NewRedisCache(host, port, password string) *RedisCache {
 
 func (c *RedisCache) Set(key string, response []byte) error {
 	ctx := context.Background()
-	return c.client.Set(ctx, key, response, 24*time.Hour).Err()
+	return c.client.Set(ctx, key, response, 6*time.Hour).Err()
 }
 
 func (c *RedisCache) Get(key string) ([]byte, error) {
