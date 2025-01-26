@@ -37,7 +37,7 @@ import (
 	"os"
 )
 
-const version = "1.6.0"
+const version = "1.6.1"
 
 type MicroServer struct {
 	addr       string
