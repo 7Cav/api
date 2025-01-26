@@ -64,17 +64,17 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 		if rec.Code != http.StatusOK {
 			Info.Printf("[CACHE] Non-200 response: %d, not caching", rec.Code)
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(rec.Code)
 
 			if endodeGzip {
 				Info.Printf("[CACHE] Compressing error response with gzip")
 				w.Header().Set("Content-Encoding", "gzip")
+				w.WriteHeader(rec.Code)
 				gz := gzip.NewWriter(w)
 				gz.Write(rec.Body.Bytes())
 				gz.Close()
 				return
 			}
-
+			w.WriteHeader(rec.Code)
 			w.Write(rec.Body.Bytes())
 			return
 		}
