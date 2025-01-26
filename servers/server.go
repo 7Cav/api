@@ -20,6 +20,7 @@ package servers
 
 import (
 	"fmt"
+	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	milpacs "github.com/7cav/api/proto"
 	httpServices "github.com/7cav/api/servers/gateway"
@@ -36,10 +37,13 @@ import (
 	"os"
 )
 
+const version = "1.6.0"
+
 type MicroServer struct {
 	addr       string
 	httpServer *http.Server
 	grpcServer *grpc.Server
+	cache      *cache.RedisCache
 }
 
 // New initializes a new Backend struct.
@@ -51,10 +55,32 @@ func New(addr string) *MicroServer {
 }
 
 var (
-	Info  = log.New(os.Stdout, "INFO: ", 0)
-	Warn  = log.New(os.Stdout, "WARNING: ", 0)
-	Error = log.New(os.Stdout, "ERROR: ", 0)
+	Info  = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
+
+func setupRedis() *cache.RedisCache {
+	redisHost := viper.GetString("REDIS_HOST")
+	if redisHost == "" {
+		Error.Println("no redis host provided")
+		os.Exit(1)
+	}
+
+	redisPort := viper.GetString("REDIS_PORT")
+	if redisPort == "" {
+		Error.Println("no redis port provided")
+		os.Exit(1)
+	}
+
+	redisPassword := viper.GetString("REDIS_PASSWORD")
+	if redisPassword == "" {
+		Error.Println("no redis password provided")
+		os.Exit(1)
+	}
+
+	return cache.NewRedisCache(redisHost, redisPort, redisPassword)
+}
 
 func setupDatasource() *datastores.Mysql {
 
@@ -98,6 +124,8 @@ func (server *MicroServer) Start() {
 	grpcLogger := grpclog.NewLoggerV2(io.Discard, os.Stdout, os.Stdout)
 	grpclog.SetLoggerV2(grpcLogger)
 
+	Info.Println("Starting 7Cav API version:", version)
+
 	//create TLS listener for TCP connections
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
 	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
@@ -107,6 +135,8 @@ func (server *MicroServer) Start() {
 	}
 
 	ds := setupDatasource()
+	server.cache = setupRedis()
+	go cache.CacheManager(server.cache, ds)
 
 	// relevant Grpc options
 	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.
@@ -139,9 +169,8 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 }
 
 func servHTTP(server *MicroServer, lis net.Listener) {
-	service := httpServices.Service{Address: server.addr}
+	service := httpServices.Service{Address: server.addr, Cache: server.cache}
 	server.httpServer = service.Server()
-
 	if err := server.httpServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start HTTP servers: ", err)
 	}

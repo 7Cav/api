@@ -20,14 +20,15 @@ package datastores
 
 import (
 	"github.com/7cav/api/proto"
+	"github.com/7cav/api/xenforo"
 	"log"
 	"os"
 )
 
 var (
-	Info  = log.New(os.Stdout, "INFO: ", 0)
-	Warn  = log.New(os.Stdout, "WARNING: ", 0)
-	Error = log.New(os.Stdout, "ERROR: ", 0)
+	Info  = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
 type Datastore interface {
@@ -42,4 +43,5 @@ type Datastore interface {
 	FindAllRanks() ([]*proto.RankExpanded, error)
 	FindAllPositionGroups() ([]*proto.PositionGroup, error)
 	FindAwol() ([]*proto.Awol, error)
+	GetTableUpdates() ([]xenforo.TableInfo, error)
 }
