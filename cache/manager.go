@@ -17,9 +17,7 @@ var monitoredTables = map[string]struct{}{
 	"xf_nf_rosters_service_record": {},
 	"xf_nf_rosters_record_type":    {},
 	"xf_nf_rosters":                {},
-	"xf_user":                      {},
 	"xf_user_connected_account":    {},
-	"xf_post":                      {},
 }
 
 func CacheManager(cache *RedisCache, ds datastores.Datastore) {
@@ -82,6 +80,6 @@ func CacheManager(cache *RedisCache, ds datastores.Datastore) {
 		} else {
 			Info.Println("Cached table updates are up to date, not invalidating")
 		}
-		time.Sleep(5 * time.Minute)
+		time.Sleep(10 * time.Minute)
 	}
 }
