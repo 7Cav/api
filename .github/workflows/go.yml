@@ -13,7 +13,8 @@ jobs:
         echo "PATH=$(go env GOPATH)/bin:$PATH" >> $GITHUB_ENV
     - name: Install buf
       run: |
-        URL=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name | contains("buf-Linux-x86_64")) | .browser_download_url')
+        URL=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name=="buf-Linux-x86_64") | .browser_download_url')
+        echo "Download URL: $URL"
         curl -sSL "$URL" -o /usr/local/bin/buf
         chmod +x /usr/local/bin/buf
     - name: Regenerate files
@@ -32,7 +33,8 @@ jobs:
       run: make install
     - name: Install buf
       run: |
-        URL=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name | contains("buf-Linux-x86_64")) | .browser_download_url')
+        URL=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name=="buf-Linux-x86_64") | .browser_download_url')
+        echo "Download URL: $URL"
         curl -sSL "$URL" -o /usr/local/bin/buf
         chmod +x /usr/local/bin/buf
     - name: Lint
