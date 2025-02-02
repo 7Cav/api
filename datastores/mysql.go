@@ -450,7 +450,9 @@ func getPositionGroup(profile milpacs.Profile) string {
 	case "Regimental HQ", "Support Attachment":
 		return "HHQ"
 	case "New Recruits":
-		return "Recruit"
+		return "RTC"
+	case "7th Cavalry Reservists":
+		return "Reserve"
 	case "Extended Leave Of Absence":
 		return "ELOA"
 	}
