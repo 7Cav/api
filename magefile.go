@@ -38,7 +38,7 @@ func Install() error {
 	); err != nil {
 		return err
 	}
-	return run("go", "get", "-u",
+	return run("go", "get",
 		"github.com/bufbuild/buf/cmd/buf",
 		"github.com/square/certstrap",
 		"github.com/spf13/cobra",

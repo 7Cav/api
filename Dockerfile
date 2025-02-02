@@ -1,6 +1,8 @@
 # Build stage
 FROM golang AS build-env
 
+RUN apt-get update && apt-get install -y jq curl
+
 RUN mkdir /src
 WORKDIR /src
 COPY go.mod .
@@ -12,7 +14,7 @@ COPY Makefile ./
 RUN make install
 
 # Install buf (protobuf generation tool)
-RUN curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | grep "browser_download_url.*buf-Linux-x86_64" | cut -d '"' -f 4) -o /usr/local/bin/buf \
+RUN curl -sSL $(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name | contains("buf-Linux-x86_64")) | .browser_download_url') -o /usr/local/bin/buf \
     && chmod +x /usr/local/bin/buf
 
 # COPY the source code as the last step
