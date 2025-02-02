@@ -29,4 +29,4 @@ jobs:
 
       - name: Force Watchtower Update
         run: |
-          curl -H "Authorization: Bearer ${{ secrets.WATCHER_KEY }}" https://watcher.7cav.us/v1/update/
+          curl -H "Authorization: Bearer ${{ secrets.WATCHER_KEY }}" https://watcher.7cav.us/v1/update
