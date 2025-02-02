@@ -26,3 +26,7 @@ jobs:
           tags: |
             7cav/api:${{ github.ref_name }}
             7cav/api:latest
+
+      - name: Force Watchtower Update
+        run: |
+          curl -H "Authorization: Bearer ${{ secrets.WATCHER_KEY }}" https://watcher.7cav.us/v1/update/
