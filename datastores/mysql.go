@@ -695,3 +695,30 @@ func (ds Mysql) GetTableUpdates() ([]xenforo.TableInfo, error) {
 		Find(&updates)
 	return updates, nil
 }
+
+func (ds Mysql) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
+	var profile milpacs.Profile
+
+	Info.Println("Searching for user with gamertag: ", gamertag)
+
+	result := ds.Db.Preload(clause.Associations).
+		Preload("AwardRecords.Award").
+		Joins(xenforo.ConnectedAccountJoin).
+		Joins(milpacs.FieldValueJoin).
+		Where("xf_nf_rosters_field_value.field_id = ? AND xf_nf_rosters_field_value.field_value LIKE ?", "consoleGamertag", gamertag).
+		First(&profile)
+
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("no profile found for gamertag: %s", gamertag)
+		}
+		return nil, result.Error
+	}
+
+	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
+	if err != nil {
+		return nil, fmt.Errorf("error generating profile: %w", err)
+	}
+
+	return profiles[profile.RelationId], nil
+}

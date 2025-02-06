@@ -44,4 +44,5 @@ type Datastore interface {
 	FindAllPositionGroups() ([]*proto.PositionGroup, error)
 	FindAwol() ([]*proto.Awol, error)
 	GetTableUpdates() ([]xenforo.TableInfo, error)
+	FindProfileByGamertag(gamertag string) (*proto.Profile, error)
 }

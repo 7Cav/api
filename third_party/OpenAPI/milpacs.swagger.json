@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.6.3"
+    "version": "1.7.0"
   },
   "tags": [
     {
@@ -48,6 +48,38 @@
         ],
         "tags": [
           "Roster, Milpacs, Discord"
+        ]
+      }
+    },
+    "/api/v1/milpac/gamertag/{gamertag}": {
+      "get": {
+        "summary": "Get a Milpac profile via Gamertag",
+        "description": "Get all milpac Profile data for a given user via their Gamertag",
+        "operationId": "MilpacService_GetGamertagProfile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoProfile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "gamertag",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Roster, Milpacs, Gamertag"
         ]
       }
     },

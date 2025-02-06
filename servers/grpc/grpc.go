@@ -178,3 +178,17 @@ func (server *MilpacsService) GetAwol(ctx context.Context, _ *emptypb.Empty) (*p
 		Awols: awols,
 	}, nil
 }
+
+func (server *MilpacsService) GetGamertagProfile(ctx context.Context, request *proto.GamertagRequest) (*proto.Profile, error) {
+	if request.GetGamertag() == "" {
+		Warn.Println("Empty Gamertag provided, cannot return profile")
+		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "gamertag cannot be empty")
+	}
+
+	profile, err := server.Datastore.FindProfileByGamertag(request.GetGamertag())
+
+	if err != nil {
+		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for gamertag: %v", request.GetGamertag())
+	}
+	return profile, nil
+}

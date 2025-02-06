@@ -29,7 +29,7 @@ import "google/protobuf/empty.proto";
 // These annotations are used when generating the OpenAPI file.
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
-    version: "1.6.3";
+    version: "1.7.0";
   };
   external_docs: {
     url: "https://github.com/7cav/api";
@@ -159,6 +159,16 @@ service MilpacService {
       summary: "Get all AWOL troopers"
       description: "Get a list of all troopers that havent posted in the last 7 days"
       tags: "AWOLs, Milpacs"
+    };
+  };
+  rpc GetGamertagProfile(GamertagRequest) returns (Profile){
+    option(google.api.http) = {
+      get: "/api/v1/milpac/gamertag/{gamertag}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a Milpac profile via Gamertag"
+      description: "Get all milpac Profile data for a given user via their Gamertag"
+      tags: "Roster, Milpacs, Gamertag"
     };
   };
 }
@@ -394,3 +404,8 @@ message Awol {
   uint64 timestamp = 6;
   uint64 post_id = 7;
 }
+
+message GamertagRequest {
+  string gamertag = 1;
+}
+
