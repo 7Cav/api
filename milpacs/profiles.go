@@ -58,8 +58,9 @@ func (profile *Profile) UniformUrl() string {
 }
 
 type CustomFields struct {
-	JoinDate  string `json:"joinDate"`
-	PromoDate string `json:"promoDate"`
+	JoinDate        string `json:"joinDate"`
+	PromoDate       string `json:"promoDate"`
+	ConsoleGamertag string `json:"consoleGamertag"`
 }
 
 func (profile *Profile) UnmarshalCustomFields() CustomFields {
