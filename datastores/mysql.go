@@ -664,7 +664,7 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 		Joins("INNER JOIN xf_nf_rosters_rank as ranks ON milpacs.rank_id = ranks.rank_id").
 		Joins("INNER JOIN xf_nf_rosters_position position ON milpacs.position_id = position.position_id").
 		Joins("INNER JOIN xf_nf_rosters_position_group pGroup ON position.position_group_id = pGroup.position_group_id").
-		Where("milpacs.roster_id = ?", 1).
+		Where("milpacs.roster_id IN (?)", []int{1, 2}).
 		Where("posts.date <= ?", cutoffTimestamp).
 		Find(&awols)
 
