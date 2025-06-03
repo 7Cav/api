@@ -2,14 +2,15 @@ package datastores
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/7cav/api/milpacs"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/xenforo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type Mysql struct {
@@ -166,6 +167,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		Primary: &proto.Position{
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
+			Mos:      	   profile.UnmarshalCustomFields().Mos,
 		},
 		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
 		Records:       collectRecords(profile.Records),
