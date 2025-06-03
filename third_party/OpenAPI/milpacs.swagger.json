@@ -533,6 +533,9 @@
         },
         "lastForumPostDate": {
           "type": "string"
+        },
+        "mos": {
+          "type": "string"
         }
       }
     },
@@ -668,6 +671,9 @@
           "type": "string"
         },
         "lastForumPostDate": {
+          "type": "string"
+        },
+        "mos": {
           "type": "string"
         }
       }
