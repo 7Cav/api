@@ -44,6 +44,7 @@ func request_MilpacService_GetProfile_0(ctx context.Context, marshaler runtime.M
 		metadata runtime.ServerMetadata
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["user_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "user_id")
@@ -94,6 +95,7 @@ func request_MilpacService_GetProfile_1(ctx context.Context, marshaler runtime.M
 		metadata runtime.ServerMetadata
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["username"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "username")
@@ -143,6 +145,7 @@ func request_MilpacService_GetRoster_0(ctx context.Context, marshaler runtime.Ma
 		e        int32
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["roster"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "roster")
@@ -182,6 +185,7 @@ func request_MilpacService_GetUserViaKeycloakId_0(ctx context.Context, marshaler
 		metadata runtime.ServerMetadata
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["keycloak_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "keycloak_id")
@@ -218,6 +222,7 @@ func request_MilpacService_GetUserViaDiscordId_0(ctx context.Context, marshaler 
 		metadata runtime.ServerMetadata
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["discord_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "discord_id")
@@ -255,6 +260,7 @@ func request_MilpacService_GetLiteRoster_0(ctx context.Context, marshaler runtim
 		e        int32
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["roster"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "roster")
@@ -294,6 +300,7 @@ func request_MilpacService_SearchByPosition_0(ctx context.Context, marshaler run
 		metadata runtime.ServerMetadata
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["position_query"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "position_query")
@@ -331,6 +338,7 @@ func request_MilpacService_GetS1UniformsRoster_0(ctx context.Context, marshaler 
 		e        int32
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["roster"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "roster")
@@ -369,6 +377,7 @@ func request_MilpacService_GetAllRanks_0(ctx context.Context, marshaler runtime.
 		protoReq emptypb.Empty
 		metadata runtime.ServerMetadata
 	)
+	io.Copy(io.Discard, req.Body)
 	msg, err := client.GetAllRanks(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
@@ -387,6 +396,7 @@ func request_MilpacService_GetPositionGroups_0(ctx context.Context, marshaler ru
 		protoReq emptypb.Empty
 		metadata runtime.ServerMetadata
 	)
+	io.Copy(io.Discard, req.Body)
 	msg, err := client.GetPositionGroups(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
@@ -405,6 +415,7 @@ func request_MilpacService_GetAwol_0(ctx context.Context, marshaler runtime.Mars
 		protoReq emptypb.Empty
 		metadata runtime.ServerMetadata
 	)
+	io.Copy(io.Discard, req.Body)
 	msg, err := client.GetAwol(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 }
@@ -424,6 +435,7 @@ func request_MilpacService_GetGamertagProfile_0(ctx context.Context, marshaler r
 		metadata runtime.ServerMetadata
 		err      error
 	)
+	io.Copy(io.Discard, req.Body)
 	val, ok := pathParams["gamertag"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "gamertag")
