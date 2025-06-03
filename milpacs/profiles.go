@@ -61,6 +61,7 @@ type CustomFields struct {
 	JoinDate        string `json:"joinDate"`
 	PromoDate       string `json:"promoDate"`
 	ConsoleGamertag string `json:"consoleGamertag"`
+	Mos string `json:"mos"`
 }
 
 func (profile *Profile) UnmarshalCustomFields() CustomFields {
