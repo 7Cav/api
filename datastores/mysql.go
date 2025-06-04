@@ -2,14 +2,15 @@ package datastores
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/7cav/api/milpacs"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/xenforo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type Mysql struct {
@@ -172,6 +173,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		Awards:        collectAwards(profile.AwardRecords),
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
+		Mos:           profile.UnmarshalCustomFields().Mos,
 		KeycloakId:    extractKeycloakID(profile),
 		DiscordId:     extractDiscordID(profile),
 	}
@@ -299,6 +301,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
+		Mos:           profile.UnmarshalCustomFields().Mos,
 		KeycloakId:    extractKeycloakID(profile),
 		DiscordId:     extractDiscordID(profile),
 		AwardDate:     getLatestAwardDate(profile),

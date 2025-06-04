@@ -272,6 +272,7 @@ message Profile {
   string keycloak_id = 12;
   string discord_id = 13;
   string last_forum_post_date = 14;
+  string mos = 15;
 }
 
 message RosterRequest {
@@ -322,6 +323,7 @@ message LiteProfile {
   string award_date = 12;
   string record_date = 13;
   string last_forum_post_date = 14;
+  string mos = 15;
 }
 
 message LiteRoster {
