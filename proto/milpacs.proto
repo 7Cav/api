@@ -405,6 +405,7 @@ message Awol {
   string human_date = 5;
   uint64 timestamp = 6;
   uint64 post_id = 7;
+  uint64 milpac_id = 8;
 }
 
 message GamertagRequest {
