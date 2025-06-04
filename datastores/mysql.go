@@ -173,7 +173,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		Awards:        collectAwards(profile.AwardRecords),
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
-		Mos: 			profile.UnmarshalCustomFields().Mos,
+		Mos:           profile.UnmarshalCustomFields().Mos,
 		KeycloakId:    extractKeycloakID(profile),
 		DiscordId:     extractDiscordID(profile),
 	}
@@ -301,6 +301,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 		Secondaries:   ds.collectSecondaryPositions(profile.SecondaryPositionIds),
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
+		Mos:           profile.UnmarshalCustomFields().Mos,
 		KeycloakId:    extractKeycloakID(profile),
 		DiscordId:     extractDiscordID(profile),
 		AwardDate:     getLatestAwardDate(profile),
