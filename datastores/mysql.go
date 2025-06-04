@@ -640,13 +640,14 @@ func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.P
 func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 	Info.Println("Searching for AWOL troopers")
 	var awols []struct {
-		GroupName string `gorm:"column:group_name"`
-		RankName  string `gorm:"column:rank_name"`
-		Username  string `gorm:"column:username"`
-		UserID    uint64 `gorm:"column:user_id"`
-		Date      uint64 `gorm:"column:date"`
-		PostID    uint64 `gorm:"column:post_id"`
-		HumanDate string `gorm:"column:human_date"`
+		GroupName  string `gorm:"column:group_name"`
+		RankName   string `gorm:"column:rank_name"`
+		Username   string `gorm:"column:username"`
+		UserID     uint64 `gorm:"column:user_id"`
+		Date       uint64 `gorm:"column:date"`
+		PostID     uint64 `gorm:"column:post_id"`
+		HumanDate  string `gorm:"column:human_date"`
+		RelationID uint64 `gorm:"column:relation_id"`
 	}
 
 	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
@@ -658,6 +659,7 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
             ranks.title as rank_name,
             users.username,
             milpacs.user_id,
+			milpacs.relation_id,
             posts.date,
             posts.post_id,
             FROM_UNIXTIME(posts.date, '%Y-%m-%d') as human_date
@@ -685,6 +687,7 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 			Timestamp: awol.Date,
 			PostId:    awol.PostID,
 			HumanDate: awol.HumanDate,
+			MilpacId:  awol.RelationID,
 		}
 	}
 
