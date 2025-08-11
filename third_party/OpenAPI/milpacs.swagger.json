@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.7.2"
+    "version": "1.7.4"
   },
   "tags": [
     {
