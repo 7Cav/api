@@ -1939,6 +1939,7 @@ type Awol struct {
 	HumanDate     string                 `protobuf:"bytes,5,opt,name=human_date,json=humanDate,proto3" json:"human_date,omitempty"`
 	Timestamp     uint64                 `protobuf:"varint,6,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	PostId        uint64                 `protobuf:"varint,7,opt,name=post_id,json=postId,proto3" json:"post_id,omitempty"`
+	MilpacId      uint64                 `protobuf:"varint,8,opt,name=milpac_id,json=milpacId,proto3" json:"milpac_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2018,6 +2019,13 @@ func (x *Awol) GetTimestamp() uint64 {
 func (x *Awol) GetPostId() uint64 {
 	if x != nil {
 		return x.PostId
+	}
+	return 0
+}
+
+func (x *Awol) GetMilpacId() uint64 {
+	if x != nil {
+		return x.MilpacId
 	}
 	return 0
 }

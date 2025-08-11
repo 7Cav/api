@@ -470,6 +470,10 @@
         "postId": {
           "type": "string",
           "format": "uint64"
+        },
+        "milpacId": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
