@@ -174,6 +174,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
 		Mos:           profile.UnmarshalCustomFields().Mos,
+		ConsoleGamertag: profile.UnmarshalCustomFields().ConsoleGamertag,
 		KeycloakId:    extractKeycloakID(profile),
 		DiscordId:     extractDiscordID(profile),
 	}
@@ -302,6 +303,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 		JoinDate:      profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate: profile.UnmarshalCustomFields().PromoDate,
 		Mos:           profile.UnmarshalCustomFields().Mos,
+		ConsoleGamertag: profile.UnmarshalCustomFields().ConsoleGamertag,
 		KeycloakId:    extractKeycloakID(profile),
 		DiscordId:     extractDiscordID(profile),
 		AwardDate:     getLatestAwardDate(profile),

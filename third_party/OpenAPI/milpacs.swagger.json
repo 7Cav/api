@@ -536,6 +536,9 @@
         },
         "mos": {
           "type": "string"
+        },
+        "consoleGamertag": {
+          "type": "string"
         }
       }
     },
@@ -674,6 +677,9 @@
           "type": "string"
         },
         "mos": {
+          "type": "string"
+        },
+        "consoleGamertag": {
           "type": "string"
         }
       }
