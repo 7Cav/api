@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "title": "milpacs.proto",
-    "version": "1.7.2"
+    "version": "1.7.5"
   },
   "tags": [
     {
@@ -540,6 +540,9 @@
         },
         "mos": {
           "type": "string"
+        },
+        "consoleGamertag": {
+          "type": "string"
         }
       }
     },
@@ -678,6 +681,9 @@
           "type": "string"
         },
         "mos": {
+          "type": "string"
+        },
+        "consoleGamertag": {
           "type": "string"
         }
       }

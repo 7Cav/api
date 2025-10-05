@@ -273,6 +273,7 @@ message Profile {
   string discord_id = 13;
   string last_forum_post_date = 14;
   string mos = 15;
+  string console_gamertag = 16;
 }
 
 message RosterRequest {
@@ -324,6 +325,7 @@ message LiteProfile {
   string record_date = 13;
   string last_forum_post_date = 14;
   string mos = 15;
+  string console_gamertag = 16;
 }
 
 message LiteRoster {
