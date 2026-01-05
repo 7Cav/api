@@ -20,6 +20,12 @@ package servers
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"os"
+
 	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	milpacs "github.com/7cav/api/proto"
@@ -30,14 +36,9 @@ import (
 	"google.golang.org/grpc/grpclog"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"io"
-	"log"
-	"net"
-	"net/http"
-	"os"
 )
 
-const version = "1.7.5"
+const version = "1.7.6"
 
 type MicroServer struct {
 	addr       string
