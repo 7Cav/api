@@ -32,7 +32,7 @@ type Profile struct {
 	RosterId             uint64
 	UserID               uint64
 	Username             string
-	RealName             string
+	//RealName             string 	RealName is now a custom field
 	PositionID           uint64
 	SecondaryPositionIds string
 	RankID               uint64
@@ -59,6 +59,7 @@ func (profile *Profile) UniformUrl() string {
 }
 
 type CustomFields struct {
+	RealName		string `json:"realName"`
 	JoinDate        string `json:"joinDate"`
 	PromoDate       string `json:"promoDate"`
 	ConsoleGamertag string `json:"consoleGamertag"`

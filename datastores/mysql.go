@@ -161,7 +161,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
-		RealName:   profile.RealName,
+		RealName:   profile.UnmarshalCustomFields().RealName,
 		UniformUrl: profile.UniformUrl(),
 		Roster:     proto.RosterType(profile.RosterId),
 		Primary: &proto.Position{
@@ -292,7 +292,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
-		RealName:   profile.RealName,
+		RealName:   profile.UnmarshalCustomFields().RealName,
 		UniformUrl: profile.UniformUrl(),
 		Roster:     proto.RosterType(profile.RosterId),
 		Primary: &proto.Position{
@@ -380,7 +380,7 @@ func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*proto.
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
-		RealName:                 profile.RealName,
+		RealName:   profile.UnmarshalCustomFields().RealName,
 		UniformUrl:               profile.UniformUrl(),
 		UniformDate:              getUniformDate(profile),
 		UniformUpdateTriggerDate: getUniformUpdateTriggerDate(profile),
