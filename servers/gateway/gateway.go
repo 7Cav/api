@@ -21,7 +21,14 @@ package gateway
 import (
 	"compress/gzip"
 	"context"
+	"crypto/subtle"
 	"fmt"
+	"log"
+	"mime"
+	"net/http"
+	"os"
+	"strings"
+
 	"github.com/7cav/api/cache"
 	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/proto"
@@ -29,16 +36,12 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/rakyll/statik/fs"
 	"google.golang.org/grpc"
-	"log"
-	"mime"
-	"net/http"
-	"os"
-	"strings"
 )
 
 type Service struct {
 	Address string
 	Cache   *cache.RedisCache
+	APISecret string
 }
 
 var (
@@ -57,6 +60,21 @@ func getOpenAPIHandler() http.Handler {
 		Error.Println("creating OpenAPI filesystem: ", err)
 	}
 	return http.FileServer(statikFs)
+}
+
+func authMiddleware(secret string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		if subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func compressionMiddleware(next http.Handler) http.Handler {
@@ -118,7 +136,8 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	handler := middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux))
+	handler := authMiddleware(service.APISecret, 
+		middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux)))
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)
