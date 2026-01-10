@@ -20,11 +20,8 @@ package grpc
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"net/http"
+	"os"
 	"strings"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -32,10 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const authServerURL = "https://auth.7cav.us/auth/realms/7cav/check?apiKey="
-
-func ValidateToken(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	Info.Println("Checking metadata")
+func ValidateToken(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -50,6 +44,7 @@ func ValidateToken(ctx context.Context, req interface{}, info *grpc.UnaryServerI
 	}
 
 	authHeader := strings.TrimSpace(authHeaders[0])
+	
 	if !isValidToken(authHeader) {
 		Warn.Printf("Unauthorized attempt on method %s", info.FullMethod)
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token")
@@ -59,54 +54,17 @@ func ValidateToken(ctx context.Context, req interface{}, info *grpc.UnaryServerI
 }
 
 func isValidToken(authHeader string) bool {
+	expectedSecret := os.Getenv("API_SECRET")
+	if expectedSecret == "" {
+		Warn.Println("CRITICAL: API_SECRET is not set in the environment!")
+		return false
+	}
+
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	if token == "" {
 		Warn.Println("Empty token provided")
 		return false
 	}
-	if !isPrintableASCII(token) {
-		Warn.Println("Token contains non-printable ASCII")
-		return false
-	}
 
-	config, err := loadTLSConfig()
-	if err != nil {
-		Warn.Printf("Failed to load TLS config: %v", err)
-		return false
-	}
-
-	client := &http.Client{
-		Transport: &http.Transport{TLSClientConfig: config},
-		Timeout:   5 * time.Second,
-	}
-	res, err := client.Get(authServerURL + token)
-	if err != nil {
-		Warn.Printf("Auth server unreachable: %v", err)
-		return false
-	}
-	defer func() {
-		if err := res.Body.Close(); err != nil {
-			Warn.Printf("Error closing response body: %v", err)
-		}
-	}()
-
-	return res.StatusCode == http.StatusOK
-}
-
-func loadTLSConfig() (*tls.Config, error) {
-	rootCAs, err := x509.SystemCertPool()
-	if err != nil {
-		Warn.Printf("Could not load system CA pool: %v", err)
-		return nil, err
-	}
-	return &tls.Config{RootCAs: rootCAs}, nil
-}
-
-func isPrintableASCII(s string) bool {
-	for _, r := range s {
-		if r < 32 || r > 126 {
-			return false
-		}
-	}
-	return true
+	return token == expectedSecret
 }
