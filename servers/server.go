@@ -38,7 +38,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const version = "1.7.6"
+const version = "2.0.0"
 
 type MicroServer struct {
 	addr       string
