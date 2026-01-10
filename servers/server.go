@@ -181,7 +181,8 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 }
 
 func servHTTP(server *MicroServer, lis net.Listener) {
-	service := httpServices.Service{Address: server.addr, Cache: server.cache}
+	secret := setupAuth()
+	service := httpServices.Service{Address: server.addr, Cache: server.cache, APISecret: secret,}
 	server.httpServer = service.Server()
 	if err := server.httpServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start HTTP servers: ", err)
