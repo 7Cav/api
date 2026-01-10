@@ -20,7 +20,7 @@ package grpc
 
 import (
 	"context"
-	"os"
+	"crypto/subtle"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -29,42 +29,37 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func ValidateToken(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+func NewAuthInterceptor(secret string) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			// You can use your global logger here if accessible, or fmt
+			return nil, status.Errorf(codes.Unauthenticated, "missing metadata")
+		}
 
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		Warn.Println("Unauthorized: No metadata found")
-		return nil, status.Errorf(codes.Unauthenticated, "missing metadata")
+		authHeaders := md.Get("authorization")
+		if len(authHeaders) < 1 {
+			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
+		}
+
+		authHeader := strings.TrimSpace(authHeaders[0])
+
+		// Pass the baked-in secret to the check
+		if !isValidToken(authHeader, secret) {
+			// logic to log warning if needed
+			return nil, status.Errorf(codes.Unauthenticated, "invalid token")
+		}
+
+		return handler(ctx, req)
 	}
-
-	authHeaders := md.Get("authorization")
-	if len(authHeaders) < 1 {
-		Warn.Println("Unauthorized: Missing authorization header")
-		return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
-	}
-
-	authHeader := strings.TrimSpace(authHeaders[0])
-	
-	if !isValidToken(authHeader) {
-		Warn.Printf("Unauthorized attempt on method %s", info.FullMethod)
-		return nil, status.Errorf(codes.Unauthenticated, "invalid token")
-	}
-
-	return handler(ctx, req)
 }
 
-func isValidToken(authHeader string) bool {
-	expectedSecret := os.Getenv("API_SECRET")
-	if expectedSecret == "" {
-		Warn.Println("CRITICAL: API_SECRET is not set in the environment!")
-		return false
-	}
-
+func isValidToken(authHeader, secret string) bool {
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	if token == "" {
-		Warn.Println("Empty token provided")
 		return false
 	}
-
-	return token == expectedSecret
+	
+	// Compare the token against the secret passed from startup
+	return subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
 }

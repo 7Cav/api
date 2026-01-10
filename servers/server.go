@@ -61,6 +61,16 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
+func setupAuth() string {
+    secret := viper.GetString("API_SECRET")
+    if secret == "" {
+        // It is critical to fail fast if this is missing
+        Error.Println("CRITICAL: API_SECRET is not set in environment/config")
+        os.Exit(1)
+    }
+    return secret
+}
+
 func setupRedis() *cache.RedisCache {
 	redisHost := viper.GetString("REDIS_HOST")
 	if redisHost == "" {
@@ -135,6 +145,7 @@ func (server *MicroServer) Start() {
 		Error.Fatalf("Failed to listen on %s: %w", server.addr, err)
 	}
 
+	apiSecret := setupAuth()
 	ds := setupDatasource()
 	server.cache = setupRedis()
 	go cache.CacheManager(server.cache, ds)
@@ -144,7 +155,7 @@ func (server *MicroServer) Start() {
 	// 		 If this needed to change in the future, then we will need to refactor this method
 	opts := []grpc.ServerOption{
 		// Intercept request to check the token.
-		grpc.UnaryInterceptor(grpcServices.ValidateToken),
+		grpc.UnaryInterceptor(grpcServices.NewAuthInterceptor(apiSecret)),
 		//grpc.Creds(creds),
 	}
 
