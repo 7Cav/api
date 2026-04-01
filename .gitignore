@@ -18,3 +18,5 @@ out/
 
 # don't accidentally publish the binary
 api
+
+docker-compose.yaml

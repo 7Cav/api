@@ -124,7 +124,7 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
 	var profile milpacs.Profile
 
-	Info.Println("Searching for milpac profiles with discord IDs of: %s", discordId)
+	Info.Printf("Searching for milpac profiles with discord IDs of: %s", discordId)
 
 	query := map[string]interface{}{"xf_user_connected_account.provider_key": discordId, "xf_user_connected_account.provider": "nfDiscord"}
 

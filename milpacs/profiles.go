@@ -75,7 +75,7 @@ func (profile *Profile) UnmarshalCustomFields() CustomFields {
 	}
 	err := json.Unmarshal([]byte(s), &fields)
 	if err != nil {
-		log.Print("Error unmarshalling profile custom fields: %v", err)
+		log.Printf("Error unmarshalling profile custom fields: %v", err)
 	}
 	return fields
 }
