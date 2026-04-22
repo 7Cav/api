@@ -704,6 +704,27 @@ func (ds Mysql) GetTableUpdates() ([]xenforo.TableInfo, error) {
 	return updates, nil
 }
 
+func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
+	var row struct {
+		KeyId     uint `gorm:"column:key_id"`
+		UserId    uint `gorm:"column:user_id"`
+		ScopeRead bool `gorm:"column:scope_read"`
+	}
+	tx := ds.Db.Raw(`
+		SELECT key_id, user_id, scope_read
+		FROM xf_cav7_api_key
+		WHERE key_hash = UNHEX(SHA2(?, 256))
+		  AND is_active = 1`, rawKey).Scan(&row)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	if tx.RowsAffected == 0 {
+		return nil, nil
+	}
+	go ds.Db.Exec(`UPDATE xf_cav7_api_key SET last_used_date = UNIX_TIMESTAMP() WHERE key_id = ?`, row.KeyId)
+	return &ApiKeyResult{KeyId: row.KeyId, UserId: row.UserId, ScopeRead: row.ScopeRead}, nil
+}
+
 func (ds Mysql) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
 	var profile milpacs.Profile
 

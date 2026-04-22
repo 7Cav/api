@@ -31,6 +31,12 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
+type ApiKeyResult struct {
+	KeyId     uint
+	UserId    uint
+	ScopeRead bool
+}
+
 type Datastore interface {
 	FindProfilesById(userId ...uint64) ([]*proto.Profile, error)
 	FindProfilesByUsername(username string) ([]*proto.Profile, error)
@@ -45,4 +51,5 @@ type Datastore interface {
 	FindAwol() ([]*proto.Awol, error)
 	GetTableUpdates() ([]xenforo.TableInfo, error)
 	FindProfileByGamertag(gamertag string) (*proto.Profile, error)
+	ValidateApiKey(rawKey string) (*ApiKeyResult, error)
 }

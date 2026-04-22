@@ -21,7 +21,6 @@ package gateway
 import (
 	"compress/gzip"
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"log"
 	"mime"
@@ -30,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/7cav/api/cache"
+	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/proto"
 	_ "github.com/7cav/api/statik" // static files import - unused in the codebase, but required cuz reasons
@@ -39,9 +39,9 @@ import (
 )
 
 type Service struct {
-	Address string
-	Cache   *cache.RedisCache
-	APISecret string
+	Address   string
+	Cache     *cache.RedisCache
+	Datastore datastores.Datastore
 }
 
 var (
@@ -62,12 +62,21 @@ func getOpenAPIHandler() http.Handler {
 	return http.FileServer(statikFs)
 }
 
-func authMiddleware(secret string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+// maxTokenLen is the maximum length of a raw API key we'll accept.
+// cav7_ prefix (5) + 64 hex chars = 69; 128 gives generous headroom.
+const maxTokenLen = 128
 
-		if subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if token == "" || len(token) > maxTokenLen {
+			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		key, err := ds.ValidateApiKey(token)
+		if err != nil || key == nil || !key.ScopeRead {
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -136,7 +145,7 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	handler := authMiddleware(service.APISecret, 
+	handler := authMiddleware(service.Datastore,
 		middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux)))
 
 	// if requests start with /api then forward it on to the grpc-gateway client

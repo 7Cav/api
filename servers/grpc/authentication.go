@@ -20,20 +20,21 @@ package grpc
 
 import (
 	"context"
-	"crypto/subtle"
 	"strings"
 
+	"github.com/7cav/api/datastores"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
-func NewAuthInterceptor(secret string) grpc.UnaryServerInterceptor {
+const maxTokenLen = 128
+
+func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			// You can use your global logger here if accessible, or fmt
 			return nil, status.Errorf(codes.Unauthenticated, "missing metadata")
 		}
 
@@ -42,24 +43,20 @@ func NewAuthInterceptor(secret string) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
-		authHeader := strings.TrimSpace(authHeaders[0])
+		raw := strings.TrimSpace(authHeaders[0])
+		if !strings.HasPrefix(raw, "Bearer ") {
+			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
+		}
+		token := strings.TrimSpace(raw[len("Bearer "):])
+		if token == "" || len(token) > maxTokenLen {
+			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
+		}
 
-		// Pass the baked-in secret to the check
-		if !isValidToken(authHeader, secret) {
-			// logic to log warning if needed
-			return nil, status.Errorf(codes.Unauthenticated, "invalid token")
+		key, err := ds.ValidateApiKey(token)
+		if err != nil || key == nil || !key.ScopeRead {
+			return nil, status.Errorf(codes.Unauthenticated, "invalid api key")
 		}
 
 		return handler(ctx, req)
 	}
-}
-
-func isValidToken(authHeader, secret string) bool {
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token == "" {
-		return false
-	}
-	
-	// Compare the token against the secret passed from startup
-	return subtle.ConstantTimeCompare([]byte(token), []byte(secret)) == 1
 }

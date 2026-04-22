@@ -61,16 +61,6 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
-func setupAuth() string {
-    secret := viper.GetString("API_SECRET")
-    if secret == "" {
-        // It is critical to fail fast if this is missing
-        Error.Println("CRITICAL: API_SECRET is not set in environment/config")
-        os.Exit(1)
-    }
-    return secret
-}
-
 func setupRedis() *cache.RedisCache {
 	redisHost := viper.GetString("REDIS_HOST")
 	if redisHost == "" {
@@ -145,7 +135,6 @@ func (server *MicroServer) Start() {
 		Error.Fatalf("Failed to listen on %s: %w", server.addr, err)
 	}
 
-	apiSecret := setupAuth()
 	ds := setupDatasource()
 	server.cache = setupRedis()
 	go cache.CacheManager(server.cache, ds)
@@ -155,13 +144,13 @@ func (server *MicroServer) Start() {
 	// 		 If this needed to change in the future, then we will need to refactor this method
 	opts := []grpc.ServerOption{
 		// Intercept request to check the token.
-		grpc.UnaryInterceptor(grpcServices.NewAuthInterceptor(apiSecret)),
+		grpc.UnaryInterceptor(grpcServices.NewAuthInterceptor(ds)),
 		//grpc.Creds(creds),
 	}
 
 	// launch goroutines for multiplexed listener
 	Info.Println("Starting HTTP listener")
-	go servHTTP(server, httpL)
+	go servHTTP(server, httpL, ds)
 	Info.Println("Starting GRPC listener")
 	servGRPC(server, grpcL, opts, ds)
 }
@@ -180,9 +169,8 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 	}
 }
 
-func servHTTP(server *MicroServer, lis net.Listener) {
-	secret := setupAuth()
-	service := httpServices.Service{Address: server.addr, Cache: server.cache, APISecret: secret,}
+func servHTTP(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
+	service := httpServices.Service{Address: server.addr, Cache: server.cache, Datastore: ds}
 	server.httpServer = service.Server()
 	if err := server.httpServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start HTTP servers: ", err)
