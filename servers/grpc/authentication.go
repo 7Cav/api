@@ -44,10 +44,7 @@ func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 		}
 
 		raw := strings.TrimSpace(authHeaders[0])
-		if !strings.HasPrefix(raw, "Bearer ") {
-			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
-		}
-		token := strings.TrimSpace(raw[len("Bearer "):])
+		token := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer "))
 		if token == "" || len(token) > maxTokenLen {
 			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
