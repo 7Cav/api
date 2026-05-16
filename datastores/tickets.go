@@ -304,6 +304,23 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID, afterPosition
 	return out, next, hasMore, nil
 }
 
+func (ds *Mysql) ListCategories(ctx context.Context, rc TicketReferenceCache) ([]*proto.Category, error) {
+	tree := rc.CategoryTree()
+	out := make([]*proto.Category, 0, len(tree))
+	for _, c := range tree {
+		out = append(out, &proto.Category{
+			CategoryId:       c.ID,
+			Title:            c.Title,
+			Description:      c.Description,
+			ParentCategoryId: c.ParentID,
+			Depth:            c.Depth,
+			DisplayOrder:     c.DisplayOrder,
+			TicketCount:      c.TicketCount,
+		})
+	}
+	return out, nil
+}
+
 func messageToProto(m *xenforo.TicketMessage) *proto.Message {
 	return &proto.Message{
 		MessageId:    m.MessageID,

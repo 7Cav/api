@@ -275,3 +275,15 @@ func TestListTicketMessages_Pagination(t *testing.T) {
 	assert.Equal(t, uint32(12), next, "cursor is position of last returned message")
 	assert.Len(t, msgs, 2)
 }
+
+func TestListCategories_PassThroughFromCache(t *testing.T) {
+	ds := Mysql{}
+	rc := newFakeRefCache()
+	cats, err := ds.ListCategories(context.Background(), rc)
+	require.NoError(t, err)
+	require.Len(t, cats, 2)
+	// fakeRefCache.cats is a map; sort the result for stable assertion.
+	titles := []string{cats[0].Title, cats[1].Title}
+	assert.Contains(t, titles, "S1 Personnel Admin")
+	assert.Contains(t, titles, "S1 Citations")
+}
