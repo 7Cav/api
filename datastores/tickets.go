@@ -272,6 +272,38 @@ func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n 
 	return out, uint32(total), nil
 }
 
+func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID, afterPosition, perPage uint32, includeHidden bool) ([]*proto.Message, uint32, bool, error) {
+	if perPage == 0 || perPage > 100 {
+		if perPage == 0 {
+			perPage = 50
+		} else {
+			perPage = 100
+		}
+	}
+	q := ds.Db.WithContext(ctx).Where("ticket_id = ? AND position > ?", ticketID, afterPosition)
+	if !includeHidden {
+		q = q.Where("message_state = ?", "visible")
+	}
+	var rows []xenforo.TicketMessage
+	tx := q.Order("position ASC").Limit(int(perPage) + 1).Find(&rows)
+	if tx.Error != nil {
+		return nil, 0, false, tx.Error
+	}
+	hasMore := len(rows) > int(perPage)
+	if hasMore {
+		rows = rows[:perPage]
+	}
+	out := make([]*proto.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageToProto(&rows[i]))
+	}
+	var next uint32
+	if hasMore && len(rows) > 0 {
+		next = rows[len(rows)-1].Position
+	}
+	return out, next, hasMore, nil
+}
+
 func messageToProto(m *xenforo.TicketMessage) *proto.Message {
 	return &proto.Message{
 		MessageId:    m.MessageID,

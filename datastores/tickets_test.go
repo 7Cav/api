@@ -252,3 +252,26 @@ func TestGetTicketFirstMessages_HappyPath(t *testing.T) {
 	assert.Len(t, msgs, 10)
 	assert.Equal(t, uint32(1), msgs[0].Position)
 }
+
+func TestListTicketMessages_Pagination(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	// 3 messages requested (perPage=2 + 1 lookahead), so 1 lookahead means hasMore=true
+	rows := sqlmock.NewRows([]string{
+		"message_id", "ticket_id", "user_id", "username",
+		"message_date", "message", "message_state",
+		"position", "attach_count", "last_edit_date", "edit_count",
+	}).
+		AddRow(uint32(11), uint32(1), uint32(0), "", uint32(0), "", "visible", uint32(11), uint32(0), uint32(0), uint32(0)).
+		AddRow(uint32(12), uint32(1), uint32(0), "", uint32(0), "", "visible", uint32(12), uint32(0), uint32(0), uint32(0)).
+		AddRow(uint32(13), uint32(1), uint32(0), "", uint32(0), "", "visible", uint32(13), uint32(0), uint32(0), uint32(0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_message`")).
+		WithArgs(uint32(1), uint32(10), "visible", 3).
+		WillReturnRows(rows)
+
+	msgs, next, more, err := (&ds).ListTicketMessages(context.Background(), 1, 10, 2, false)
+	require.NoError(t, err)
+	assert.True(t, more)
+	assert.Equal(t, uint32(12), next, "cursor is position of last returned message")
+	assert.Len(t, msgs, 2)
+}
