@@ -1,0 +1,171 @@
+/*
+ *  Copyright (C) 2026 7Cav.us
+ *  This file is part of 7Cav-API <https://github.com/7cav/api>.
+ *
+ *  Licensed under the GNU General Public License v3 (see milpacs.proto for
+ *  the full notice).
+ */
+
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/7cav/api/proto";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "google/protobuf/empty.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "7Cav Tickets API";
+    version: "2.2.0";
+    description: "Read-only access to 7Cav forum tickets (nixfifty addon).";
+  }
+  schemes: HTTPS;
+  consumes: "application/json";
+  produces: "application/json";
+};
+
+service TicketsService {
+  rpc ListTickets(ListTicketsRequest) returns (ListTicketsResponse) {
+    option (google.api.http) = { get: "/api/v1/tickets" };
+  }
+  rpc GetTicket(GetTicketRequest) returns (GetTicketResponse) {
+    option (google.api.http) = { get: "/api/v1/tickets/{ticket_id}" };
+  }
+  rpc GetTicketByRef(GetTicketByRefRequest) returns (GetTicketResponse) {
+    option (google.api.http) = { get: "/api/v1/tickets/ref/{ticket_ref}" };
+  }
+  rpc ListTicketMessages(ListTicketMessagesRequest) returns (ListTicketMessagesResponse) {
+    option (google.api.http) = { get: "/api/v1/tickets/{ticket_id}/messages" };
+  }
+  rpc ListCategories(google.protobuf.Empty) returns (ListCategoriesResponse) {
+    option (google.api.http) = { get: "/api/v1/tickets/categories" };
+  }
+}
+
+message Ticket {
+  // Identity
+  uint32 ticket_id = 1;
+  string ticket_ref = 2;
+  string title = 3;
+
+  // Category
+  uint32 category_id = 10;
+  string category_title = 11;
+  repeated uint32 category_ancestor_ids = 12;
+
+  // State / workflow
+  string ticket_state = 20;
+  uint32 status_id = 21;
+  string status_name = 22;
+  uint32 priority_id = 23;
+  string priority_name = 24;
+  uint32 prefix_id = 25;
+  string prefix_name = 26;
+  string discussion_state = 27;
+  bool ticket_locked = 28;
+
+  // People
+  uint32 starter_user_id = 30;
+  string starter_username = 31;
+  uint32 assigned_user_id = 32;
+  string assigned_username = 33;
+  repeated TicketParticipant participants = 34;
+
+  // Activity
+  uint32 start_date = 40;
+  uint32 last_message_date = 41;
+  uint32 last_message_user_id = 42;
+  string last_message_username = 43;
+  uint32 last_modified_date = 44;
+  uint32 reply_count = 45;
+
+  // Data
+  map<string, string> custom_fields = 50;
+
+  // Convenience
+  string forum_url = 60;
+}
+
+message Message {
+  uint32 message_id = 1;
+  uint32 ticket_id = 2;
+  uint32 user_id = 3;
+  string username = 4;
+  uint32 message_date = 5;
+  string message = 6;
+  string message_state = 7;
+  uint32 position = 8;
+  uint32 attach_count = 9;
+  uint32 last_edit_date = 10;
+  uint32 edit_count = 11;
+}
+
+message Category {
+  uint32 category_id = 1;
+  string title = 2;
+  string description = 3;
+  uint32 parent_category_id = 4;
+  uint32 depth = 5;
+  uint32 display_order = 6;
+  uint32 ticket_count = 7;
+}
+
+message TicketParticipant {
+  uint32 user_id = 1;
+  uint32 last_read_date = 2;
+}
+
+message ListTicketsRequest {
+  repeated uint32 category_id = 1;
+  bool exclude_subcategories = 2;
+  repeated string ticket_state = 3;
+  repeated uint32 status_id = 4;
+  repeated uint32 prefix_id = 5;
+  repeated uint32 assigned_user_id = 6;
+  repeated uint32 starter_user_id = 7;
+  uint32 modified_since = 8;
+  bool include_hidden = 9;
+
+  uint32 per_page = 50;
+  string after_cursor = 51;
+}
+
+message ListTicketsResponse {
+  repeated Ticket tickets = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message GetTicketRequest {
+  uint32 ticket_id = 1;
+}
+
+message GetTicketByRefRequest {
+  string ticket_ref = 1;
+}
+
+message GetTicketResponse {
+  Ticket ticket = 1;
+  repeated Message first_messages = 2;
+  uint32 total_message_count = 3;
+}
+
+message ListTicketMessagesRequest {
+  uint32 ticket_id = 1;
+  uint32 per_page = 2;
+  uint32 after_position = 3;
+  bool include_hidden = 4;
+}
+
+message ListTicketMessagesResponse {
+  repeated Message messages = 1;
+  uint32 next_cursor = 2;
+  bool has_more = 3;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+}
