@@ -173,6 +173,12 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 	server.grpcServer = grpc.NewServer(grpcOpts...)
 	milpacs.RegisterMilpacServiceServer(server.grpcServer, service)
 
+	ticketsService := &grpcServices.TicketsService{
+		Datastore:      ds,
+		ReferenceCache: server.referenceCache,
+	}
+	milpacs.RegisterTicketsServiceServer(server.grpcServer, ticketsService)
+
 	if err := server.grpcServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start external gRPC servers: ", err)
 	}

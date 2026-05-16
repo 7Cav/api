@@ -143,6 +143,12 @@ func (service *Service) Server() *http.Server {
 		return nil
 	}
 
+	err = proto.RegisterTicketsServiceHandler(context.Background(), gwMux, conn)
+	if err != nil {
+		Error.Println("failed to register tickets gateway: ", err)
+		return nil
+	}
+
 	openApi := getOpenAPIHandler()
 
 	handler := authMiddleware(service.Datastore,
