@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
@@ -226,6 +227,40 @@ func decodeCursor(c string) (uint32, uint32, error) {
 		return 0, 0, err
 	}
 	return ts, id, nil
+}
+
+func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*proto.Ticket, error) {
+	var row xenforo.Ticket
+	tx := ds.Db.WithContext(ctx).
+		Preload("Participants").
+		Preload("FieldValues").
+		Where("ticket_id = ?", ticketID).
+		First(&row)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	base := forumBase
+	if base == "" {
+		base = ds.forumBaseURL()
+	}
+	return generateTicketProto(&row, rc, strings.TrimRight(base, "/")), nil
+}
+
+func (ds *Mysql) GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBase string) (*proto.Ticket, error) {
+	var row xenforo.Ticket
+	tx := ds.Db.WithContext(ctx).
+		Preload("Participants").
+		Preload("FieldValues").
+		Where("ticket_ref = ?", ref).
+		First(&row)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	base := forumBase
+	if base == "" {
+		base = ds.forumBaseURL()
+	}
+	return generateTicketProto(&row, rc, strings.TrimRight(base, "/")), nil
 }
 
 func (ds *Mysql) LoadCategories(ctx context.Context) ([]*referencecache.CategoryRecord, error) {

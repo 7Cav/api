@@ -186,3 +186,42 @@ func TestListTickets_CursorRoundTrip(t *testing.T) {
 	assert.Equal(t, uint32(2000), ts)
 	assert.Equal(t, uint32(42), id)
 }
+
+func TestGetTicket_HappyPath(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	rc := newFakeRefCache()
+
+	rows := sqlmock.NewRows([]string{
+		"ticket_id", "ticket_ref", "title", "user_id", "username", "start_date",
+		"priority", "status_id", "ticket_state", "ticket_locked", "discussion_state",
+		"assigned_user_id", "assigned_username", "ticket_category_id",
+		"last_message_id", "last_message_date", "last_message_user_id",
+		"last_message_username", "last_modified_date", "reply_count", "prefix_id",
+		"starter_user_id", "starter_username",
+	}).AddRow(7499, "MF1UI9HE", "T", 0, "", uint32(0), uint32(0), uint32(11), "open", uint32(0), "visible", uint32(0), "", uint32(17), uint32(0), uint32(0), uint32(0), "", uint32(0), uint32(0), uint32(0), uint32(0), "")
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_ticket`")).
+		WithArgs(uint32(7499), 1).
+		WillReturnRows(rows)
+	mock.ExpectQuery(regexp.QuoteMeta("xf_nf_tickets_ticket_field_value")).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id", "field_id", "field_value"}))
+	mock.ExpectQuery(regexp.QuoteMeta("xf_nf_tickets_ticket_participant")).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id", "user_id", "last_read_date"}))
+
+	ticket, err := (&ds).GetTicket(context.Background(), rc, 7499, "https://7cav.us")
+	require.NoError(t, err)
+	require.NotNil(t, ticket)
+	assert.Equal(t, "MF1UI9HE", ticket.TicketRef)
+	assert.Equal(t, "https://7cav.us/tickets/MF1UI9HE/", ticket.ForumUrl)
+}
+
+func TestGetTicket_NotFound(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	rc := newFakeRefCache()
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_ticket`")).
+		WithArgs(uint32(9999), 1).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id"}))
+	_, err := (&ds).GetTicket(context.Background(), rc, 9999, "")
+	require.Error(t, err)
+}
