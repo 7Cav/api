@@ -705,24 +705,36 @@ func (ds Mysql) GetTableUpdates() ([]xenforo.TableInfo, error) {
 }
 
 func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
-	var row struct {
-		KeyId     uint `gorm:"column:key_id"`
-		UserId    uint `gorm:"column:user_id"`
-		ScopeRead bool `gorm:"column:scope_read"`
+	var rows []struct {
+		KeyId     uint   `gorm:"column:key_id"`
+		UserId    uint   `gorm:"column:user_id"`
+		ScopeName string `gorm:"column:scope_name"`
 	}
 	tx := ds.Db.Raw(`
-		SELECT key_id, user_id, scope_read
-		FROM xf_cav7_api_key
-		WHERE key_hash = UNHEX(SHA2(?, 256))
-		  AND is_active = 1`, rawKey).Scan(&row)
+		SELECT k.key_id, k.user_id, sd.scope_name
+		FROM   xf_cav7_api_key k
+		JOIN   xf_cav7_api_key_scope ks     ON ks.key_id   = k.key_id
+		JOIN   xf_cav7_api_key_scope_def sd ON sd.scope_id = ks.scope_id
+		WHERE  k.key_hash   = UNHEX(SHA2(?, 256))
+		  AND  k.is_active  = 1
+		  AND  sd.is_active = 1`, rawKey).Scan(&rows)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
-	if tx.RowsAffected == 0 {
+	if len(rows) == 0 {
 		return nil, nil
 	}
-	go ds.Db.Exec(`UPDATE xf_cav7_api_key SET last_used_date = UNIX_TIMESTAMP() WHERE key_id = ?`, row.KeyId)
-	return &ApiKeyResult{KeyId: row.KeyId, UserId: row.UserId, ScopeRead: row.ScopeRead}, nil
+	scopes := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		scopes[r.ScopeName] = struct{}{}
+	}
+	keyId := rows[0].KeyId
+	go ds.Db.Exec(`UPDATE xf_cav7_api_key SET last_used_date = UNIX_TIMESTAMP() WHERE key_id = ?`, keyId)
+	return &ApiKeyResult{
+		KeyId:  keyId,
+		UserId: rows[0].UserId,
+		Scopes: scopes,
+	}, nil
 }
 
 func (ds Mysql) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {

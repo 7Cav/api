@@ -32,9 +32,18 @@ var (
 )
 
 type ApiKeyResult struct {
-	KeyId     uint
-	UserId    uint
-	ScopeRead bool
+	KeyId  uint
+	UserId uint
+	Scopes map[string]struct{}
+}
+
+// HasScope reports whether the API key has been granted the named scope.
+func (r *ApiKeyResult) HasScope(name string) bool {
+	if r == nil {
+		return false
+	}
+	_, ok := r.Scopes[name]
+	return ok
 }
 
 type Datastore interface {

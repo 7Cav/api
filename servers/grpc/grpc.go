@@ -41,6 +41,9 @@ var (
 )
 
 func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.ProfileRequest) (*proto.Profile, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	var (
 		profiles []*proto.Profile
 		err      error
@@ -65,6 +68,9 @@ func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.Pro
 }
 
 func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.RosterRequest) (*proto.Roster, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
 		return nil, errors.New("cannot request null roster type")
 	}
@@ -79,6 +85,9 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 }
 
 func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request *proto.KeycloakIdRequest) (*proto.Profile, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 
 	if request.GetKeycloakId() == "" {
 		Warn.Println("Empty Keycloak ID provided, cannot return profile")
@@ -94,6 +103,9 @@ func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request 
 }
 
 func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *proto.DiscordIdRequest) (*proto.Profile, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 
 	if request.GetDiscordId() == "" {
 		Warn.Println("Empty Discord ID provided, cannot return profile")
@@ -108,6 +120,9 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 	return profile, nil
 }
 func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.RosterRequest) (*proto.LiteRoster, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
 		return nil, errors.New("cannot request null roster type")
 	}
@@ -121,6 +136,9 @@ func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.
 	return roster, nil
 }
 func (server *MilpacsService) SearchByPosition(ctx context.Context, request *proto.PositionSearchRequest) (*proto.LiteRoster, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	if request.GetPositionQuery() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "position query cannot be empty")
 	}
@@ -134,6 +152,9 @@ func (server *MilpacsService) SearchByPosition(ctx context.Context, request *pro
 }
 
 func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *proto.RosterRequest) (*proto.S1UniformsRoster, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
 		return nil, errors.New("cannot request null roster type")
 	}
@@ -147,6 +168,9 @@ func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *
 }
 
 func (server *MilpacsService) GetAllRanks(ctx context.Context, _ *emptypb.Empty) (*proto.RanksResponse, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	ranks, err := server.Datastore.FindAllRanks()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error fetching ranks: %v", err)
@@ -158,6 +182,9 @@ func (server *MilpacsService) GetAllRanks(ctx context.Context, _ *emptypb.Empty)
 }
 
 func (server *MilpacsService) GetPositionGroups(ctx context.Context, _ *emptypb.Empty) (*proto.PositionGroupsResponse, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	groups, err := server.Datastore.FindAllPositionGroups()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error fetching position groups: %v", err)
@@ -169,6 +196,9 @@ func (server *MilpacsService) GetPositionGroups(ctx context.Context, _ *emptypb.
 }
 
 func (server *MilpacsService) GetAwol(ctx context.Context, _ *emptypb.Empty) (*proto.AwolResponse, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	awols, err := server.Datastore.FindAwol()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error fetching AWOL list: %v", err)
@@ -180,6 +210,9 @@ func (server *MilpacsService) GetAwol(ctx context.Context, _ *emptypb.Empty) (*p
 }
 
 func (server *MilpacsService) GetGamertagProfile(ctx context.Context, request *proto.GamertagRequest) (*proto.Profile, error) {
+	if err := RequireScope(ctx, "read"); err != nil {
+		return nil, err
+	}
 	if request.GetGamertag() == "" {
 		Warn.Println("Empty Gamertag provided, cannot return profile")
 		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "gamertag cannot be empty")

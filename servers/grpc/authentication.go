@@ -50,10 +50,10 @@ func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 		}
 
 		key, err := ds.ValidateApiKey(token)
-		if err != nil || key == nil || !key.ScopeRead {
+		if err != nil || key == nil {
 			return nil, status.Errorf(codes.Unauthenticated, "invalid api key")
 		}
 
-		return handler(ctx, req)
+		return handler(ContextWithKey(ctx, key), req)
 	}
 }

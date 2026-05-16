@@ -76,7 +76,7 @@ func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 		}
 
 		key, err := ds.ValidateApiKey(token)
-		if err != nil || key == nil || !key.ScopeRead {
+		if err != nil || key == nil {
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
