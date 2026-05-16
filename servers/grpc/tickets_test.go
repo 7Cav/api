@@ -118,3 +118,47 @@ func TestListTickets_DatastoreError(t *testing.T) {
 	_, err := svc.ListTickets(withTicketsKey("read:tickets"), &proto.ListTicketsRequest{})
 	require.Error(t, err)
 }
+
+func TestGetTicket_PopulatesFirstMessages(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			getTicket: func(id uint32) (*proto.Ticket, error) {
+				assert.Equal(t, uint32(7499), id)
+				return &proto.Ticket{TicketId: 7499, TicketRef: "MF1UI9HE"}, nil
+			},
+			firstMsgs: func(id uint32, n int) ([]*proto.Message, uint32, error) {
+				assert.Equal(t, uint32(7499), id)
+				assert.Equal(t, 10, n)
+				return []*proto.Message{{MessageId: 1}, {MessageId: 2}}, 15, nil
+			},
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	resp, err := svc.GetTicket(withTicketsKey("read:tickets"), &proto.GetTicketRequest{TicketId: 7499})
+	require.NoError(t, err)
+	assert.Equal(t, "MF1UI9HE", resp.Ticket.TicketRef)
+	assert.Len(t, resp.FirstMessages, 2)
+	assert.Equal(t, uint32(15), resp.TotalMessageCount)
+}
+
+func TestGetTicket_RequiresScope(t *testing.T) {
+	svc := &TicketsService{Datastore: &fakeDatastore{}, ReferenceCache: &referencecache.Cache{}}
+	_, err := svc.GetTicket(withTicketsKey(), &proto.GetTicketRequest{TicketId: 1})
+	require.Error(t, err)
+}
+
+func TestGetTicketByRef_HappyPath(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			getByRef: func(ref string) (*proto.Ticket, error) {
+				assert.Equal(t, "MF1UI9HE", ref)
+				return &proto.Ticket{TicketId: 1}, nil
+			},
+			firstMsgs: func(uint32, int) ([]*proto.Message, uint32, error) { return nil, 0, nil },
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	resp, err := svc.GetTicketByRef(withTicketsKey("read:tickets"), &proto.GetTicketByRefRequest{TicketRef: "MF1UI9HE"})
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), resp.Ticket.TicketId)
+}

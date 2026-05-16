@@ -43,3 +43,43 @@ func (s *TicketsService) ListTickets(ctx context.Context, req *proto.ListTickets
 		HasMore:    more,
 	}, nil
 }
+
+const firstMessagesCount = 10
+
+func (s *TicketsService) GetTicket(ctx context.Context, req *proto.GetTicketRequest) (*proto.GetTicketResponse, error) {
+	if err := RequireScope(ctx, "read:tickets"); err != nil {
+		return nil, err
+	}
+	ticket, err := s.Datastore.GetTicket(ctx, s.ReferenceCache, req.TicketId, "")
+	if err != nil {
+		return nil, err
+	}
+	msgs, total, err := s.Datastore.GetTicketFirstMessages(ctx, ticket.TicketId, firstMessagesCount, false)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetTicketResponse{
+		Ticket:            ticket,
+		FirstMessages:     msgs,
+		TotalMessageCount: total,
+	}, nil
+}
+
+func (s *TicketsService) GetTicketByRef(ctx context.Context, req *proto.GetTicketByRefRequest) (*proto.GetTicketResponse, error) {
+	if err := RequireScope(ctx, "read:tickets"); err != nil {
+		return nil, err
+	}
+	ticket, err := s.Datastore.GetTicketByRef(ctx, s.ReferenceCache, req.TicketRef, "")
+	if err != nil {
+		return nil, err
+	}
+	msgs, total, err := s.Datastore.GetTicketFirstMessages(ctx, ticket.TicketId, firstMessagesCount, false)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.GetTicketResponse{
+		Ticket:            ticket,
+		FirstMessages:     msgs,
+		TotalMessageCount: total,
+	}, nil
+}
