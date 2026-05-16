@@ -6,6 +6,7 @@ import (
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // TicketsService implements proto.TicketsServiceServer.
@@ -97,4 +98,15 @@ func (s *TicketsService) ListTicketMessages(ctx context.Context, req *proto.List
 		NextCursor: next,
 		HasMore:    more,
 	}, nil
+}
+
+func (s *TicketsService) ListCategories(ctx context.Context, _ *emptypb.Empty) (*proto.ListCategoriesResponse, error) {
+	if err := RequireScope(ctx, "read:tickets"); err != nil {
+		return nil, err
+	}
+	cats, err := s.Datastore.ListCategories(ctx, s.ReferenceCache)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.ListCategoriesResponse{Categories: cats}, nil
 }

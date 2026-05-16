@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // fakeDatastore implements datastores.Datastore with just the methods we need
@@ -183,4 +184,19 @@ func TestListTicketMessages_HappyPath(t *testing.T) {
 	require.Len(t, resp.Messages, 1)
 	assert.Equal(t, uint32(11), resp.NextCursor)
 	assert.True(t, resp.HasMore)
+}
+
+func TestListCategories_HappyPath(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			listCats: func() ([]*proto.Category, error) {
+				return []*proto.Category{{CategoryId: 5, Title: "S1"}}, nil
+			},
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	resp, err := svc.ListCategories(withTicketsKey("read:tickets"), &emptypb.Empty{})
+	require.NoError(t, err)
+	require.Len(t, resp.Categories, 1)
+	assert.Equal(t, "S1", resp.Categories[0].Title)
 }
