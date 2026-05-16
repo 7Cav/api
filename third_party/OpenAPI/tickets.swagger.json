@@ -22,6 +22,8 @@
   "paths": {
     "/api/v1/tickets": {
       "get": {
+        "summary": "List tickets",
+        "description": "List tickets matching optional filters (category, state, status, prefix, assignee, starter, modified_since). Cursor-paginated, sorted by last_modified_date DESC.",
         "operationId": "TicketsService_ListTickets",
         "responses": {
           "200": {
@@ -137,12 +139,14 @@
           }
         ],
         "tags": [
-          "TicketsService"
+          "Tickets"
         ]
       }
     },
     "/api/v1/tickets/categories": {
       "get": {
+        "summary": "List ticket categories",
+        "description": "Returns the full nixfifty category tree (24 entries). Reference data for the category_id filter on ListTickets.",
         "operationId": "TicketsService_ListCategories",
         "responses": {
           "200": {
@@ -159,12 +163,14 @@
           }
         },
         "tags": [
-          "TicketsService"
+          "Tickets"
         ]
       }
     },
     "/api/v1/tickets/ref/{ticketRef}": {
       "get": {
+        "summary": "Get a ticket by ref slug",
+        "description": "Fetch a single ticket by its user-facing alphanumeric reference (e.g. MF1UI9HE). Same response shape as GetTicket.",
         "operationId": "TicketsService_GetTicketByRef",
         "responses": {
           "200": {
@@ -189,12 +195,14 @@
           }
         ],
         "tags": [
-          "TicketsService"
+          "Tickets"
         ]
       }
     },
     "/api/v1/tickets/{ticketId}": {
       "get": {
+        "summary": "Get a ticket by numeric ID",
+        "description": "Fetch a single ticket by its integer ticket_id. Response includes the first 10 messages (oldest first) and the total message count; use ListTicketMessages for the full thread.",
         "operationId": "TicketsService_GetTicket",
         "responses": {
           "200": {
@@ -220,12 +228,14 @@
           }
         ],
         "tags": [
-          "TicketsService"
+          "Tickets"
         ]
       }
     },
     "/api/v1/tickets/{ticketId}/messages": {
       "get": {
+        "summary": "List messages on a ticket",
+        "description": "Paginated thread of messages for a single ticket, ordered by position ascending. Cursor uses position (unique per ticket).",
         "operationId": "TicketsService_ListTicketMessages",
         "responses": {
           "200": {
@@ -271,7 +281,7 @@
           }
         ],
         "tags": [
-          "TicketsService"
+          "Tickets"
         ]
       }
     }
@@ -582,5 +592,18 @@
         }
       }
     }
-  }
+  },
+  "securityDefinitions": {
+    "bearer": {
+      "type": "apiKey",
+      "description": "Authentication token, prefixed by Bearer: Bearer \u003ctoken\u003e",
+      "name": "Authorization",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ]
 }
