@@ -1,0 +1,586 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "7Cav Tickets API",
+    "description": "Read-only access to 7Cav forum tickets (nixfifty addon).",
+    "version": "2.2.0"
+  },
+  "tags": [
+    {
+      "name": "TicketsService"
+    }
+  ],
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/api/v1/tickets": {
+      "get": {
+        "operationId": "TicketsService_ListTickets",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoListTicketsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "categoryId",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "excludeSubcategories",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "ticketState",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "statusId",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "prefixId",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "assignedUserId",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "starterUserId",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "modifiedSince",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "includeHidden",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "afterCursor",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TicketsService"
+        ]
+      }
+    },
+    "/api/v1/tickets/categories": {
+      "get": {
+        "operationId": "TicketsService_ListCategories",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoListCategoriesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "TicketsService"
+        ]
+      }
+    },
+    "/api/v1/tickets/ref/{ticketRef}": {
+      "get": {
+        "operationId": "TicketsService_GetTicketByRef",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoGetTicketResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ticketRef",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "TicketsService"
+        ]
+      }
+    },
+    "/api/v1/tickets/{ticketId}": {
+      "get": {
+        "operationId": "TicketsService_GetTicket",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoGetTicketResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ],
+        "tags": [
+          "TicketsService"
+        ]
+      }
+    },
+    "/api/v1/tickets/{ticketId}/messages": {
+      "get": {
+        "operationId": "TicketsService_ListTicketMessages",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/protoListTicketMessagesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "afterPosition",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "includeHidden",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "TicketsService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protoCategory": {
+      "type": "object",
+      "properties": {
+        "categoryId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "parentCategoryId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "depth": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "displayOrder": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "ticketCount": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "protoGetTicketResponse": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "$ref": "#/definitions/protoTicket"
+        },
+        "firstMessages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoMessage"
+          }
+        },
+        "totalMessageCount": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "protoListCategoriesResponse": {
+      "type": "object",
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoCategory"
+          }
+        }
+      }
+    },
+    "protoListTicketMessagesResponse": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoMessage"
+          }
+        },
+        "nextCursor": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "hasMore": {
+          "type": "boolean"
+        }
+      }
+    },
+    "protoListTicketsResponse": {
+      "type": "object",
+      "properties": {
+        "tickets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoTicket"
+          }
+        },
+        "nextCursor": {
+          "type": "string"
+        },
+        "hasMore": {
+          "type": "boolean"
+        }
+      }
+    },
+    "protoMessage": {
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "ticketId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "userId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "username": {
+          "type": "string"
+        },
+        "messageDate": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "message": {
+          "type": "string"
+        },
+        "messageState": {
+          "type": "string"
+        },
+        "position": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "attachCount": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "lastEditDate": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "editCount": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "protoTicket": {
+      "type": "object",
+      "properties": {
+        "ticketId": {
+          "type": "integer",
+          "format": "int64",
+          "title": "Identity"
+        },
+        "ticketRef": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "categoryId": {
+          "type": "integer",
+          "format": "int64",
+          "title": "Category"
+        },
+        "categoryTitle": {
+          "type": "string"
+        },
+        "categoryAncestorIds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "ticketState": {
+          "type": "string",
+          "title": "State / workflow"
+        },
+        "statusId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "statusName": {
+          "type": "string"
+        },
+        "priorityId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "priorityName": {
+          "type": "string"
+        },
+        "prefixId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "prefixName": {
+          "type": "string"
+        },
+        "discussionState": {
+          "type": "string"
+        },
+        "ticketLocked": {
+          "type": "boolean"
+        },
+        "starterUserId": {
+          "type": "integer",
+          "format": "int64",
+          "title": "People"
+        },
+        "starterUsername": {
+          "type": "string"
+        },
+        "assignedUserId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "assignedUsername": {
+          "type": "string"
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protoTicketParticipant"
+          }
+        },
+        "startDate": {
+          "type": "integer",
+          "format": "int64",
+          "title": "Activity"
+        },
+        "lastMessageDate": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "lastMessageUserId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "lastMessageUsername": {
+          "type": "string"
+        },
+        "lastModifiedDate": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "replyCount": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "customFields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Data"
+        },
+        "forumUrl": {
+          "type": "string",
+          "title": "Convenience"
+        }
+      }
+    },
+    "protoTicketParticipant": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "lastReadDate": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  }
+}
