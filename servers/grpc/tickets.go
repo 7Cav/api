@@ -2,11 +2,15 @@ package grpc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"gorm.io/gorm"
 )
 
 // TicketsService implements proto.TicketsServiceServer.
@@ -36,7 +40,7 @@ func (s *TicketsService) ListTickets(ctx context.Context, req *proto.ListTickets
 	}
 	tickets, next, more, err := s.Datastore.ListTickets(ctx, s.ReferenceCache, filter)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "list tickets: %v", err)
 	}
 	return &proto.ListTicketsResponse{
 		Tickets:    tickets,
@@ -53,11 +57,14 @@ func (s *TicketsService) GetTicket(ctx context.Context, req *proto.GetTicketRequ
 	}
 	ticket, err := s.Datastore.GetTicket(ctx, s.ReferenceCache, req.TicketId, "")
 	if err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "ticket %d not found", req.TicketId)
+		}
+		return nil, status.Errorf(codes.Internal, "fetch ticket: %v", err)
 	}
 	msgs, total, err := s.Datastore.GetTicketFirstMessages(ctx, ticket.TicketId, firstMessagesCount, false)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "fetch ticket messages: %v", err)
 	}
 	return &proto.GetTicketResponse{
 		Ticket:            ticket,
@@ -72,11 +79,14 @@ func (s *TicketsService) GetTicketByRef(ctx context.Context, req *proto.GetTicke
 	}
 	ticket, err := s.Datastore.GetTicketByRef(ctx, s.ReferenceCache, req.TicketRef, "")
 	if err != nil {
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "ticket %q not found", req.TicketRef)
+		}
+		return nil, status.Errorf(codes.Internal, "fetch ticket: %v", err)
 	}
 	msgs, total, err := s.Datastore.GetTicketFirstMessages(ctx, ticket.TicketId, firstMessagesCount, false)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "fetch ticket messages: %v", err)
 	}
 	return &proto.GetTicketResponse{
 		Ticket:            ticket,
@@ -91,7 +101,7 @@ func (s *TicketsService) ListTicketMessages(ctx context.Context, req *proto.List
 	}
 	msgs, next, more, err := s.Datastore.ListTicketMessages(ctx, req.TicketId, req.AfterPosition, req.PerPage, req.IncludeHidden)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "list ticket messages: %v", err)
 	}
 	return &proto.ListTicketMessagesResponse{
 		Messages:   msgs,
@@ -106,7 +116,7 @@ func (s *TicketsService) ListCategories(ctx context.Context, _ *emptypb.Empty) (
 	}
 	cats, err := s.Datastore.ListCategories(ctx, s.ReferenceCache)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "list ticket categories: %v", err)
 	}
 	return &proto.ListCategoriesResponse{Categories: cats}, nil
 }

@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"gorm.io/gorm"
 )
 
 // fakeDatastore implements datastores.Datastore with just the methods we need
@@ -83,28 +84,68 @@ func TestListTickets_RequiresScope(t *testing.T) {
 }
 
 func TestListTickets_HappyPath(t *testing.T) {
-	called := false
+	var got *datastores.ListTicketsFilter
 	svc := &TicketsService{
 		Datastore: &fakeDatastore{
 			listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
-				called = true
-				assert.Equal(t, []uint32{5}, f.CategoryIDs)
-				assert.Equal(t, []string{"open"}, f.TicketStates)
+				got = f
 				return []*proto.Ticket{{TicketId: 1}}, "next123", true, nil
 			},
 		},
 		ReferenceCache: &referencecache.Cache{},
 	}
 	ctx := withTicketsKey("read:tickets")
-	resp, err := svc.ListTickets(ctx, &proto.ListTicketsRequest{
-		CategoryId:  []uint32{5},
-		TicketState: []string{"open"},
-	})
+	req := &proto.ListTicketsRequest{
+		CategoryId:           []uint32{5},
+		ExcludeSubcategories: true,
+		TicketState:          []string{"open"},
+		StatusId:             []uint32{1, 3},
+		PrefixId:             []uint32{2},
+		AssignedUserId:       []uint32{100},
+		StarterUserId:        []uint32{200},
+		ModifiedSince:        1736000000,
+		IncludeHidden:        true,
+		PerPage:              25,
+		AfterCursor:          "cursor-abc",
+	}
+	resp, err := svc.ListTickets(ctx, req)
 	require.NoError(t, err)
-	assert.True(t, called)
+	require.NotNil(t, got)
+
+	wantFilter := &datastores.ListTicketsFilter{
+		CategoryIDs:          []uint32{5},
+		ExcludeSubcategories: true,
+		TicketStates:         []string{"open"},
+		StatusIDs:            []uint32{1, 3},
+		PrefixIDs:            []uint32{2},
+		AssignedUserIDs:      []uint32{100},
+		StarterUserIDs:       []uint32{200},
+		ModifiedSince:        1736000000,
+		IncludeHidden:        true,
+		PerPage:              25,
+		AfterCursor:          "cursor-abc",
+	}
+	assert.Equal(t, wantFilter, got)
+
 	require.Len(t, resp.Tickets, 1)
 	assert.Equal(t, "next123", resp.NextCursor)
 	assert.True(t, resp.HasMore)
+}
+
+func TestGetTicket_NotFoundReturns404Code(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			getTicket: func(id uint32) (*proto.Ticket, error) {
+				return nil, gorm.ErrRecordNotFound
+			},
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	_, err := svc.GetTicket(withTicketsKey("read:tickets"), &proto.GetTicketRequest{TicketId: 99999})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
 }
 
 func TestListTickets_DatastoreError(t *testing.T) {
