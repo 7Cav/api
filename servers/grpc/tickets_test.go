@@ -162,3 +162,25 @@ func TestGetTicketByRef_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint32(1), resp.Ticket.TicketId)
 }
+
+func TestListTicketMessages_HappyPath(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			listMsgs: func(id, after, per uint32, hidden bool) ([]*proto.Message, uint32, bool, error) {
+				assert.Equal(t, uint32(7499), id)
+				assert.Equal(t, uint32(10), after)
+				assert.Equal(t, uint32(50), per)
+				assert.False(t, hidden)
+				return []*proto.Message{{MessageId: 11}}, 11, true, nil
+			},
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	resp, err := svc.ListTicketMessages(withTicketsKey("read:tickets"), &proto.ListTicketMessagesRequest{
+		TicketId: 7499, AfterPosition: 10, PerPage: 50,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, uint32(11), resp.NextCursor)
+	assert.True(t, resp.HasMore)
+}

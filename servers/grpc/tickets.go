@@ -83,3 +83,18 @@ func (s *TicketsService) GetTicketByRef(ctx context.Context, req *proto.GetTicke
 		TotalMessageCount: total,
 	}, nil
 }
+
+func (s *TicketsService) ListTicketMessages(ctx context.Context, req *proto.ListTicketMessagesRequest) (*proto.ListTicketMessagesResponse, error) {
+	if err := RequireScope(ctx, "read:tickets"); err != nil {
+		return nil, err
+	}
+	msgs, next, more, err := s.Datastore.ListTicketMessages(ctx, req.TicketId, req.AfterPosition, req.PerPage, req.IncludeHidden)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.ListTicketMessagesResponse{
+		Messages:   msgs,
+		NextCursor: next,
+		HasMore:    more,
+	}, nil
+}
