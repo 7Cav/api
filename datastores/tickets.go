@@ -2,10 +2,32 @@ package datastores
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"strconv"
 
+	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"github.com/7cav/api/xenforo"
+	"github.com/spf13/viper"
 )
+
+// ListTicketsFilter carries the conjunctive filter knobs supported by
+// ListTickets. Empty slices and zero-valued scalars mean "no filter."
+type ListTicketsFilter struct {
+	CategoryIDs          []uint32
+	ExcludeSubcategories bool
+	TicketStates         []string
+	StatusIDs            []uint32
+	PrefixIDs            []uint32
+	AssignedUserIDs      []uint32
+	StarterUserIDs       []uint32
+	ModifiedSince        uint32
+	IncludeHidden        bool
+
+	PerPage     uint32
+	AfterCursor string
+}
 
 // Compile-time assertion: Mysql must implement referencecache.Loader.
 var _ referencecache.Loader = (*Mysql)(nil)
@@ -46,6 +68,164 @@ func (ds *Mysql) loadPhraseMap(ctx context.Context, prefix string) (map[uint32]s
 		out[uint32(parsed)] = r.PhraseText
 	}
 	return out, nil
+}
+
+func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	perPage := f.PerPage
+	if perPage == 0 || perPage > 100 {
+		if perPage == 0 {
+			perPage = 50
+		} else {
+			perPage = 100
+		}
+	}
+
+	q := ds.Db.WithContext(ctx).
+		Model(&xenforo.Ticket{}).
+		Preload("Participants").
+		Preload("FieldValues")
+
+	// Visibility default: only visible discussion_state unless include_hidden.
+	if !f.IncludeHidden {
+		q = q.Where("discussion_state = ?", "visible")
+	}
+
+	// Category filter with subtree expansion (default expands; opt-out via ExcludeSubcategories).
+	if len(f.CategoryIDs) > 0 {
+		ids := f.CategoryIDs
+		if !f.ExcludeSubcategories {
+			ids = rc.ExpandSubtree(ids)
+		}
+		q = q.Where("ticket_category_id IN ?", ids)
+	}
+	if len(f.TicketStates) > 0 {
+		q = q.Where("ticket_state IN ?", f.TicketStates)
+	}
+	if len(f.StatusIDs) > 0 {
+		q = q.Where("status_id IN ?", f.StatusIDs)
+	}
+	if len(f.PrefixIDs) > 0 {
+		q = q.Where("prefix_id IN ?", f.PrefixIDs)
+	}
+	if len(f.AssignedUserIDs) > 0 {
+		q = q.Where("assigned_user_id IN ?", f.AssignedUserIDs)
+	}
+	if len(f.StarterUserIDs) > 0 {
+		q = q.Where("starter_user_id IN ?", f.StarterUserIDs)
+	}
+	if f.ModifiedSince > 0 {
+		q = q.Where("last_modified_date >= ?", f.ModifiedSince)
+	}
+
+	if f.AfterCursor != "" {
+		ts, id, err := decodeCursor(f.AfterCursor)
+		if err != nil {
+			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
+		}
+		// Tuple comparison for stable cursor under non-unique sort key.
+		q = q.Where("(last_modified_date < ?) OR (last_modified_date = ? AND ticket_id < ?)", ts, ts, id)
+	}
+
+	// Fetch perPage+1 so we know whether there's another page without a count query.
+	var rows []xenforo.Ticket
+	q = q.Order("last_modified_date DESC, ticket_id DESC").Limit(int(perPage) + 1)
+	tx := q.Find(&rows)
+	if tx.Error != nil {
+		return nil, "", false, tx.Error
+	}
+
+	hasMore := len(rows) > int(perPage)
+	if hasMore {
+		rows = rows[:perPage]
+	}
+
+	out := make([]*proto.Ticket, 0, len(rows))
+	for i := range rows {
+		out = append(out, generateTicketProto(&rows[i], rc, ds.forumBaseURL()))
+	}
+
+	var nextCursor string
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		nextCursor = encodeCursor(last.LastModifiedDate, last.TicketID)
+	}
+	return out, nextCursor, hasMore, nil
+}
+
+// generateTicketProto maps a xenforo.Ticket to proto.Ticket, resolving
+// reference-cached names and assembling the custom_fields map.
+func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase string) *proto.Ticket {
+	out := &proto.Ticket{
+		TicketId:            t.TicketID,
+		TicketRef:           t.TicketRef,
+		Title:               t.Title,
+		CategoryId:          t.TicketCategoryID,
+		CategoryAncestorIds: rc.CategoryAncestors(t.TicketCategoryID),
+		TicketState:         t.TicketState,
+		StatusId:            t.StatusID,
+		StatusName:          rc.StatusName(t.StatusID),
+		PriorityId:          t.Priority,
+		PriorityName:        rc.PriorityName(t.Priority),
+		PrefixId:            t.PrefixID,
+		PrefixName:          rc.PrefixName(t.PrefixID),
+		DiscussionState:     t.DiscussionState,
+		TicketLocked:        t.TicketLocked != 0,
+		StarterUserId:       t.StarterUserID,
+		StarterUsername:     t.StarterUsername,
+		AssignedUserId:      t.AssignedUserID,
+		AssignedUsername:    t.AssignedUsername,
+		StartDate:           t.StartDate,
+		LastMessageDate:     t.LastMessageDate,
+		LastMessageUserId:   t.LastMessageUserID,
+		LastMessageUsername: t.LastMessageUsername,
+		LastModifiedDate:    t.LastModifiedDate,
+		ReplyCount:          t.ReplyCount,
+		CustomFields:        map[string]string{},
+	}
+	if cat := rc.Category(t.TicketCategoryID); cat != nil {
+		out.CategoryTitle = cat.Title
+	}
+	for _, fv := range t.FieldValues {
+		out.CustomFields[fv.FieldID] = fv.FieldValue
+	}
+	for _, p := range t.Participants {
+		out.Participants = append(out.Participants, &proto.TicketParticipant{
+			UserId: p.UserID, LastReadDate: p.LastReadDate,
+		})
+	}
+	if forumBase != "" {
+		out.ForumUrl = forumBase + "/tickets/" + t.TicketRef + "/"
+	}
+	return out
+}
+
+// forumBaseURL returns the configured FORUM_BASE_URL, trimmed of trailing slashes.
+// Reads via viper to match the rest of the codebase's config style.
+func (ds *Mysql) forumBaseURL() string {
+	v := viper.GetString("FORUM_BASE_URL")
+	for len(v) > 0 && v[len(v)-1] == '/' {
+		v = v[:len(v)-1]
+	}
+	return v
+}
+
+// encodeCursor packs (last_modified_date, ticket_id) into a single opaque
+// base64 string. Callers must not parse it.
+func encodeCursor(lastModified, ticketID uint32) string {
+	raw := fmt.Sprintf("%d:%d", lastModified, ticketID)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+func decodeCursor(c string) (uint32, uint32, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(c)
+	if err != nil {
+		return 0, 0, err
+	}
+	var ts, id uint32
+	if _, err := fmt.Sscanf(string(raw), "%d:%d", &ts, &id); err != nil {
+		return 0, 0, err
+	}
+	return ts, id, nil
 }
 
 func (ds *Mysql) LoadCategories(ctx context.Context) ([]*referencecache.CategoryRecord, error) {

@@ -1,0 +1,188 @@
+package datastores
+
+import (
+	"context"
+	"regexp"
+	"testing"
+
+	"github.com/7cav/api/referencecache"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type fakeRefCache struct {
+	statuses   map[uint32]string
+	priorities map[uint32]string
+	prefixes   map[uint32]string
+	cats       map[uint32]*referencecache.CategoryRecord
+	subtree    func([]uint32) []uint32
+}
+
+func (f *fakeRefCache) StatusName(id uint32) string                       { return f.statuses[id] }
+func (f *fakeRefCache) PriorityName(id uint32) string                     { return f.priorities[id] }
+func (f *fakeRefCache) PrefixName(id uint32) string                       { return f.prefixes[id] }
+func (f *fakeRefCache) Category(id uint32) *referencecache.CategoryRecord { return f.cats[id] }
+func (f *fakeRefCache) CategoryAncestors(id uint32) []uint32 {
+	cat := f.cats[id]
+	if cat == nil || cat.ParentID == 0 {
+		return nil
+	}
+	return []uint32{cat.ParentID}
+}
+func (f *fakeRefCache) CategoryTree() []*referencecache.CategoryRecord {
+	out := make([]*referencecache.CategoryRecord, 0, len(f.cats))
+	for _, c := range f.cats {
+		out = append(out, c)
+	}
+	return out
+}
+func (f *fakeRefCache) ExpandSubtree(ids []uint32) []uint32 {
+	if f.subtree != nil {
+		return f.subtree(ids)
+	}
+	return ids
+}
+
+func newFakeRefCache() *fakeRefCache {
+	return &fakeRefCache{
+		statuses:   map[uint32]string{1: "Open", 11: "Closed"},
+		priorities: map[uint32]string{1: "Low"},
+		prefixes:   map[uint32]string{},
+		cats: map[uint32]*referencecache.CategoryRecord{
+			5:  {ID: 5, Title: "S1 Personnel Admin", Lft: 1, Rgt: 12},
+			17: {ID: 17, ParentID: 5, Title: "S1 Citations", Lft: 2, Rgt: 3},
+		},
+	}
+}
+
+func TestListTickets_NoFiltersHappyPath(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+
+	rc := newFakeRefCache()
+
+	rows := sqlmock.NewRows([]string{
+		"ticket_id", "ticket_ref", "title",
+		"user_id", "username", "start_date",
+		"priority", "status_id", "ticket_state",
+		"ticket_locked", "discussion_state",
+		"assigned_user_id", "assigned_username",
+		"ticket_category_id", "last_message_id",
+		"last_message_date", "last_message_user_id",
+		"last_message_username", "last_modified_date",
+		"reply_count", "prefix_id",
+		"starter_user_id", "starter_username",
+	}).AddRow(
+		7499, "MF1UI9HE", "HALO Combat Jump",
+		1648, "Hilberg.A", uint32(1736294298),
+		uint32(1), uint32(11), "open",
+		uint32(0), "visible",
+		uint32(0), "",
+		uint32(17), uint32(55112),
+		uint32(1736557390), uint32(7804),
+		"Angels.N", uint32(1736556824),
+		uint32(4), uint32(0),
+		uint32(1648), "Hilberg.A",
+	)
+
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_ticket`")).
+		WillReturnRows(rows)
+
+	// field_values + participants preload queries (GORM orders alphabetically by association name)
+	mock.ExpectQuery(regexp.QuoteMeta("xf_nf_tickets_ticket_field_value")).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id", "field_id", "field_value"}))
+	mock.ExpectQuery(regexp.QuoteMeta("xf_nf_tickets_ticket_participant")).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id", "user_id", "last_read_date"}))
+
+	tickets, next, more, err := (&ds).ListTickets(context.Background(), rc, &ListTicketsFilter{PerPage: 50})
+	require.NoError(t, err)
+	assert.Empty(t, next, "no cursor returned for a single-page result set")
+	assert.False(t, more)
+	require.Len(t, tickets, 1)
+	got := tickets[0]
+	assert.Equal(t, uint32(7499), got.TicketId)
+	assert.Equal(t, "MF1UI9HE", got.TicketRef)
+	assert.Equal(t, "Closed", got.StatusName, "status name resolved from reference cache")
+	assert.Equal(t, "S1 Citations", got.CategoryTitle)
+	assert.Equal(t, []uint32{5}, got.CategoryAncestorIds)
+}
+
+func TestListTickets_FilterByCategoryExpandsSubtree(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+
+	rc := newFakeRefCache()
+	rc.subtree = func(in []uint32) []uint32 {
+		assert.Equal(t, []uint32{5}, in)
+		return []uint32{5, 17, 16, 14, 15, 24}
+	}
+
+	rows := sqlmock.NewRows([]string{"ticket_id"})
+	mock.ExpectQuery(regexp.QuoteMeta("ticket_category_id IN")).
+		WithArgs("visible", uint32(5), uint32(17), uint32(16), uint32(14), uint32(15), uint32(24), 51).
+		WillReturnRows(rows)
+
+	_, _, _, err := (&ds).ListTickets(context.Background(), rc, &ListTicketsFilter{
+		CategoryIDs: []uint32{5},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestListTickets_ExcludeSubcategoriesSkipsExpansion(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	rc := newFakeRefCache()
+	rc.subtree = func(in []uint32) []uint32 {
+		t.Fatalf("subtree should not have been called")
+		return nil
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("ticket_category_id IN")).
+		WithArgs("visible", uint32(5), 51).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id"}))
+	_, _, _, err := (&ds).ListTickets(context.Background(), rc, &ListTicketsFilter{
+		CategoryIDs:          []uint32{5},
+		ExcludeSubcategories: true,
+	})
+	require.NoError(t, err)
+}
+
+func TestListTickets_CursorPagination(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	rc := newFakeRefCache()
+
+	// Two rows, perPage=1, so hasMore=true and a cursor comes back.
+	header := []string{
+		"ticket_id", "ticket_ref", "title", "user_id", "username", "start_date",
+		"priority", "status_id", "ticket_state", "ticket_locked", "discussion_state",
+		"assigned_user_id", "assigned_username", "ticket_category_id",
+		"last_message_id", "last_message_date", "last_message_user_id",
+		"last_message_username", "last_modified_date", "reply_count", "prefix_id",
+		"starter_user_id", "starter_username",
+	}
+	rows := sqlmock.NewRows(header).
+		AddRow(2, "B", "t2", 0, "", uint32(0), uint32(0), uint32(0), "open", uint32(0), "visible", uint32(0), "", uint32(0), uint32(0), uint32(0), uint32(0), "", uint32(2000), uint32(0), uint32(0), uint32(0), "").
+		AddRow(1, "A", "t1", 0, "", uint32(0), uint32(0), uint32(0), "open", uint32(0), "visible", uint32(0), "", uint32(0), uint32(0), uint32(0), uint32(0), "", uint32(1000), uint32(0), uint32(0), uint32(0), "")
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_ticket`")).WillReturnRows(rows)
+	mock.ExpectQuery(regexp.QuoteMeta("xf_nf_tickets_ticket_field_value")).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id", "field_id", "field_value"}))
+	mock.ExpectQuery(regexp.QuoteMeta("xf_nf_tickets_ticket_participant")).
+		WillReturnRows(sqlmock.NewRows([]string{"ticket_id", "user_id", "last_read_date"}))
+
+	tickets, next, more, err := (&ds).ListTickets(context.Background(), rc, &ListTicketsFilter{PerPage: 1})
+	require.NoError(t, err)
+	assert.True(t, more)
+	require.NotEmpty(t, next)
+	require.Len(t, tickets, 1)
+	assert.Equal(t, uint32(2), tickets[0].TicketId, "newest first by last_modified_date DESC")
+}
+
+func TestListTickets_CursorRoundTrip(t *testing.T) {
+	c := encodeCursor(2000, 42)
+	ts, id, err := decodeCursor(c)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(2000), ts)
+	assert.Equal(t, uint32(42), id)
+}
