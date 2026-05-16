@@ -225,3 +225,30 @@ func TestGetTicket_NotFound(t *testing.T) {
 	_, err := (&ds).GetTicket(context.Background(), rc, 9999, "")
 	require.Error(t, err)
 }
+
+func TestGetTicketFirstMessages_HappyPath(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	// Count query (returns total count).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT count")).
+		WithArgs(uint32(7499), "visible").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(15))
+	// Page query (up to N rows).
+	mrows := sqlmock.NewRows([]string{
+		"message_id", "ticket_id", "user_id", "username",
+		"message_date", "message", "message_state",
+		"position", "attach_count", "last_edit_date", "edit_count",
+	})
+	for i := 1; i <= 10; i++ {
+		mrows = mrows.AddRow(uint32(i), uint32(7499), uint32(0), "", uint32(0), "m", "visible", uint32(i), uint32(0), uint32(0), uint32(0))
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_message`")).
+		WithArgs(uint32(7499), "visible", 10).
+		WillReturnRows(mrows)
+
+	msgs, total, err := (&ds).GetTicketFirstMessages(context.Background(), 7499, 10, false)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(15), total)
+	assert.Len(t, msgs, 10)
+	assert.Equal(t, uint32(1), msgs[0].Position)
+}

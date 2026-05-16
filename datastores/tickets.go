@@ -246,6 +246,48 @@ func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketI
 	return generateTicketProto(&row, rc, strings.TrimRight(base, "/")), nil
 }
 
+func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error) {
+	var total int64
+	q := ds.Db.WithContext(ctx).Model(&xenforo.TicketMessage{}).Where("ticket_id = ?", ticketID)
+	if !includeHidden {
+		q = q.Where("message_state = ?", "visible")
+	}
+	if tx := q.Count(&total); tx.Error != nil {
+		return nil, 0, tx.Error
+	}
+
+	var rows []xenforo.TicketMessage
+	q2 := ds.Db.WithContext(ctx).Where("ticket_id = ?", ticketID)
+	if !includeHidden {
+		q2 = q2.Where("message_state = ?", "visible")
+	}
+	tx := q2.Order("position ASC").Limit(n).Find(&rows)
+	if tx.Error != nil {
+		return nil, 0, tx.Error
+	}
+	out := make([]*proto.Message, 0, len(rows))
+	for i := range rows {
+		out = append(out, messageToProto(&rows[i]))
+	}
+	return out, uint32(total), nil
+}
+
+func messageToProto(m *xenforo.TicketMessage) *proto.Message {
+	return &proto.Message{
+		MessageId:    m.MessageID,
+		TicketId:     m.TicketID,
+		UserId:       m.UserID,
+		Username:     m.Username,
+		MessageDate:  m.MessageDate,
+		Message:      m.Message,
+		MessageState: m.MessageState,
+		Position:     m.Position,
+		AttachCount:  m.AttachCount,
+		LastEditDate: m.LastEditDate,
+		EditCount:    m.EditCount,
+	}
+}
+
 func (ds *Mysql) GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBase string) (*proto.Ticket, error) {
 	var row xenforo.Ticket
 	tx := ds.Db.WithContext(ctx).
