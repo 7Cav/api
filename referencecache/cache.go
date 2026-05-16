@@ -136,9 +136,14 @@ func (c *Cache) CategoryAncestors(id uint32) []uint32 {
 	if !ok {
 		return nil
 	}
+	seen := map[uint32]struct{}{id: {}}
 	var chain []uint32
 	parent := cat.ParentID
 	for parent != 0 {
+		if _, dup := seen[parent]; dup {
+			break // cycle in data — stop here, return what we have
+		}
+		seen[parent] = struct{}{}
 		chain = append([]uint32{parent}, chain...) // root-first
 		p, ok := c.categories[parent]
 		if !ok {

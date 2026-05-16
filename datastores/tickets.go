@@ -2,7 +2,7 @@ package datastores
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/7cav/api/referencecache"
 )
@@ -39,11 +39,11 @@ func (ds *Mysql) loadPhraseMap(ctx context.Context, prefix string) (map[uint32]s
 	out := map[uint32]string{}
 	for _, r := range rows {
 		idStr := r.Title[len(prefix):]
-		var id uint32
-		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		parsed, err := strconv.ParseUint(idStr, 10, 32)
+		if err != nil {
 			continue
 		}
-		out[id] = r.PhraseText
+		out[uint32(parsed)] = r.PhraseText
 	}
 	return out, nil
 }

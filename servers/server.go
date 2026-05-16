@@ -145,7 +145,7 @@ func (server *MicroServer) Start() {
 	if err := server.referenceCache.Refresh(context.Background()); err != nil {
 		Error.Fatalf("initial reference cache load failed: %v", err)
 	}
-	go runReferenceCacheRefresh(server.referenceCache)
+	go runReferenceCacheRefresh(context.Background(), server.referenceCache)
 	go cache.CacheManager(server.cache, ds)
 
 	// relevant Grpc options
@@ -186,7 +186,7 @@ func servHTTP(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
 	}
 }
 
-func runReferenceCacheRefresh(rc *referencecache.Cache) {
+func runReferenceCacheRefresh(ctx context.Context, rc *referencecache.Cache) {
 	interval := 15 * time.Minute
 	if v := viper.GetString("REFERENCE_CACHE_REFRESH_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -197,9 +197,14 @@ func runReferenceCacheRefresh(rc *referencecache.Cache) {
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for range ticker.C {
-		if err := rc.Refresh(context.Background()); err != nil {
-			Warn.Printf("reference cache refresh failed (keeping previous data): %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := rc.Refresh(ctx); err != nil {
+				Warn.Printf("reference cache refresh failed (keeping previous data): %v", err)
+			}
 		}
 	}
 }
