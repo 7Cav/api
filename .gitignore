@@ -20,3 +20,8 @@ out/
 api
 
 docker-compose.yaml
+
+# Claude Code local working files
+.claude/
+docs/superpowers/
+CLAUDE.md
