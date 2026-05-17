@@ -22,6 +22,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
@@ -47,6 +48,23 @@ func (r *ApiKeyResult) HasScope(name string) bool {
 	}
 	_, ok := r.Scopes[name]
 	return ok
+}
+
+// ParseBearerToken extracts the raw API token from an Authorization header
+// value. Returns "" if no Bearer scheme is present, the token is empty,
+// or the result exceeds maxLen. Scheme name is matched case-insensitively
+// per RFC 7235.
+func ParseBearerToken(raw string, maxLen int) string {
+	raw = strings.TrimSpace(raw)
+	const prefix = "Bearer "
+	if len(raw) < len(prefix) || !strings.EqualFold(raw[:len(prefix)], prefix) {
+		return ""
+	}
+	tok := strings.TrimSpace(raw[len(prefix):])
+	if tok == "" || len(tok) > maxLen {
+		return ""
+	}
+	return tok
 }
 
 type Datastore interface {
