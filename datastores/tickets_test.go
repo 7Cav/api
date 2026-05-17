@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/7cav/api/referencecache"
+	"github.com/7cav/api/xenforo"
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -271,10 +272,10 @@ func TestListTicketMessages_Pagination(t *testing.T) {
 		WithArgs(uint32(1), uint32(10), "visible", 3).
 		WillReturnRows(rows)
 
-	msgs, next, more, err := (&ds).ListTicketMessages(context.Background(), 1, 10, 2, false)
+	msgs, next, more, err := (&ds).ListTicketMessages(context.Background(), 1, encodeMessageCursor(10), 2, false)
 	require.NoError(t, err)
 	assert.True(t, more)
-	assert.Equal(t, uint32(12), next, "cursor is position of last returned message")
+	assert.Equal(t, encodeMessageCursor(12), next, "cursor is base64 of position of last returned message")
 	assert.Len(t, msgs, 2)
 }
 
@@ -321,4 +322,46 @@ func TestDecodeCursor_ValidRoundTrip(t *testing.T) {
 // base64URL returns base64.RawURLEncoding.EncodeToString([]byte(s)).
 func base64URL(s string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(s))
+}
+
+func TestEncodeDecodeMessageCursor_RoundTrip(t *testing.T) {
+	enc := encodeMessageCursor(42)
+	pos, err := decodeMessageCursor(enc)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(42), pos)
+}
+
+func TestDecodeMessageCursor_EmptyMeansBeginning(t *testing.T) {
+	pos, err := decodeMessageCursor("")
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), pos)
+}
+
+func TestDecodeMessageCursor_GarbageReturnsErrInvalidCursor(t *testing.T) {
+	// Note: base64URL("") == "" which is the documented "start from beginning"
+	// sentinel (see TestDecodeMessageCursor_EmptyMeansBeginning), so it is
+	// intentionally NOT in the garbage list here.
+	cases := []string{
+		"garbage-not-base64",
+		base64URL("notanumber"),
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			_, err := decodeMessageCursor(in)
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, ErrInvalidCursor),
+				"want errors.Is(err, ErrInvalidCursor); got %v", err)
+		})
+	}
+}
+
+func TestGenerateTicketProto_TotalMessageCountDerived(t *testing.T) {
+	rc := newFakeRefCache()
+	row := &xenforo.Ticket{
+		TicketID:   7499,
+		ReplyCount: 80,
+	}
+	out := generateTicketProto(row, rc, "")
+	assert.Equal(t, uint32(81), out.TotalMessageCount,
+		"total_message_count must equal reply_count + 1 (starter post + replies)")
 }

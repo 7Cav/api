@@ -26,7 +26,7 @@ type fakeDatastore struct {
 	getTicket   func(uint32) (*proto.Ticket, error)
 	getByRef    func(string) (*proto.Ticket, error)
 	firstMsgs   func(uint32, int) ([]*proto.Message, uint32, error)
-	listMsgs    func(uint32, uint32, uint32, bool) ([]*proto.Message, uint32, bool, error)
+	listMsgs    func(uint32, string, uint32, bool) ([]*proto.Message, string, bool, error)
 	listCats    func() ([]*proto.Category, error)
 }
 
@@ -42,7 +42,7 @@ func (f *fakeDatastore) GetTicketByRef(_ context.Context, _ datastores.TicketRef
 func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, id uint32, n int, _ bool) ([]*proto.Message, uint32, error) {
 	return f.firstMsgs(id, n)
 }
-func (f *fakeDatastore) ListTicketMessages(_ context.Context, id, after, per uint32, hidden bool) ([]*proto.Message, uint32, bool, error) {
+func (f *fakeDatastore) ListTicketMessages(_ context.Context, id uint32, after string, per uint32, hidden bool) ([]*proto.Message, string, bool, error) {
 	return f.listMsgs(id, after, per, hidden)
 }
 func (f *fakeDatastore) ListCategories(_ context.Context, _ datastores.TicketReferenceCache) ([]*proto.Category, error) {
@@ -209,22 +209,22 @@ func TestGetTicketByRef_HappyPath(t *testing.T) {
 func TestListTicketMessages_HappyPath(t *testing.T) {
 	svc := &TicketsService{
 		Datastore: &fakeDatastore{
-			listMsgs: func(id, after, per uint32, hidden bool) ([]*proto.Message, uint32, bool, error) {
+			listMsgs: func(id uint32, after string, per uint32, hidden bool) ([]*proto.Message, string, bool, error) {
 				assert.Equal(t, uint32(7499), id)
-				assert.Equal(t, uint32(10), after)
+				assert.Equal(t, "Y3Vyc29yOjEw", after, "handler must pass cursor through unchanged")
 				assert.Equal(t, uint32(50), per)
 				assert.False(t, hidden)
-				return []*proto.Message{{MessageId: 11}}, 11, true, nil
+				return []*proto.Message{{MessageId: 11}}, "Y3Vyc29yOjEx", true, nil
 			},
 		},
 		ReferenceCache: &referencecache.Cache{},
 	}
 	resp, err := svc.ListTicketMessages(withTicketsKey("read:tickets"), &proto.ListTicketMessagesRequest{
-		TicketId: 7499, AfterPosition: 10, PerPage: 50,
+		TicketId: 7499, AfterCursor: "Y3Vyc29yOjEw", PerPage: 50,
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Messages, 1)
-	assert.Equal(t, uint32(11), resp.NextCursor)
+	assert.Equal(t, "Y3Vyc29yOjEx", resp.NextCursor)
 	assert.True(t, resp.HasMore)
 }
 
@@ -254,6 +254,25 @@ func TestListTickets_InvalidCursorMapsTo400(t *testing.T) {
 		ReferenceCache: &referencecache.Cache{},
 	}
 	_, err := svc.ListTickets(withTicketsKey("read:tickets"), &proto.ListTicketsRequest{
+		AfterCursor: "garbage",
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "expected gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
+func TestListTicketMessages_InvalidCursorMapsTo400(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			listMsgs: func(_ uint32, _ string, _ uint32, _ bool) ([]*proto.Message, string, bool, error) {
+				return nil, "", false, fmt.Errorf("decode: %w", datastores.ErrInvalidCursor)
+			},
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	_, err := svc.ListTicketMessages(withTicketsKey("read:tickets"), &proto.ListTicketMessagesRequest{
+		TicketId:    7499,
 		AfterCursor: "garbage",
 	})
 	require.Error(t, err)

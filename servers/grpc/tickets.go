@@ -102,8 +102,11 @@ func (s *TicketsService) ListTicketMessages(ctx context.Context, req *proto.List
 	if err := RequireScope(ctx, "read:tickets"); err != nil {
 		return nil, err
 	}
-	msgs, next, more, err := s.Datastore.ListTicketMessages(ctx, req.TicketId, req.AfterPosition, req.PerPage, req.IncludeHidden)
+	msgs, next, more, err := s.Datastore.ListTicketMessages(ctx, req.TicketId, req.AfterCursor, req.PerPage, req.IncludeHidden)
 	if err != nil {
+		if errors.Is(err, datastores.ErrInvalidCursor) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid after_cursor")
+		}
 		return nil, status.Errorf(codes.Internal, "list ticket messages: %v", err)
 	}
 	return &proto.ListTicketMessagesResponse{

@@ -122,6 +122,9 @@ message Ticket {
   string last_message_username = 43;
   uint32 last_modified_date = 44;
   uint32 reply_count = 45;
+  // Total messages in this ticket including the starter post. Equivalent
+  // to reply_count + 1.
+  uint32 total_message_count = 46;
 
   // Data
   map<string, string> custom_fields = 50;
@@ -203,19 +206,24 @@ message GetTicketByRefRequest {
 message GetTicketResponse {
   Ticket ticket = 1;
   repeated Message first_messages = 2;
-  uint32 total_message_count = 3;
+  // DEPRECATED: use ticket.total_message_count. Removal target: v2.3.0.
+  uint32 total_message_count = 3 [deprecated = true];
 }
 
 message ListTicketMessagesRequest {
   uint32 ticket_id = 1;
   uint32 per_page = 2;
-  uint32 after_position = 3;
+  // Opaque cursor; empty string = first page. Round-trip the next_cursor
+  // from the previous response. Pagination is by message position
+  // ascending.
+  string after_cursor = 3;
   bool include_hidden = 4;
 }
 
 message ListTicketMessagesResponse {
   repeated Message messages = 1;
-  uint32 next_cursor = 2;
+  // Opaque cursor; empty when has_more=false.
+  string next_cursor = 2;
   bool has_more = 3;
 }
 

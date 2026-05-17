@@ -186,6 +186,7 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		LastMessageUsername: t.LastMessageUsername,
 		LastModifiedDate:    t.LastModifiedDate,
 		ReplyCount:          t.ReplyCount,
+		TotalMessageCount:   t.ReplyCount + 1,
 		CustomFields:        map[string]string{},
 	}
 	if cat := rc.Category(t.TicketCategoryID); cat != nil {
@@ -234,6 +235,32 @@ func decodeCursor(c string) (uint32, uint32, error) {
 	return ts, id, nil
 }
 
+// encodeMessageCursor encodes a ticket-message position into an opaque
+// base64 cursor. Position alone is sufficient because XF's
+// xf_nf_tickets_message table guarantees (ticket_id, position) is unique
+// per the message_id_position index.
+func encodeMessageCursor(position uint32) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d", position)))
+}
+
+// decodeMessageCursor decodes an opaque message cursor back to a position.
+// Empty string is a valid input meaning "start from the beginning"; any
+// other malformed input returns an error wrapping ErrInvalidCursor.
+func decodeMessageCursor(c string) (uint32, error) {
+	if c == "" {
+		return 0, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(c)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+	}
+	var pos uint32
+	if _, err := fmt.Sscanf(string(raw), "%d", &pos); err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+	}
+	return pos, nil
+}
+
 func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*proto.Ticket, error) {
 	var row xenforo.Ticket
 	tx := ds.Db.WithContext(ctx).
@@ -277,7 +304,7 @@ func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n 
 	return out, uint32(total), nil
 }
 
-func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID, afterPosition, perPage uint32, includeHidden bool) ([]*proto.Message, uint32, bool, error) {
+func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error) {
 	if perPage == 0 || perPage > 100 {
 		if perPage == 0 {
 			perPage = 50
@@ -285,14 +312,18 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID, afterPosition
 			perPage = 100
 		}
 	}
-	q := ds.Db.WithContext(ctx).Where("ticket_id = ? AND position > ?", ticketID, afterPosition)
+	afterPos, err := decodeMessageCursor(afterCursor)
+	if err != nil {
+		return nil, "", false, err
+	}
+	q := ds.Db.WithContext(ctx).Where("ticket_id = ? AND position > ?", ticketID, afterPos)
 	if !includeHidden {
 		q = q.Where("message_state = ?", "visible")
 	}
 	var rows []xenforo.TicketMessage
 	tx := q.Order("position ASC").Limit(int(perPage) + 1).Find(&rows)
 	if tx.Error != nil {
-		return nil, 0, false, tx.Error
+		return nil, "", false, tx.Error
 	}
 	hasMore := len(rows) > int(perPage)
 	if hasMore {
@@ -302,9 +333,9 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID, afterPosition
 	for i := range rows {
 		out = append(out, messageToProto(&rows[i]))
 	}
-	var next uint32
+	var next string
 	if hasMore && len(rows) > 0 {
-		next = rows[len(rows)-1].Position
+		next = encodeMessageCursor(rows[len(rows)-1].Position)
 	}
 	return out, next, hasMore, nil
 }

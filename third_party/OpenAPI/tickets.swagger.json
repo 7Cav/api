@@ -273,11 +273,11 @@
             "format": "int64"
           },
           {
-            "name": "afterPosition",
+            "name": "afterCursor",
+            "description": "Opaque cursor; empty string = first page. Round-trip the next_cursor\nfrom the previous response. Pagination is by message position\nascending.",
             "in": "query",
             "required": false,
-            "type": "integer",
-            "format": "int64"
+            "type": "string"
           },
           {
             "name": "includeHidden",
@@ -339,7 +339,8 @@
         },
         "totalMessageCount": {
           "type": "integer",
-          "format": "int64"
+          "format": "int64",
+          "description": "DEPRECATED: use ticket.total_message_count. Removal target: v2.3.0."
         }
       }
     },
@@ -366,8 +367,8 @@
           }
         },
         "nextCursor": {
-          "type": "integer",
-          "format": "int64"
+          "type": "string",
+          "description": "Opaque cursor; empty when has_more=false."
         },
         "hasMore": {
           "type": "boolean"
@@ -543,6 +544,11 @@
         "replyCount": {
           "type": "integer",
           "format": "int64"
+        },
+        "totalMessageCount": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Total messages in this ticket including the starter post. Equivalent\nto reply_count + 1."
         },
         "customFields": {
           "type": "object",
