@@ -567,20 +567,32 @@ func (x *TicketParticipant) GetLastReadDate() uint32 {
 }
 
 type ListTicketsRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	CategoryId           []uint32               `protobuf:"varint,1,rep,packed,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
-	ExcludeSubcategories bool                   `protobuf:"varint,2,opt,name=exclude_subcategories,json=excludeSubcategories,proto3" json:"exclude_subcategories,omitempty"`
-	TicketState          []string               `protobuf:"bytes,3,rep,name=ticket_state,json=ticketState,proto3" json:"ticket_state,omitempty"`
-	StatusId             []uint32               `protobuf:"varint,4,rep,packed,name=status_id,json=statusId,proto3" json:"status_id,omitempty"`
-	PrefixId             []uint32               `protobuf:"varint,5,rep,packed,name=prefix_id,json=prefixId,proto3" json:"prefix_id,omitempty"`
-	AssignedUserId       []uint32               `protobuf:"varint,6,rep,packed,name=assigned_user_id,json=assignedUserId,proto3" json:"assigned_user_id,omitempty"`
-	StarterUserId        []uint32               `protobuf:"varint,7,rep,packed,name=starter_user_id,json=starterUserId,proto3" json:"starter_user_id,omitempty"`
-	ModifiedSince        uint32                 `protobuf:"varint,8,opt,name=modified_since,json=modifiedSince,proto3" json:"modified_since,omitempty"`
-	IncludeHidden        bool                   `protobuf:"varint,9,opt,name=include_hidden,json=includeHidden,proto3" json:"include_hidden,omitempty"`
-	PerPage              uint32                 `protobuf:"varint,50,opt,name=per_page,json=perPage,proto3" json:"per_page,omitempty"`
-	AfterCursor          string                 `protobuf:"bytes,51,opt,name=after_cursor,json=afterCursor,proto3" json:"after_cursor,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Multi-select by repeating the param: ?category_id=1&category_id=5.
+	// Comma-separated form (?category_id=1,5) is NOT supported.
+	CategoryId           []uint32 `protobuf:"varint,1,rep,packed,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
+	ExcludeSubcategories bool     `protobuf:"varint,2,opt,name=exclude_subcategories,json=excludeSubcategories,proto3" json:"exclude_subcategories,omitempty"`
+	// Multi-select by repeating the param: ?ticket_state=open&ticket_state=resolved.
+	// Comma-separated form is NOT supported.
+	TicketState []string `protobuf:"bytes,3,rep,name=ticket_state,json=ticketState,proto3" json:"ticket_state,omitempty"`
+	// Multi-select by repeating the param: ?status_id=1&status_id=3.
+	// Comma-separated form is NOT supported.
+	StatusId []uint32 `protobuf:"varint,4,rep,packed,name=status_id,json=statusId,proto3" json:"status_id,omitempty"`
+	// Multi-select by repeating the param: ?prefix_id=1&prefix_id=2.
+	// Comma-separated form is NOT supported.
+	PrefixId []uint32 `protobuf:"varint,5,rep,packed,name=prefix_id,json=prefixId,proto3" json:"prefix_id,omitempty"`
+	// Multi-select by repeating the param: ?assigned_user_id=1&assigned_user_id=2.
+	// Comma-separated form is NOT supported.
+	AssignedUserId []uint32 `protobuf:"varint,6,rep,packed,name=assigned_user_id,json=assignedUserId,proto3" json:"assigned_user_id,omitempty"`
+	// Multi-select by repeating the param: ?starter_user_id=1&starter_user_id=2.
+	// Comma-separated form is NOT supported.
+	StarterUserId []uint32 `protobuf:"varint,7,rep,packed,name=starter_user_id,json=starterUserId,proto3" json:"starter_user_id,omitempty"`
+	ModifiedSince uint32   `protobuf:"varint,8,opt,name=modified_since,json=modifiedSince,proto3" json:"modified_since,omitempty"`
+	IncludeHidden bool     `protobuf:"varint,9,opt,name=include_hidden,json=includeHidden,proto3" json:"include_hidden,omitempty"`
+	PerPage       uint32   `protobuf:"varint,50,opt,name=per_page,json=perPage,proto3" json:"per_page,omitempty"`
+	AfterCursor   string   `protobuf:"bytes,51,opt,name=after_cursor,json=afterCursor,proto3" json:"after_cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListTicketsRequest) Reset() {

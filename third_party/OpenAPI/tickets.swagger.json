@@ -42,6 +42,7 @@
         "parameters": [
           {
             "name": "categoryId",
+            "description": "Multi-select by repeating the param: ?category_id=1\u0026category_id=5.\nComma-separated form (?category_id=1,5) is NOT supported.",
             "in": "query",
             "required": false,
             "type": "array",
@@ -59,6 +60,7 @@
           },
           {
             "name": "ticketState",
+            "description": "Multi-select by repeating the param: ?ticket_state=open\u0026ticket_state=resolved.\nComma-separated form is NOT supported.",
             "in": "query",
             "required": false,
             "type": "array",
@@ -69,6 +71,7 @@
           },
           {
             "name": "statusId",
+            "description": "Multi-select by repeating the param: ?status_id=1\u0026status_id=3.\nComma-separated form is NOT supported.",
             "in": "query",
             "required": false,
             "type": "array",
@@ -80,6 +83,7 @@
           },
           {
             "name": "prefixId",
+            "description": "Multi-select by repeating the param: ?prefix_id=1\u0026prefix_id=2.\nComma-separated form is NOT supported.",
             "in": "query",
             "required": false,
             "type": "array",
@@ -91,6 +95,7 @@
           },
           {
             "name": "assignedUserId",
+            "description": "Multi-select by repeating the param: ?assigned_user_id=1\u0026assigned_user_id=2.\nComma-separated form is NOT supported.",
             "in": "query",
             "required": false,
             "type": "array",
@@ -102,6 +107,7 @@
           },
           {
             "name": "starterUserId",
+            "description": "Multi-select by repeating the param: ?starter_user_id=1\u0026starter_user_id=2.\nComma-separated form is NOT supported.",
             "in": "query",
             "required": false,
             "type": "array",
