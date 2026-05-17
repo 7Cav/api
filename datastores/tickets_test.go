@@ -2,6 +2,8 @@ package datastores
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"regexp"
 	"testing"
 
@@ -286,4 +288,37 @@ func TestListCategories_PassThroughFromCache(t *testing.T) {
 	titles := []string{cats[0].Title, cats[1].Title}
 	assert.Contains(t, titles, "S1 Personnel Admin")
 	assert.Contains(t, titles, "S1 Citations")
+}
+
+func TestDecodeCursor_GarbageReturnsErrInvalidCursor(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+	}{
+		{"not base64", "garbage-not-base64"},
+		{"base64 but not ts:id", base64URL("nope")},
+		{"only one int", base64URL("1234")},
+		{"empty string after base64 decode", base64URL("")},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, err := decodeCursor(c.in)
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, ErrInvalidCursor),
+				"want errors.Is(err, ErrInvalidCursor); got %v", err)
+		})
+	}
+}
+
+func TestDecodeCursor_ValidRoundTrip(t *testing.T) {
+	enc := encodeCursor(1736294298, 7499)
+	ts, id, err := decodeCursor(enc)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1736294298), ts)
+	assert.Equal(t, uint32(7499), id)
+}
+
+// base64URL returns base64.RawURLEncoding.EncodeToString([]byte(s)).
+func base64URL(s string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(s))
 }

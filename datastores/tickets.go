@@ -3,6 +3,7 @@ package datastores
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,6 +30,10 @@ type ListTicketsFilter struct {
 	PerPage     uint32
 	AfterCursor string
 }
+
+// ErrInvalidCursor signals a malformed cursor string. Handlers should map
+// errors wrapping this sentinel to codes.InvalidArgument → HTTP 400.
+var ErrInvalidCursor = errors.New("invalid cursor")
 
 // Compile-time assertion: Mysql must implement referencecache.Loader.
 var _ referencecache.Loader = (*Mysql)(nil)
@@ -121,7 +126,7 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 	if f.AfterCursor != "" {
 		ts, id, err := decodeCursor(f.AfterCursor)
 		if err != nil {
-			return nil, "", false, fmt.Errorf("invalid cursor: %w", err)
+			return nil, "", false, err
 		}
 		// Tuple comparison for stable cursor under non-unique sort key.
 		q = q.Where("(last_modified_date < ?) OR (last_modified_date = ? AND ticket_id < ?)", ts, ts, id)
@@ -220,11 +225,11 @@ func encodeCursor(lastModified, ticketID uint32) string {
 func decodeCursor(c string) (uint32, uint32, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(c)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
 	var ts, id uint32
 	if _, err := fmt.Sscanf(string(raw), "%d:%d", &ts, &id); err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
 	return ts, id, nil
 }
