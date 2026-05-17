@@ -275,8 +275,33 @@ func TestListTicketMessages_Pagination(t *testing.T) {
 	msgs, next, more, err := (&ds).ListTicketMessages(context.Background(), 1, encodeMessageCursor(10), 2, false)
 	require.NoError(t, err)
 	assert.True(t, more)
-	assert.Equal(t, encodeMessageCursor(12), next, "cursor is base64 of position of last returned message")
+	assert.Equal(t, encodeMessageCursor(13), next, "cursor is base64 of next position to include (last returned + 1)")
 	assert.Len(t, msgs, 2)
+}
+
+// TestListTicketMessages_EmptyCursorReachesPositionZero pins the regression
+// target from smoke ticket 6899: empty cursor must yield SQL position >= 0
+// so the starter post (position=0) is returned on page one. Earlier the
+// implementation used `position > 0` and silently excluded position=0.
+func TestListTicketMessages_EmptyCursorReachesPositionZero(t *testing.T) {
+	ds, mock, cleanup := newMockDS(t)
+	defer cleanup()
+	rows := sqlmock.NewRows([]string{
+		"message_id", "ticket_id", "user_id", "username",
+		"message_date", "message", "message_state",
+		"position", "attach_count", "last_edit_date", "edit_count",
+	}).
+		AddRow(uint32(1), uint32(1), uint32(0), "", uint32(0), "", "visible", uint32(0), uint32(0), uint32(0), uint32(0)).
+		AddRow(uint32(2), uint32(1), uint32(0), "", uint32(0), "", "visible", uint32(1), uint32(0), uint32(0), uint32(0))
+	mock.ExpectQuery(regexp.QuoteMeta("FROM `xf_nf_tickets_message`")).
+		WithArgs(uint32(1), uint32(0), "visible", 51).
+		WillReturnRows(rows)
+
+	msgs, _, more, err := (&ds).ListTicketMessages(context.Background(), 1, "", 0, false)
+	require.NoError(t, err)
+	assert.False(t, more)
+	require.Len(t, msgs, 2)
+	assert.Equal(t, uint32(0), msgs[0].Position, "position=0 must be present (regression: smoke ticket 6899)")
 }
 
 func TestListCategories_PassThroughFromCache(t *testing.T) {

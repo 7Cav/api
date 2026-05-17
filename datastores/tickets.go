@@ -243,17 +243,20 @@ func decodeCursor(c string) (uint32, uint32, error) {
 	return uint32(ts), uint32(id), nil
 }
 
-// encodeMessageCursor encodes a ticket-message position into an opaque
-// base64 cursor. Position alone is sufficient because XF's
-// xf_nf_tickets_message table guarantees (ticket_id, position) is unique
-// per the message_id_position index.
+// encodeMessageCursor encodes the next message position to include into an
+// opaque base64 cursor. Position alone is sufficient because XF's
+// xf_nf_tickets_message table guarantees (ticket_id, position) is unique per
+// the message_id_position index. The encoded value is the position of the
+// next message to return on the next page, NOT the last position returned —
+// this lets empty-cursor map to "include position 0" naturally.
 func encodeMessageCursor(position uint32) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d", position)))
 }
 
 // decodeMessageCursor decodes an opaque message cursor back to a position.
-// Empty string is a valid input meaning "start from the beginning"; any
-// other malformed input returns an error wrapping ErrInvalidCursor.
+// Empty string is a valid input meaning "start from the beginning" (returns
+// 0, which combined with the SQL boundary `position >= 0` includes position 0).
+// Any other malformed input returns an error wrapping ErrInvalidCursor.
 func decodeMessageCursor(c string) (uint32, error) {
 	if c == "" {
 		return 0, nil
@@ -324,7 +327,7 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterC
 	if err != nil {
 		return nil, "", false, err
 	}
-	q := ds.Db.WithContext(ctx).Where("ticket_id = ? AND position > ?", ticketID, afterPos)
+	q := ds.Db.WithContext(ctx).Where("ticket_id = ? AND position >= ?", ticketID, afterPos)
 	if !includeHidden {
 		q = q.Where("message_state = ?", "visible")
 	}
@@ -343,7 +346,7 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterC
 	}
 	var next string
 	if hasMore && len(rows) > 0 {
-		next = encodeMessageCursor(rows[len(rows)-1].Position)
+		next = encodeMessageCursor(rows[len(rows)-1].Position + 1)
 	}
 	return out, next, hasMore, nil
 }
