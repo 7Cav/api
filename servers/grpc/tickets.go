@@ -40,6 +40,9 @@ func (s *TicketsService) ListTickets(ctx context.Context, req *proto.ListTickets
 	}
 	tickets, next, more, err := s.Datastore.ListTickets(ctx, s.ReferenceCache, filter)
 	if err != nil {
+		if errors.Is(err, datastores.ErrInvalidCursor) {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid after_cursor")
+		}
 		return nil, status.Errorf(codes.Internal, "list tickets: %v", err)
 	}
 	return &proto.ListTicketsResponse{

@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/7cav/api/datastores"
@@ -240,4 +241,23 @@ func TestListCategories_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Categories, 1)
 	assert.Equal(t, "S1", resp.Categories[0].Title)
+}
+
+func TestListTickets_InvalidCursorMapsTo400(t *testing.T) {
+	svc := &TicketsService{
+		Datastore: &fakeDatastore{
+			listTickets: func(_ *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+				// Simulate datastore returning a wrapped ErrInvalidCursor.
+				return nil, "", false, fmt.Errorf("decode: %w", datastores.ErrInvalidCursor)
+			},
+		},
+		ReferenceCache: &referencecache.Cache{},
+	}
+	_, err := svc.ListTickets(withTicketsKey("read:tickets"), &proto.ListTicketsRequest{
+		AfterCursor: "garbage",
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "expected gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
 }
