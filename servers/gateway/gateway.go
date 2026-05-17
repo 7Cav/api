@@ -68,8 +68,8 @@ const maxTokenLen = 128
 
 func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-		if token == "" || len(token) > maxTokenLen {
+		token := datastores.ParseBearerToken(r.Header.Get("Authorization"), maxTokenLen)
+		if token == "" {
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
