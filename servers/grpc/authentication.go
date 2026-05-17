@@ -20,7 +20,6 @@ package grpc
 
 import (
 	"context"
-	"strings"
 
 	"github.com/7cav/api/datastores"
 	"google.golang.org/grpc"
@@ -43,9 +42,8 @@ func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
-		raw := strings.TrimSpace(authHeaders[0])
-		token := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer "))
-		if token == "" || len(token) > maxTokenLen {
+		token := datastores.ParseBearerToken(authHeaders[0], maxTokenLen)
+		if token == "" {
 			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
 		}
 
