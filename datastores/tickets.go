@@ -228,11 +228,19 @@ func decodeCursor(c string) (uint32, uint32, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
-	var ts, id uint32
-	if _, err := fmt.Sscanf(string(raw), "%d:%d", &ts, &id); err != nil {
+	parts := strings.Split(string(raw), ":")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("%w: expected ts:id, got %d parts", ErrInvalidCursor, len(parts))
+	}
+	ts, err := strconv.ParseUint(parts[0], 10, 32)
+	if err != nil {
 		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
-	return ts, id, nil
+	id, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+	}
+	return uint32(ts), uint32(id), nil
 }
 
 // encodeMessageCursor encodes a ticket-message position into an opaque
@@ -254,11 +262,11 @@ func decodeMessageCursor(c string) (uint32, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
-	var pos uint32
-	if _, err := fmt.Sscanf(string(raw), "%d", &pos); err != nil {
+	pos, err := strconv.ParseUint(string(raw), 10, 32)
+	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
-	return pos, nil
+	return uint32(pos), nil
 }
 
 func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*proto.Ticket, error) {

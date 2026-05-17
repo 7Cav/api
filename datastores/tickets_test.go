@@ -300,6 +300,8 @@ func TestDecodeCursor_GarbageReturnsErrInvalidCursor(t *testing.T) {
 		{"base64 but not ts:id", base64URL("nope")},
 		{"only one int", base64URL("1234")},
 		{"empty string after base64 decode", base64URL("")},
+		{"trailing garbage on ts", base64URL("100abc:5")},
+		{"trailing garbage on id", base64URL("100:5junk")},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -344,6 +346,8 @@ func TestDecodeMessageCursor_GarbageReturnsErrInvalidCursor(t *testing.T) {
 	cases := []string{
 		"garbage-not-base64",
 		base64URL("notanumber"),
+		base64URL("42abc"),
+		base64URL("  10"),
 	}
 	for _, in := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -364,4 +368,12 @@ func TestGenerateTicketProto_TotalMessageCountDerived(t *testing.T) {
 	out := generateTicketProto(row, rc, "")
 	assert.Equal(t, uint32(81), out.TotalMessageCount,
 		"total_message_count must equal reply_count + 1 (starter post + replies)")
+}
+
+func TestEncodeDecodeMessageCursor_PositionZeroRoundTrips(t *testing.T) {
+	enc := encodeMessageCursor(0)
+	require.NotEmpty(t, enc, "position=0 must encode to a non-empty cursor (regression: smoke ticket 6899)")
+	pos, err := decodeMessageCursor(enc)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(0), pos)
 }
