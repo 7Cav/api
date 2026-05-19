@@ -30,6 +30,10 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Launches the api servers",
 	Run: func(cmd *cobra.Command, args []string) {
+		// PORT is the loopback port the HTTP gateway dials to reach the in-process gRPC server.
+		// It is NOT a listen port: both the gRPC server (:10000) and HTTP gateway (:11000) listen
+		// ports are hardcoded in servers/server.go. PORT must match the hardcoded gRPC port (10000)
+		// for the gateway-to-gRPC dial to succeed.
 		server := servers.New(fmt.Sprintf("0.0.0.0:%s", viper.GetString("port")))
 		server.Start()
 	},
