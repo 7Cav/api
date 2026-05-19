@@ -80,8 +80,7 @@ func setupRedis() *cache.RedisCache {
 
 	redisPassword := viper.GetString("REDIS_PASSWORD")
 	if redisPassword == "" {
-		Error.Println("no redis password provided")
-		os.Exit(1)
+		Info.Println("REDIS_PASSWORD empty — connecting without AUTH")
 	}
 
 	return cache.NewRedisCache(redisHost, redisPort, redisPassword)
