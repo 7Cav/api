@@ -52,8 +52,9 @@ type MicroServer struct {
 }
 
 // New initializes a new Backend struct.
-// addr is the gRPC dial target consumed by the HTTP gateway (from $PORT); not a listen address.
-// The gRPC and HTTP listen ports are hardcoded literals in Start().
+// addr is the gRPC dial target consumed by the HTTP gateway (from $PORT).
+// Listen ports for both gRPC (:10000) and HTTP (:11000) are hardcoded in Start();
+// addr must match the gRPC literal for the gateway-to-gRPC dial to succeed.
 func New(addr string) *MicroServer {
 
 	return &MicroServer{
