@@ -2,14 +2,6 @@
 .vscode
 .idea
 
-# generated files
-#!proto
-#proto/*
-#!proto/milpacs.proto
-#proto/*.pb.go
-!statik/
-statik/statik.go
-
 # ignore database copy for local dev work
 *.gz
 
