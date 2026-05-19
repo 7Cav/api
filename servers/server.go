@@ -136,7 +136,7 @@ func (server *MicroServer) Start() {
 	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
 
 	if err != nil {
-		Error.Fatalf("Failed to listen on %s: %w", server.addr, err)
+		Error.Fatalf("Failed to listen on %s: %v", server.addr, err)
 	}
 
 	ds := setupDatasource()
@@ -180,7 +180,7 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 	milpacs.RegisterTicketsServiceServer(server.grpcServer, ticketsService)
 
 	if err := server.grpcServer.Serve(lis); err != nil {
-		Error.Fatalf("unable to start external gRPC servers: ", err)
+		Error.Fatalf("unable to start external gRPC servers: %v", err)
 	}
 }
 
@@ -188,7 +188,7 @@ func servHTTP(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
 	service := httpServices.Service{Address: server.addr, Cache: server.cache, Datastore: ds}
 	server.httpServer = service.Server()
 	if err := server.httpServer.Serve(lis); err != nil {
-		Error.Fatalf("unable to start HTTP servers: ", err)
+		Error.Fatalf("unable to start HTTP servers: %v", err)
 	}
 }
 
