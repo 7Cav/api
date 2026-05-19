@@ -68,15 +68,15 @@ const maxTokenLen = 128
 
 func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-		if token == "" || len(token) > maxTokenLen {
+		token := datastores.ParseBearerToken(r.Header.Get("Authorization"), maxTokenLen)
+		if token == "" {
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		key, err := ds.ValidateApiKey(token)
-		if err != nil || key == nil || !key.ScopeRead {
+		if err != nil || key == nil {
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -140,6 +140,12 @@ func (service *Service) Server() *http.Server {
 
 	if err != nil {
 		Error.Println("failed to register gateway: ", err)
+		return nil
+	}
+
+	err = proto.RegisterTicketsServiceHandler(context.Background(), gwMux, conn)
+	if err != nil {
+		Error.Println("failed to register tickets gateway: ", err)
 		return nil
 	}
 

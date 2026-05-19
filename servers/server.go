@@ -19,16 +19,19 @@
 package servers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	milpacs "github.com/7cav/api/proto"
+	"github.com/7cav/api/referencecache"
 	httpServices "github.com/7cav/api/servers/gateway"
 	grpcServices "github.com/7cav/api/servers/grpc"
 	"github.com/spf13/viper"
@@ -38,13 +41,14 @@ import (
 	"gorm.io/gorm"
 )
 
-const version = "2.1.1"
+const version = "2.2.0"
 
 type MicroServer struct {
-	addr       string
-	httpServer *http.Server
-	grpcServer *grpc.Server
-	cache      *cache.RedisCache
+	addr           string
+	httpServer     *http.Server
+	grpcServer     *grpc.Server
+	cache          *cache.RedisCache
+	referenceCache *referencecache.Cache
 }
 
 // New initializes a new Backend struct.
@@ -137,6 +141,11 @@ func (server *MicroServer) Start() {
 
 	ds := setupDatasource()
 	server.cache = setupRedis()
+	server.referenceCache = referencecache.New(ds)
+	if err := server.referenceCache.Refresh(context.Background()); err != nil {
+		Error.Fatalf("initial reference cache load failed: %v", err)
+	}
+	go runReferenceCacheRefresh(context.Background(), server.referenceCache)
 	go cache.CacheManager(server.cache, ds)
 
 	// relevant Grpc options
@@ -164,6 +173,12 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 	server.grpcServer = grpc.NewServer(grpcOpts...)
 	milpacs.RegisterMilpacServiceServer(server.grpcServer, service)
 
+	ticketsService := &grpcServices.TicketsService{
+		Datastore:      ds,
+		ReferenceCache: server.referenceCache,
+	}
+	milpacs.RegisterTicketsServiceServer(server.grpcServer, ticketsService)
+
 	if err := server.grpcServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start external gRPC servers: ", err)
 	}
@@ -174,5 +189,28 @@ func servHTTP(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
 	server.httpServer = service.Server()
 	if err := server.httpServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start HTTP servers: ", err)
+	}
+}
+
+func runReferenceCacheRefresh(ctx context.Context, rc *referencecache.Cache) {
+	interval := 15 * time.Minute
+	if v := viper.GetString("REFERENCE_CACHE_REFRESH_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			interval = d
+		} else {
+			Warn.Printf("invalid REFERENCE_CACHE_REFRESH_INTERVAL %q, using default %s", v, interval)
+		}
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := rc.Refresh(ctx); err != nil {
+				Warn.Printf("reference cache refresh failed (keeping previous data): %v", err)
+			}
+		}
 	}
 }

@@ -18,14 +18,19 @@ lint:
   ignore_only:
     PACKAGE_DIRECTORY_MATCH:
       - proto/milpacs.proto
+      - proto/tickets.proto
     PACKAGE_VERSION_SUFFIX:
       - proto/milpacs.proto
+      - proto/tickets.proto
     RPC_REQUEST_RESPONSE_UNIQUE:
       - proto/milpacs.proto
+      - proto/tickets.proto
     RPC_REQUEST_STANDARD_NAME:
       - proto/milpacs.proto
+      - proto/tickets.proto
     RPC_RESPONSE_STANDARD_NAME:
       - proto/milpacs.proto
+      - proto/tickets.proto
   disallow_comment_ignores: true
 breaking:
   except:
