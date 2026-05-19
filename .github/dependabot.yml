@@ -1,0 +1,43 @@
+# Dependabot — supply-chain hygiene with a cooldown window.
+#
+# Per the syniron CLAUDE.md "Repo defaults": every repo gets a weekly
+# bump cadence and a per-ecosystem `cooldown:` block. The cooldown is
+# the tension between (a) waiting long enough that a freshly-published
+# malicious version has a chance of being flagged, and (b) not letting
+# us sit on stale versions forever. default-days: 7 is the global bar.
+
+version: 2
+updates:
+  # Go module deps (proto/grpc/gateway/gorm/redis/buf-as-tool-dep).
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+
+  # Dockerfile base images (multi-stage golang + alpine).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # docker-compose service image pins (template only; prod compose is
+  # maintained out-of-repo on traycer).
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # GitHub Actions workflows (build_and_push.yml, go.yml).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
