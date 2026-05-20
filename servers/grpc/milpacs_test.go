@@ -37,3 +37,29 @@ func TestGetProfile_ByUsername_DatastoreError(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.Internal, st.Code())
 }
+
+func TestGetProfile_ByUserID_NotFound(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfilesById: func(...uint64) ([]*proto.Profile, error) {
+			return nil, gorm.ErrRecordNotFound
+		},
+	}}
+	_, err := svc.GetProfile(withMilpacsKey("read"), &proto.ProfileRequest{UserId: 99999})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestGetProfile_ByUserID_DatastoreError(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfilesById: func(...uint64) ([]*proto.Profile, error) {
+			return nil, errors.New("boom")
+		},
+	}}
+	_, err := svc.GetProfile(withMilpacsKey("read"), &proto.ProfileRequest{UserId: 42})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Internal, st.Code())
+}

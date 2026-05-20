@@ -63,10 +63,13 @@ func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.Pro
 		Info.Println("GetProfile, requested via userid")
 		profiles, err = server.Datastore.FindProfilesById(request.UserId)
 		if err != nil {
-			return &proto.Profile{}, status.Errorf(codes.NotFound, "no profile found for user ID: %d", request.UserId)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, status.Errorf(codes.NotFound, "no profile found for user ID: %d", request.UserId)
+			}
+			return nil, status.Errorf(codes.Internal, "fetch profile by user id: %v", err)
 		}
 	} else {
-		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "no username or user ID provided")
+		return nil, status.Errorf(codes.InvalidArgument, "no username or user ID provided")
 	}
 
 	return profiles[0], nil

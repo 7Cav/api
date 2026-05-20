@@ -32,9 +32,6 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 		First(&profile, userIds[0])
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for userid: %d", userIds)
-		}
 		return nil, result.Error
 	}
 
