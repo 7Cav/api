@@ -257,11 +257,14 @@ func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRo
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for lite roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Omit("Records", "AwardRecords").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
+	if result.Error != nil {
+		return nil, fmt.Errorf("find lite roster %s: %w", rosterType, result.Error)
+	}
 
 	profiles, err := ds.processLiteProfiles(rosterProfiles)
 	if err != nil {

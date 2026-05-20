@@ -144,7 +144,7 @@ func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.
 	roster, err := server.Datastore.FindLiteRosterByType(request.Roster)
 
 	if err != nil {
-		return &proto.LiteRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+		return nil, status.Errorf(codes.Internal, "fetch lite roster %s: %v", request.Roster, err)
 	}
 
 	return roster, nil

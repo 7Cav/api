@@ -154,3 +154,16 @@ func TestGetRoster_DatastoreError(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.Internal, st.Code())
 }
+
+func TestGetLiteRoster_DatastoreError(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) {
+			return nil, errors.New("boom")
+		},
+	}}
+	_, err := svc.GetLiteRoster(withMilpacsKey("read"), &proto.RosterRequest{Roster: proto.RosterType_ROSTER_TYPE_COMBAT})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Internal, st.Code())
+}
