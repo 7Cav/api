@@ -27,7 +27,13 @@ ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
 RUN go mod tidy
-RUN go build -a -ldflags="-s -w" -installsuffix cgo -o /api
+
+# VERSION is supplied by the release workflow via --build-arg from
+# the GitHub release tag (`github.ref_name`). Defaults to "dev" for
+# local docker builds so `Starting 7Cav API version:` shows something
+# meaningful even without the tag flow.
+ARG VERSION=dev
+RUN go build -a -ldflags="-s -w -X github.com/7cav/api/servers.version=${VERSION}" -installsuffix cgo -o /api
 
 # Production stage
 FROM alpine:latest

@@ -1224,8 +1224,8 @@ const file_tickets_proto_rawDesc = "" +
 	"\x12ListTicketMessages\x12 .proto.ListTicketMessagesRequest\x1a!.proto.ListTicketMessagesResponse\"\xd0\x01\x92A\xa0\x01\n" +
 	"\aTickets\x12\x19List messages on a ticket\x1azPaginated thread of messages for a single ticket, ordered by position ascending. Cursor uses position (unique per ticket).\x82\xd3\xe4\x93\x02&\x12$/api/v1/tickets/{ticket_id}/messages\x12\x82\x02\n" +
 	"\x0eListCategories\x12\x16.google.protobuf.Empty\x1a\x1d.proto.ListCategoriesResponse\"\xb8\x01\x92A\x92\x01\n" +
-	"\aTickets\x12\x16List ticket categories\x1aoReturns the full nixfifty category tree (24 entries). Reference data for the category_id filter on ListTickets.\x82\xd3\xe4\x93\x02\x1c\x12\x1a/api/v1/tickets/categoriesB\x84\x02\x92A\xe5\x01\x12S\n" +
-	"\x107Cav Tickets API\x128Read-only access to 7Cav forum tickets (nixfifty addon).2\x052.2.0*\x01\x022\x10application/json:\x10application/jsonZY\n" +
+	"\aTickets\x12\x16List ticket categories\x1aoReturns the full nixfifty category tree (24 entries). Reference data for the category_id filter on ListTickets.\x82\xd3\xe4\x93\x02\x1c\x12\x1a/api/v1/tickets/categoriesB\x82\x02\x92A\xe3\x01\x12Q\n" +
+	"\x107Cav Tickets API\x128Read-only access to 7Cav forum tickets (nixfifty addon).2\x03dev*\x01\x022\x10application/json:\x10application/jsonZY\n" +
 	"W\n" +
 	"\x06bearer\x12M\b\x02\x128Authentication token, prefixed by Bearer: Bearer <token>\x1a\rAuthorization \x02b\f\n" +
 	"\n" +

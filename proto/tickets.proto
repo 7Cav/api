@@ -19,7 +19,7 @@ import "google/protobuf/empty.proto";
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "7Cav Tickets API";
-    version: "2.2.0";
+    version: "dev";
     description: "Read-only access to 7Cav forum tickets (nixfifty addon).";
   }
   schemes: HTTPS;
