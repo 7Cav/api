@@ -3,7 +3,7 @@
   "info": {
     "title": "7Cav Tickets API",
     "description": "Read-only access to 7Cav forum tickets (nixfifty addon).",
-    "version": "2.2.0"
+    "version": "dev"
   },
   "tags": [
     {

@@ -2319,7 +2319,7 @@ const file_milpacs_proto_rawDesc = "" +
 	"\aGetAwol\x12\x16.google.protobuf.Empty\x1a\x13.proto.AwolResponse\"\x88\x01\x92Ai\n" +
 	"\x0eAWOLs, Milpacs\x12\x15Get all AWOL troopers\x1a@Get a list of all troopers that havent posted in the last 7 days\x82\xd3\xe4\x93\x02\x16\x12\x14/api/v1/milpacs/awol\x12\xeb\x01\n" +
 	"\x12GetGamertagProfile\x12\x16.proto.GamertagRequest\x1a\x0e.proto.Profile\"\xac\x01\x92A\x7f\n" +
-	"\x19Roster, Milpacs, Gamertag\x12!Get a Milpac profile via Gamertag\x1a?Get all milpac Profile data for a given user via their Gamertag\x82\xd3\xe4\x93\x02$\x12\"/api/v1/milpac/gamertag/{gamertag}B\xc8\x01\x92A\xa9\x01\x12\a2\x052.2.0*\x01\x02ZY\n" +
+	"\x19Roster, Milpacs, Gamertag\x12!Get a Milpac profile via Gamertag\x1a?Get all milpac Profile data for a given user via their Gamertag\x82\xd3\xe4\x93\x02$\x12\"/api/v1/milpac/gamertag/{gamertag}B\xc6\x01\x92A\xa7\x01\x12\x052\x03dev*\x01\x02ZY\n" +
 	"W\n" +
 	"\x06bearer\x12M\b\x02\x128Authentication token, prefixed by Bearer: Bearer <token>\x1a\rAuthorization \x02b\f\n" +
 	"\n" +

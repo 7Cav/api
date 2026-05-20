@@ -41,7 +41,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const version = "2.2.0"
+// version is overridden at build time via -ldflags
+// "-X github.com/7cav/api/servers.version=<tag>" in the release workflow.
+// Local dev builds report "dev".
+var version = "dev"
 
 type MicroServer struct {
 	addr           string
