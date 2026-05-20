@@ -104,7 +104,10 @@ func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request 
 	profile, err := server.Datastore.FindProfileByKeycloakID(request.GetKeycloakId())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for keycloakid: %s", request.GetKeycloakId())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "no user found for keycloakid: %s", request.GetKeycloakId())
+		}
+		return nil, status.Errorf(codes.Internal, "fetch profile by keycloak id: %v", err)
 	}
 
 	return profile, nil

@@ -63,3 +63,29 @@ func TestGetProfile_ByUserID_DatastoreError(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.Internal, st.Code())
 }
+
+func TestGetUserViaKeycloakId_NotFound(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfileByKeycloakID: func(string) (*proto.Profile, error) {
+			return nil, gorm.ErrRecordNotFound
+		},
+	}}
+	_, err := svc.GetUserViaKeycloakId(withMilpacsKey("read"), &proto.KeycloakIdRequest{KeycloakId: "ghost-uuid"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestGetUserViaKeycloakId_DatastoreError(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfileByKeycloakID: func(string) (*proto.Profile, error) {
+			return nil, errors.New("boom")
+		},
+	}}
+	_, err := svc.GetUserViaKeycloakId(withMilpacsKey("read"), &proto.KeycloakIdRequest{KeycloakId: "any"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Internal, st.Code())
+}

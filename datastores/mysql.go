@@ -102,9 +102,6 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for KeycloakID: %s", keycloakId)
-		}
 		return nil, result.Error
 	}
 
