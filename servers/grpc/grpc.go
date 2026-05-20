@@ -21,13 +21,15 @@ package grpc
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
+
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"log"
-	"os"
+	"gorm.io/gorm"
 )
 
 type MilpacsService struct {
@@ -52,16 +54,22 @@ func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.Pro
 		Info.Println("GetProfile, Requested via username")
 		profiles, err = server.Datastore.FindProfilesByUsername(request.Username)
 		if err != nil {
-			return &proto.Profile{}, status.Errorf(codes.NotFound, "no profile found for username: %s", request.Username)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, status.Errorf(codes.NotFound, "no profile found for username: %s", request.Username)
+			}
+			return nil, status.Errorf(codes.Internal, "fetch profile by username: %v", err)
 		}
 	} else if request.UserId != 0 {
 		Info.Println("GetProfile, requested via userid")
 		profiles, err = server.Datastore.FindProfilesById(request.UserId)
 		if err != nil {
-			return &proto.Profile{}, status.Errorf(codes.NotFound, "no profile found for user ID: %d", request.UserId)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, status.Errorf(codes.NotFound, "no profile found for user ID: %d", request.UserId)
+			}
+			return nil, status.Errorf(codes.Internal, "fetch profile by user id: %v", err)
 		}
 	} else {
-		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "no username or user ID provided")
+		return nil, status.Errorf(codes.InvalidArgument, "no username or user ID provided")
 	}
 
 	return profiles[0], nil
@@ -78,7 +86,7 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 	roster, err := server.Datastore.FindRosterByType(request.Roster)
 
 	if err != nil {
-		return &proto.Roster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+		return nil, status.Errorf(codes.Internal, "fetch roster %s: %v", request.Roster, err)
 	}
 
 	return roster, nil
@@ -96,7 +104,10 @@ func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request 
 	profile, err := server.Datastore.FindProfileByKeycloakID(request.GetKeycloakId())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for keycloakid: %s", request.GetKeycloakId())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "no user found for keycloakid: %s", request.GetKeycloakId())
+		}
+		return nil, status.Errorf(codes.Internal, "fetch profile by keycloak id: %v", err)
 	}
 
 	return profile, nil
@@ -114,7 +125,10 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 	profile, err := server.Datastore.FindProfileByDiscordID(request.GetDiscordId())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for discordid: %s", request.GetDiscordId())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "no user found for discordid: %s", request.GetDiscordId())
+		}
+		return nil, status.Errorf(codes.Internal, "fetch profile by discord id: %v", err)
 	}
 
 	return profile, nil
@@ -130,7 +144,7 @@ func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.
 	roster, err := server.Datastore.FindLiteRosterByType(request.Roster)
 
 	if err != nil {
-		return &proto.LiteRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+		return nil, status.Errorf(codes.Internal, "fetch lite roster %s: %v", request.Roster, err)
 	}
 
 	return roster, nil
@@ -162,7 +176,7 @@ func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *
 	roster, err := server.Datastore.FindS1UniformsRosterByType(request.Roster)
 
 	if err != nil {
-		return &proto.S1UniformsRoster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+		return nil, status.Errorf(codes.Internal, "fetch s1 uniforms roster %s: %v", request.Roster, err)
 	}
 	return roster, nil
 }
@@ -215,13 +229,16 @@ func (server *MilpacsService) GetGamertagProfile(ctx context.Context, request *p
 	}
 	if request.GetGamertag() == "" {
 		Warn.Println("Empty Gamertag provided, cannot return profile")
-		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "gamertag cannot be empty")
+		return nil, status.Errorf(codes.InvalidArgument, "gamertag cannot be empty")
 	}
 
 	profile, err := server.Datastore.FindProfileByGamertag(request.GetGamertag())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for gamertag: %v", request.GetGamertag())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "no user found for gamertag: %v", request.GetGamertag())
+		}
+		return nil, status.Errorf(codes.Internal, "fetch profile by gamertag: %v", err)
 	}
 	return profile, nil
 }

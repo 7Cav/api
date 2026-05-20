@@ -32,9 +32,6 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 		First(&profile, userIds[0])
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for userid: %d", userIds)
-		}
 		return nil, result.Error
 	}
 
@@ -60,9 +57,6 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for username: %s", username)
-		}
 		return nil, result.Error
 	}
 
@@ -79,11 +73,14 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
+	if result.Error != nil {
+		return nil, fmt.Errorf("find roster %s: %w", rosterType, result.Error)
+	}
 
 	profiles, err := ds.processProfiles(rosterProfiles)
 	if err != nil {
@@ -108,9 +105,6 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for KeycloakID: %s", keycloakId)
-		}
 		return nil, result.Error
 	}
 
@@ -135,9 +129,6 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for discordID: %s", discordId)
-		}
 		return nil, result.Error
 	}
 
@@ -266,11 +257,14 @@ func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRo
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for lite roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Omit("Records", "AwardRecords").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
+	if result.Error != nil {
+		return nil, fmt.Errorf("find lite roster %s: %w", rosterType, result.Error)
+	}
 
 	profiles, err := ds.processLiteProfiles(rosterProfiles)
 	if err != nil {
@@ -347,12 +341,15 @@ func (ds Mysql) FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for S1 Uniforms roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Preload("Primary.Group").
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
+	if result.Error != nil {
+		return nil, fmt.Errorf("find s1 uniforms roster %s: %w", rosterType, result.Error)
+	}
 
 	var profiles = make(map[uint64]*proto.S1UniformsProfile, len(rosterProfiles))
 	for _, profile := range rosterProfiles {
@@ -750,9 +747,6 @@ func (ds Mysql) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for gamertag: %s", gamertag)
-		}
 		return nil, result.Error
 	}
 
