@@ -17,3 +17,4 @@ docker-compose.yaml
 .claude/
 docs/superpowers/
 CLAUDE.md
+.playwright-mcp/
