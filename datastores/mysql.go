@@ -73,11 +73,14 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 	var rosterProfiles []milpacs.Profile
 
 	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
-	ds.Db.Preload(clause.Associations).
+	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
 		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
 		Find(&rosterProfiles)
+	if result.Error != nil {
+		return nil, fmt.Errorf("find roster %s: %w", rosterType, result.Error)
+	}
 
 	profiles, err := ds.processProfiles(rosterProfiles)
 	if err != nil {

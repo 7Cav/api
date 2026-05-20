@@ -86,7 +86,7 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 	roster, err := server.Datastore.FindRosterByType(request.Roster)
 
 	if err != nil {
-		return &proto.Roster{}, status.Errorf(codes.NotFound, "no roster found for %s", request.Roster)
+		return nil, status.Errorf(codes.Internal, "fetch roster %s: %v", request.Roster, err)
 	}
 
 	return roster, nil
