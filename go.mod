@@ -5,7 +5,7 @@ go 1.25.6
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/bufbuild/buf v1.69.0
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/rakyll/statik v0.1.7
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/spf13/cobra v1.10.2
@@ -13,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260427160629-7cedc36a6bc4
-	google.golang.org/grpc v1.79.3
+	google.golang.org/grpc v1.80.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.5.1
 	google.golang.org/protobuf v1.36.11
 	gorm.io/driver/mysql v1.6.0
