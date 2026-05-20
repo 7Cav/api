@@ -10,4 +10,4 @@ plugins:
     out: proto
     opt: paths=source_relative
   - local: protoc-gen-openapiv2
-    out: third_party/OpenAPI
+    out: openapi/assets

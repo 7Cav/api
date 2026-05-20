@@ -22,6 +22,7 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"mime"
 	"net/http"
@@ -31,10 +32,9 @@ import (
 	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/middleware"
+	"github.com/7cav/api/openapi"
 	"github.com/7cav/api/proto"
-	_ "github.com/7cav/api/statik" // static files import - unused in the codebase, but required cuz reasons
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/rakyll/statik/fs"
 	"google.golang.org/grpc"
 )
 
@@ -55,11 +55,11 @@ func getOpenAPIHandler() http.Handler {
 	if err := mime.AddExtensionType(".svg", "image/svg+xml"); err != nil {
 		Error.Println("failed to add MIME extension type for .svg: ", err)
 	}
-	statikFs, err := fs.New()
+	sub, err := fs.Sub(openapi.Files, "assets")
 	if err != nil {
-		Error.Println("creating OpenAPI filesystem: ", err)
+		Error.Println("creating OpenAPI sub-filesystem: ", err)
 	}
-	return http.FileServer(statikFs)
+	return http.FileServer(http.FS(sub))
 }
 
 // maxTokenLen is the maximum length of a raw API key we'll accept.

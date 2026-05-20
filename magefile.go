@@ -8,13 +8,10 @@ import (
 	"os/exec"
 )
 
-// Generate protobufs and statik assets
+// Generate protobufs
 func Generate() error {
-	fmt.Println("Generating protobufs and static assets...")
-	if err := run("buf", "generate"); err != nil {
-		return err
-	}
-	return run("statik", "-m", "-f", "-src", "third_party/OpenAPI/")
+	fmt.Println("Generating protobufs...")
+	return run("buf", "generate")
 }
 
 // Lint and check for breaking changes
@@ -34,7 +31,6 @@ func Install() error {
 		"google.golang.org/grpc/cmd/protoc-gen-go-grpc",
 		"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway",
 		"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2",
-		"github.com/rakyll/statik",
 	); err != nil {
 		return err
 	}
