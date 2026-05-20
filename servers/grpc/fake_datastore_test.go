@@ -10,10 +10,8 @@ import (
 
 // fakeDatastore is the shared in-process Datastore stub used by both
 // tickets_test.go and milpacs_test.go. Each handler-under-test gets the
-// matching function field populated; everything else either panics
-// (methods this PR does not exercise) or, for milpacs methods, nil-derefs
-// on call so an accidentally-untouched test fails loudly with a clear
-// stack rather than a silent zero-value response.
+// matching function field populated; milpacs methods panic until Task 2
+// converts them to configurable function fields.
 type fakeDatastore struct {
 	// Tickets — configurable function fields used by tickets_test.go.
 	listTickets func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
