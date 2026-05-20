@@ -87,9 +87,10 @@ func (f *fakeDatastore) FindAwol() ([]*proto.Awol, error)                       
 func (f *fakeDatastore) GetTableUpdates() ([]xenforo.TableInfo, error)                    { panic("unused") }
 func (f *fakeDatastore) ValidateApiKey(string) (*datastores.ApiKeyResult, error)          { panic("unused") }
 
-// withTicketsKey builds a context carrying an ApiKeyResult with the given
-// scope set. Mirrors the auth middleware's behavior in production.
-func withTicketsKey(scopes ...string) context.Context {
+// makeKeyCtx builds a context carrying an ApiKeyResult with the given scope
+// set. The withTicketsKey / withMilpacsKey wrappers stay as named entry
+// points so a test reader sees which handler family the scope applies to.
+func makeKeyCtx(scopes ...string) context.Context {
 	m := map[string]struct{}{}
 	for _, s := range scopes {
 		m[s] = struct{}{}
@@ -97,13 +98,10 @@ func withTicketsKey(scopes ...string) context.Context {
 	return ContextWithKey(context.Background(), &datastores.ApiKeyResult{Scopes: m})
 }
 
-// withMilpacsKey builds a context carrying an ApiKeyResult with the given
-// scope set, mirroring withTicketsKey but for milpacs-handler tests.
+// withTicketsKey builds a context carrying an ApiKeyResult with the given
+// scope set. Mirrors the auth middleware's behavior in production.
+func withTicketsKey(scopes ...string) context.Context { return makeKeyCtx(scopes...) }
+
+// withMilpacsKey is the milpacs-handler equivalent of withTicketsKey.
 // Pass "read" to satisfy RequireScope; pass nothing for permission-denied paths.
-func withMilpacsKey(scopes ...string) context.Context {
-	m := map[string]struct{}{}
-	for _, s := range scopes {
-		m[s] = struct{}{}
-	}
-	return ContextWithKey(context.Background(), &datastores.ApiKeyResult{Scopes: m})
-}
+func withMilpacsKey(scopes ...string) context.Context { return makeKeyCtx(scopes...) }
