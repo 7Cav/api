@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"gorm.io/gorm"
 	"log"
 	"os"
 )
@@ -52,7 +53,10 @@ func (server *MilpacsService) GetProfile(ctx context.Context, request *proto.Pro
 		Info.Println("GetProfile, Requested via username")
 		profiles, err = server.Datastore.FindProfilesByUsername(request.Username)
 		if err != nil {
-			return &proto.Profile{}, status.Errorf(codes.NotFound, "no profile found for username: %s", request.Username)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, status.Errorf(codes.NotFound, "no profile found for username: %s", request.Username)
+			}
+			return nil, status.Errorf(codes.Internal, "fetch profile by username: %v", err)
 		}
 	} else if request.UserId != 0 {
 		Info.Println("GetProfile, requested via userid")

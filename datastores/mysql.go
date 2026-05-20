@@ -60,9 +60,6 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for username: %s", username)
-		}
 		return nil, result.Error
 	}
 

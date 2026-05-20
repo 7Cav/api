@@ -1,0 +1,39 @@
+package grpc
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/7cav/api/proto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"gorm.io/gorm"
+)
+
+func TestGetProfile_ByUsername_NotFound(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfilesByUsername: func(string) ([]*proto.Profile, error) {
+			return nil, gorm.ErrRecordNotFound
+		},
+	}}
+	_, err := svc.GetProfile(withMilpacsKey("read"), &proto.ProfileRequest{Username: "ghost"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestGetProfile_ByUsername_DatastoreError(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfilesByUsername: func(string) ([]*proto.Profile, error) {
+			return nil, errors.New("boom")
+		},
+	}}
+	_, err := svc.GetProfile(withMilpacsKey("read"), &proto.ProfileRequest{Username: "anyone"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Internal, st.Code())
+}
