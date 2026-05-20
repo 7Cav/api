@@ -738,9 +738,6 @@ func (ds Mysql) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for gamertag: %s", gamertag)
-		}
 		return nil, result.Error
 	}
 

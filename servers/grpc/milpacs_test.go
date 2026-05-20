@@ -115,3 +115,29 @@ func TestGetUserViaDiscordId_DatastoreError(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.Internal, st.Code())
 }
+
+func TestGetGamertagProfile_NotFound(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfileByGamertag: func(string) (*proto.Profile, error) {
+			return nil, gorm.ErrRecordNotFound
+		},
+	}}
+	_, err := svc.GetGamertagProfile(withMilpacsKey("read"), &proto.GamertagRequest{Gamertag: "Nobody#0001"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+}
+
+func TestGetGamertagProfile_DatastoreError(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{
+		findProfileByGamertag: func(string) (*proto.Profile, error) {
+			return nil, errors.New("boom")
+		},
+	}}
+	_, err := svc.GetGamertagProfile(withMilpacsKey("read"), &proto.GamertagRequest{Gamertag: "any"})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Internal, st.Code())
+}

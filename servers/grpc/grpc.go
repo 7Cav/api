@@ -229,13 +229,16 @@ func (server *MilpacsService) GetGamertagProfile(ctx context.Context, request *p
 	}
 	if request.GetGamertag() == "" {
 		Warn.Println("Empty Gamertag provided, cannot return profile")
-		return &proto.Profile{}, status.Errorf(codes.InvalidArgument, "gamertag cannot be empty")
+		return nil, status.Errorf(codes.InvalidArgument, "gamertag cannot be empty")
 	}
 
 	profile, err := server.Datastore.FindProfileByGamertag(request.GetGamertag())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for gamertag: %v", request.GetGamertag())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "no user found for gamertag: %v", request.GetGamertag())
+		}
+		return nil, status.Errorf(codes.Internal, "fetch profile by gamertag: %v", err)
 	}
 	return profile, nil
 }
