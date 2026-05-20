@@ -98,12 +98,13 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 
 	Info.Println("Searching for milpac profiles with keycloak IDs of: ", keycloakId)
 
-	query := map[string]interface{}{"xf_user_connected_account.provider_key": keycloakId, "xf_user_connected_account.provider": "keycloak"}
-
+	// gorm 1.26+ qualifies map-keyed WHERE columns with the current model's table,
+	// turning "xf_user_connected_account.provider" into a broken three-part qualifier.
+	// Use placeholder SQL so the joined-table columns stay unqualified.
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
-		Where(query).
+		Where("xf_user_connected_account.provider = ? AND xf_user_connected_account.provider_key = ?", "keycloak", keycloakId).
 		First(&profile)
 
 	if result.Error != nil {
@@ -126,12 +127,11 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 
 	Info.Printf("Searching for milpac profiles with discord IDs of: %s", discordId)
 
-	query := map[string]interface{}{"xf_user_connected_account.provider_key": discordId, "xf_user_connected_account.provider": "nfDiscord"}
-
+	// See note in FindProfileByKeycloakID — gorm 1.26+ misqualifies dotted map keys.
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
-		Where(query).
+		Where("xf_user_connected_account.provider = ? AND xf_user_connected_account.provider_key = ?", "nfDiscord", discordId).
 		First(&profile)
 
 	if result.Error != nil {
