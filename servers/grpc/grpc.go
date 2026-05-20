@@ -125,7 +125,10 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 	profile, err := server.Datastore.FindProfileByDiscordID(request.GetDiscordId())
 
 	if err != nil {
-		return &proto.Profile{}, status.Errorf(codes.NotFound, "no user found for discordid: %s", request.GetDiscordId())
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, status.Errorf(codes.NotFound, "no user found for discordid: %s", request.GetDiscordId())
+		}
+		return nil, status.Errorf(codes.Internal, "fetch profile by discord id: %v", err)
 	}
 
 	return profile, nil

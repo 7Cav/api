@@ -126,9 +126,6 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 		First(&profile)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("no profile found for discordID: %s", discordId)
-		}
 		return nil, result.Error
 	}
 
