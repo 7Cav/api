@@ -46,7 +46,7 @@ services:
       timeout: 10s
       retries: 3
     restart: always
-    image: mariadb:11.4
+    image: mariadb:12.2.2
     ports:
       - "3306:3306"
     volumes:
