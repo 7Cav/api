@@ -1,4 +1,11 @@
-version: '3'
+# Prod-shaped template — mirrors the live `7cav-api` stack.
+#
+# Prerequisites for `docker compose up`:
+#   - A `xenforo` stack is already running (provides `xenforo-db` on
+#     the `xenforo_internal` network).
+#   - The external networks exist:
+#       docker network create edge
+#       docker network create xenforo_internal
 
 services:
   api:
@@ -6,64 +13,45 @@ services:
       dockerfile: "Dockerfile"
       context: "./"
     image: 7cav/api:latest
-    container_name: go-api
+    container_name: 7cav-api
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
     networks:
-      - api
-    depends_on:
-      - database
-      - nginx
+      - edge
+      - xenforo_internal
+    restart: always
     ports:
-    - "11000:11000"
-    - "10000:10000"
+      - "11000:11000"
+      - "10000:10000"
     environment:
       PORT: 10000
-      DB_USERNAME:
+      DB_USERNAME: xenforo
       DB_PASSWORD:
-      DB_HOST: 
-      DB_PORT: 
+      DB_HOST: xenforo-db
+      DB_PORT: 3306
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD:
+      # Optional — populates Ticket.forum_url; empty if unset.
+      # FORUM_BASE_URL: https://7cav.us
+      # Optional — refresh interval for the in-memory ticket reference cache; defaults to 15m.
+      # REFERENCE_CACHE_REFRESH_INTERVAL: 15m
+    depends_on:
+      - redis
 
-  nginx:
+  redis:
+    image: redis:latest
+    container_name: redis
     networks:
-      - api
-    image: nginx:1.27-alpine
-    container_name: api-nginx
-    ports:
-    - "8080:80"
-    - "4443:443"
+      - xenforo_internal
     restart: always
-    volumes:
-      - api-nginx-conf:/etc/nginx/conf.d/
-      # use `make certs` to generate self-signed certs for nginx TLS
-      - ./out:/out
-
-  database:
-    container_name: xenforo-db
-    networks:
-      - api
-    healthcheck:
-      test: mysqladmin --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD ping
-      interval: 15s
-      timeout: 10s
-      retries: 3
-    restart: always
-    image: mariadb:11.4
-    ports:
-      - "3306:3306"
-    volumes:
-      - xenforo-database:/var/lib/mysql
     environment:
-      MYSQL_DATABASE: xenforo
-      MYSQL_USER: xenforo
-      MYSQL_PASSWORD: password
-      MYSQL_ROOT_PASSWORD: root_password
-
-volumes:
-  xenforo-database:
-  api-nginx-conf:
-    driver_opts:
-      type: none
-      o: bind
-      device: $PWD/docker/nginx/
+      REDIS_PASSWORD:
 
 networks:
-  api:
+  edge:
+    external: true
+    name: edge
+  xenforo_internal:
+    external: true
+    name: xenforo_internal
