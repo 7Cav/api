@@ -11,3 +11,4 @@ plugins:
     opt: paths=source_relative
   - local: protoc-gen-openapiv2
     out: openapi/assets
+    opt: enable_field_deprecation=true

@@ -81,6 +81,7 @@ service MilpacService {
     };
   };
   rpc GetUserViaKeycloakId(KeycloakIdRequest) returns (Profile){
+    option deprecated = true;
     option(google.api.http) = {
       get: "/api/v1/milpac/keycloak/{keycloak_id}"
     };
@@ -88,6 +89,7 @@ service MilpacService {
       summary: "Get a Milpac profile via keycloak ID"
       description: "Get all milpac Profile data for a given user via their Keycloak ID"
       tags: "Roster, Milpacs, Keycloak"
+      deprecated: true
     };
   };
   rpc GetUserViaDiscordId(DiscordIdRequest) returns (Profile){
@@ -239,7 +241,7 @@ message ProfileRequest {
 }
 
 message KeycloakIdRequest {
-  string keycloak_id = 1;
+  string keycloak_id = 1 [deprecated = true];
 }
 
 message DiscordIdRequest {
@@ -269,7 +271,7 @@ message Profile {
   repeated Award awards = 9;
   string join_date = 10;
   string promotion_date = 11;
-  string keycloak_id = 12;
+  string keycloak_id = 12 [deprecated = true];
   string discord_id = 13;
   string last_forum_post_date = 14;
   string mos = 15;
@@ -319,7 +321,7 @@ message LiteProfile {
   repeated Position secondaries = 7;
   string join_date = 8;
   string promotion_date = 9;
-  string keycloak_id = 10;
+  string keycloak_id = 10 [deprecated = true];
   string discord_id = 11;
   string award_date = 12;
   string record_date = 13;

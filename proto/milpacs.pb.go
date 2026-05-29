@@ -355,8 +355,9 @@ func (x *ProfileRequest) GetUsername() string {
 }
 
 type KeycloakIdRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	KeycloakId    string                 `protobuf:"bytes,1,opt,name=keycloak_id,json=keycloakId,proto3" json:"keycloak_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Deprecated: Marked as deprecated in milpacs.proto.
+	KeycloakId    string `protobuf:"bytes,1,opt,name=keycloak_id,json=keycloakId,proto3" json:"keycloak_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -391,6 +392,7 @@ func (*KeycloakIdRequest) Descriptor() ([]byte, []int) {
 	return file_milpacs_proto_rawDescGZIP(), []int{1}
 }
 
+// Deprecated: Marked as deprecated in milpacs.proto.
 func (x *KeycloakIdRequest) GetKeycloakId() string {
 	if x != nil {
 		return x.KeycloakId
@@ -555,23 +557,24 @@ func (x *Thingy) GetAck() string {
 }
 
 type Profile struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	User              *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	Rank              *Rank                  `protobuf:"bytes,2,opt,name=rank,proto3" json:"rank,omitempty"`
-	RealName          string                 `protobuf:"bytes,3,opt,name=real_name,json=realName,proto3" json:"real_name,omitempty"`
-	UniformUrl        string                 `protobuf:"bytes,4,opt,name=uniform_url,json=uniformUrl,proto3" json:"uniform_url,omitempty"`
-	Roster            RosterType             `protobuf:"varint,5,opt,name=roster,proto3,enum=proto.RosterType" json:"roster,omitempty"`
-	Primary           *Position              `protobuf:"bytes,6,opt,name=primary,proto3" json:"primary,omitempty"`
-	Secondaries       []*Position            `protobuf:"bytes,7,rep,name=secondaries,proto3" json:"secondaries,omitempty"`
-	Records           []*Record              `protobuf:"bytes,8,rep,name=records,proto3" json:"records,omitempty"`
-	Awards            []*Award               `protobuf:"bytes,9,rep,name=awards,proto3" json:"awards,omitempty"`
-	JoinDate          string                 `protobuf:"bytes,10,opt,name=join_date,json=joinDate,proto3" json:"join_date,omitempty"`
-	PromotionDate     string                 `protobuf:"bytes,11,opt,name=promotion_date,json=promotionDate,proto3" json:"promotion_date,omitempty"`
-	KeycloakId        string                 `protobuf:"bytes,12,opt,name=keycloak_id,json=keycloakId,proto3" json:"keycloak_id,omitempty"`
-	DiscordId         string                 `protobuf:"bytes,13,opt,name=discord_id,json=discordId,proto3" json:"discord_id,omitempty"`
-	LastForumPostDate string                 `protobuf:"bytes,14,opt,name=last_forum_post_date,json=lastForumPostDate,proto3" json:"last_forum_post_date,omitempty"`
-	Mos               string                 `protobuf:"bytes,15,opt,name=mos,proto3" json:"mos,omitempty"`
-	ConsoleGamertag   string                 `protobuf:"bytes,16,opt,name=console_gamertag,json=consoleGamertag,proto3" json:"console_gamertag,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	User          *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	Rank          *Rank                  `protobuf:"bytes,2,opt,name=rank,proto3" json:"rank,omitempty"`
+	RealName      string                 `protobuf:"bytes,3,opt,name=real_name,json=realName,proto3" json:"real_name,omitempty"`
+	UniformUrl    string                 `protobuf:"bytes,4,opt,name=uniform_url,json=uniformUrl,proto3" json:"uniform_url,omitempty"`
+	Roster        RosterType             `protobuf:"varint,5,opt,name=roster,proto3,enum=proto.RosterType" json:"roster,omitempty"`
+	Primary       *Position              `protobuf:"bytes,6,opt,name=primary,proto3" json:"primary,omitempty"`
+	Secondaries   []*Position            `protobuf:"bytes,7,rep,name=secondaries,proto3" json:"secondaries,omitempty"`
+	Records       []*Record              `protobuf:"bytes,8,rep,name=records,proto3" json:"records,omitempty"`
+	Awards        []*Award               `protobuf:"bytes,9,rep,name=awards,proto3" json:"awards,omitempty"`
+	JoinDate      string                 `protobuf:"bytes,10,opt,name=join_date,json=joinDate,proto3" json:"join_date,omitempty"`
+	PromotionDate string                 `protobuf:"bytes,11,opt,name=promotion_date,json=promotionDate,proto3" json:"promotion_date,omitempty"`
+	// Deprecated: Marked as deprecated in milpacs.proto.
+	KeycloakId        string `protobuf:"bytes,12,opt,name=keycloak_id,json=keycloakId,proto3" json:"keycloak_id,omitempty"`
+	DiscordId         string `protobuf:"bytes,13,opt,name=discord_id,json=discordId,proto3" json:"discord_id,omitempty"`
+	LastForumPostDate string `protobuf:"bytes,14,opt,name=last_forum_post_date,json=lastForumPostDate,proto3" json:"last_forum_post_date,omitempty"`
+	Mos               string `protobuf:"bytes,15,opt,name=mos,proto3" json:"mos,omitempty"`
+	ConsoleGamertag   string `protobuf:"bytes,16,opt,name=console_gamertag,json=consoleGamertag,proto3" json:"console_gamertag,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -683,6 +686,7 @@ func (x *Profile) GetPromotionDate() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in milpacs.proto.
 func (x *Profile) GetKeycloakId() string {
 	if x != nil {
 		return x.KeycloakId
@@ -1055,23 +1059,24 @@ func (x *Position) GetPositionId() uint64 {
 }
 
 type LiteProfile struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	User              *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	Rank              *Rank                  `protobuf:"bytes,2,opt,name=rank,proto3" json:"rank,omitempty"`
-	RealName          string                 `protobuf:"bytes,3,opt,name=real_name,json=realName,proto3" json:"real_name,omitempty"`
-	UniformUrl        string                 `protobuf:"bytes,4,opt,name=uniform_url,json=uniformUrl,proto3" json:"uniform_url,omitempty"`
-	Roster            RosterType             `protobuf:"varint,5,opt,name=roster,proto3,enum=proto.RosterType" json:"roster,omitempty"`
-	Primary           *Position              `protobuf:"bytes,6,opt,name=primary,proto3" json:"primary,omitempty"`
-	Secondaries       []*Position            `protobuf:"bytes,7,rep,name=secondaries,proto3" json:"secondaries,omitempty"`
-	JoinDate          string                 `protobuf:"bytes,8,opt,name=join_date,json=joinDate,proto3" json:"join_date,omitempty"`
-	PromotionDate     string                 `protobuf:"bytes,9,opt,name=promotion_date,json=promotionDate,proto3" json:"promotion_date,omitempty"`
-	KeycloakId        string                 `protobuf:"bytes,10,opt,name=keycloak_id,json=keycloakId,proto3" json:"keycloak_id,omitempty"`
-	DiscordId         string                 `protobuf:"bytes,11,opt,name=discord_id,json=discordId,proto3" json:"discord_id,omitempty"`
-	AwardDate         string                 `protobuf:"bytes,12,opt,name=award_date,json=awardDate,proto3" json:"award_date,omitempty"`
-	RecordDate        string                 `protobuf:"bytes,13,opt,name=record_date,json=recordDate,proto3" json:"record_date,omitempty"`
-	LastForumPostDate string                 `protobuf:"bytes,14,opt,name=last_forum_post_date,json=lastForumPostDate,proto3" json:"last_forum_post_date,omitempty"`
-	Mos               string                 `protobuf:"bytes,15,opt,name=mos,proto3" json:"mos,omitempty"`
-	ConsoleGamertag   string                 `protobuf:"bytes,16,opt,name=console_gamertag,json=consoleGamertag,proto3" json:"console_gamertag,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	User          *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	Rank          *Rank                  `protobuf:"bytes,2,opt,name=rank,proto3" json:"rank,omitempty"`
+	RealName      string                 `protobuf:"bytes,3,opt,name=real_name,json=realName,proto3" json:"real_name,omitempty"`
+	UniformUrl    string                 `protobuf:"bytes,4,opt,name=uniform_url,json=uniformUrl,proto3" json:"uniform_url,omitempty"`
+	Roster        RosterType             `protobuf:"varint,5,opt,name=roster,proto3,enum=proto.RosterType" json:"roster,omitempty"`
+	Primary       *Position              `protobuf:"bytes,6,opt,name=primary,proto3" json:"primary,omitempty"`
+	Secondaries   []*Position            `protobuf:"bytes,7,rep,name=secondaries,proto3" json:"secondaries,omitempty"`
+	JoinDate      string                 `protobuf:"bytes,8,opt,name=join_date,json=joinDate,proto3" json:"join_date,omitempty"`
+	PromotionDate string                 `protobuf:"bytes,9,opt,name=promotion_date,json=promotionDate,proto3" json:"promotion_date,omitempty"`
+	// Deprecated: Marked as deprecated in milpacs.proto.
+	KeycloakId        string `protobuf:"bytes,10,opt,name=keycloak_id,json=keycloakId,proto3" json:"keycloak_id,omitempty"`
+	DiscordId         string `protobuf:"bytes,11,opt,name=discord_id,json=discordId,proto3" json:"discord_id,omitempty"`
+	AwardDate         string `protobuf:"bytes,12,opt,name=award_date,json=awardDate,proto3" json:"award_date,omitempty"`
+	RecordDate        string `protobuf:"bytes,13,opt,name=record_date,json=recordDate,proto3" json:"record_date,omitempty"`
+	LastForumPostDate string `protobuf:"bytes,14,opt,name=last_forum_post_date,json=lastForumPostDate,proto3" json:"last_forum_post_date,omitempty"`
+	Mos               string `protobuf:"bytes,15,opt,name=mos,proto3" json:"mos,omitempty"`
+	ConsoleGamertag   string `protobuf:"bytes,16,opt,name=console_gamertag,json=consoleGamertag,proto3" json:"console_gamertag,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1169,6 +1174,7 @@ func (x *LiteProfile) GetPromotionDate() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in milpacs.proto.
 func (x *LiteProfile) GetKeycloakId() string {
 	if x != nil {
 		return x.KeycloakId
@@ -2081,9 +2087,9 @@ const file_milpacs_proto_rawDesc = "" +
 	"\rmilpacs.proto\x12\x05proto\x1a\x1cgoogle/api/annotations.proto\x1a.protoc-gen-openapiv2/options/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\"E\n" +
 	"\x0eProfileRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\x04R\x06userId\x12\x1a\n" +
-	"\busername\x18\x02 \x01(\tR\busername\"4\n" +
-	"\x11KeycloakIdRequest\x12\x1f\n" +
-	"\vkeycloak_id\x18\x01 \x01(\tR\n" +
+	"\busername\x18\x02 \x01(\tR\busername\"8\n" +
+	"\x11KeycloakIdRequest\x12#\n" +
+	"\vkeycloak_id\x18\x01 \x01(\tB\x02\x18\x01R\n" +
 	"keycloakId\"1\n" +
 	"\x10DiscordIdRequest\x12\x1d\n" +
 	"\n" +
@@ -2095,7 +2101,7 @@ const file_milpacs_proto_rawDesc = "" +
 	"\x0erank_image_url\x18\x03 \x01(\tR\frankImageUrl\x12\x17\n" +
 	"\arank_id\x18\x04 \x01(\x04R\x06rankId\"\x1a\n" +
 	"\x06Thingy\x12\x10\n" +
-	"\x03ack\x18\x01 \x01(\tR\x03ack\"\xd3\x04\n" +
+	"\x03ack\x18\x01 \x01(\tR\x03ack\"\xd7\x04\n" +
 	"\aProfile\x12\x1f\n" +
 	"\x04user\x18\x01 \x01(\v2\v.proto.UserR\x04user\x12\x1f\n" +
 	"\x04rank\x18\x02 \x01(\v2\v.proto.RankR\x04rank\x12\x1b\n" +
@@ -2109,8 +2115,8 @@ const file_milpacs_proto_rawDesc = "" +
 	"\x06awards\x18\t \x03(\v2\f.proto.AwardR\x06awards\x12\x1b\n" +
 	"\tjoin_date\x18\n" +
 	" \x01(\tR\bjoinDate\x12%\n" +
-	"\x0epromotion_date\x18\v \x01(\tR\rpromotionDate\x12\x1f\n" +
-	"\vkeycloak_id\x18\f \x01(\tR\n" +
+	"\x0epromotion_date\x18\v \x01(\tR\rpromotionDate\x12#\n" +
+	"\vkeycloak_id\x18\f \x01(\tB\x02\x18\x01R\n" +
 	"keycloakId\x12\x1d\n" +
 	"\n" +
 	"discord_id\x18\r \x01(\tR\tdiscordId\x12/\n" +
@@ -2146,7 +2152,7 @@ const file_milpacs_proto_rawDesc = "" +
 	"\bPosition\x12%\n" +
 	"\x0eposition_title\x18\x01 \x01(\tR\rpositionTitle\x12\x1f\n" +
 	"\vposition_id\x18\x02 \x01(\x04R\n" +
-	"positionId\"\xc8\x04\n" +
+	"positionId\"\xcc\x04\n" +
 	"\vLiteProfile\x12\x1f\n" +
 	"\x04user\x18\x01 \x01(\v2\v.proto.UserR\x04user\x12\x1f\n" +
 	"\x04rank\x18\x02 \x01(\v2\v.proto.RankR\x04rank\x12\x1b\n" +
@@ -2157,9 +2163,9 @@ const file_milpacs_proto_rawDesc = "" +
 	"\aprimary\x18\x06 \x01(\v2\x0f.proto.PositionR\aprimary\x121\n" +
 	"\vsecondaries\x18\a \x03(\v2\x0f.proto.PositionR\vsecondaries\x12\x1b\n" +
 	"\tjoin_date\x18\b \x01(\tR\bjoinDate\x12%\n" +
-	"\x0epromotion_date\x18\t \x01(\tR\rpromotionDate\x12\x1f\n" +
+	"\x0epromotion_date\x18\t \x01(\tR\rpromotionDate\x12#\n" +
 	"\vkeycloak_id\x18\n" +
-	" \x01(\tR\n" +
+	" \x01(\tB\x02\x18\x01R\n" +
 	"keycloakId\x12\x1d\n" +
 	"\n" +
 	"discord_id\x18\v \x01(\tR\tdiscordId\x12\x1d\n" +
@@ -2295,15 +2301,15 @@ const file_milpacs_proto_rawDesc = "" +
 	"\rRANK_TYPE_CW3\x10\x1c\x12\x11\n" +
 	"\rRANK_TYPE_CW2\x10\x1d\x12\x11\n" +
 	"\rRANK_TYPE_WO1\x10\x1e\x12\x10\n" +
-	"\fRANK_TYPE_AR\x10\x1f2\xb3\x14\n" +
+	"\fRANK_TYPE_AR\x10\x1f2\xb8\x14\n" +
 	"\rMilpacService\x12\xf9\x01\n" +
 	"\n" +
 	"GetProfile\x12\x15.proto.ProfileRequest\x1a\x0e.proto.Profile\"\xc3\x01\x92Ae\n" +
 	"\x17Users, Milpacs, Profile\x12\x1dGet given user milpac Profile\x1a+Get milpac Profile data for a specific user\x82\xd3\xe4\x93\x02UZ-\x12+/api/v1/milpacs/profile/username/{username}\x12$/api/v1/milpacs/profile/id/{user_id}\x12\xa9\x01\n" +
 	"\tGetRoster\x12\x14.proto.RosterRequest\x1a\r.proto.Roster\"w\x92AU\n" +
-	"\x0fRoster, Milpacs\x12\x12Get a given roster\x1a.Get all milpac Profile data for a given roster\x82\xd3\xe4\x93\x02\x19\x12\x17/api/v1/roster/{roster}\x12\xf9\x01\n" +
-	"\x14GetUserViaKeycloakId\x12\x18.proto.KeycloakIdRequest\x1a\x0e.proto.Profile\"\xb6\x01\x92A\x85\x01\n" +
-	"\x19Roster, Milpacs, Keycloak\x12$Get a Milpac profile via keycloak ID\x1aBGet all milpac Profile data for a given user via their Keycloak ID\x82\xd3\xe4\x93\x02'\x12%/api/v1/milpac/keycloak/{keycloak_id}\x12\xf2\x01\n" +
+	"\x0fRoster, Milpacs\x12\x12Get a given roster\x1a.Get all milpac Profile data for a given roster\x82\xd3\xe4\x93\x02\x19\x12\x17/api/v1/roster/{roster}\x12\xfe\x01\n" +
+	"\x14GetUserViaKeycloakId\x12\x18.proto.KeycloakIdRequest\x1a\x0e.proto.Profile\"\xbb\x01\x92A\x87\x01\n" +
+	"\x19Roster, Milpacs, Keycloak\x12$Get a Milpac profile via keycloak ID\x1aBGet all milpac Profile data for a given user via their Keycloak IDX\x01\x82\xd3\xe4\x93\x02'\x12%/api/v1/milpac/keycloak/{keycloak_id}\x88\x02\x01\x12\xf2\x01\n" +
 	"\x13GetUserViaDiscordId\x12\x17.proto.DiscordIdRequest\x1a\x0e.proto.Profile\"\xb1\x01\x92A\x82\x01\n" +
 	"\x18Roster, Milpacs, Discord\x12#Get a Milpac profile via Discord ID\x1aAGet all milpac Profile data for a given user via their Discord ID\x82\xd3\xe4\x93\x02%\x12#/api/v1/milpac/discord/{discord_id}\x12\xf2\x01\n" +
 	"\rGetLiteRoster\x12\x14.proto.RosterRequest\x1a\x11.proto.LiteRoster\"\xb7\x01\x92A\x8f\x01\n" +

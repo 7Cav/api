@@ -56,6 +56,7 @@ const (
 type MilpacServiceClient interface {
 	GetProfile(ctx context.Context, in *ProfileRequest, opts ...grpc.CallOption) (*Profile, error)
 	GetRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*Roster, error)
+	// Deprecated: Do not use.
 	GetUserViaKeycloakId(ctx context.Context, in *KeycloakIdRequest, opts ...grpc.CallOption) (*Profile, error)
 	GetUserViaDiscordId(ctx context.Context, in *DiscordIdRequest, opts ...grpc.CallOption) (*Profile, error)
 	GetLiteRoster(ctx context.Context, in *RosterRequest, opts ...grpc.CallOption) (*LiteRoster, error)
@@ -95,6 +96,7 @@ func (c *milpacServiceClient) GetRoster(ctx context.Context, in *RosterRequest, 
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *milpacServiceClient) GetUserViaKeycloakId(ctx context.Context, in *KeycloakIdRequest, opts ...grpc.CallOption) (*Profile, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Profile)
@@ -191,6 +193,7 @@ func (c *milpacServiceClient) GetGamertagProfile(ctx context.Context, in *Gamert
 type MilpacServiceServer interface {
 	GetProfile(context.Context, *ProfileRequest) (*Profile, error)
 	GetRoster(context.Context, *RosterRequest) (*Roster, error)
+	// Deprecated: Do not use.
 	GetUserViaKeycloakId(context.Context, *KeycloakIdRequest) (*Profile, error)
 	GetUserViaDiscordId(context.Context, *DiscordIdRequest) (*Profile, error)
 	GetLiteRoster(context.Context, *RosterRequest) (*LiteRoster, error)
