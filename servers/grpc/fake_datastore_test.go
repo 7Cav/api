@@ -33,6 +33,9 @@ type fakeDatastore struct {
 	findRosterByType           func(proto.RosterType) (*proto.Roster, error)
 	findLiteRosterByType       func(proto.RosterType) (*proto.LiteRoster, error)
 	findS1UniformsRosterByType func(proto.RosterType) (*proto.S1UniformsRoster, error)
+
+	// Auth — used by auth_test.go to drive the interceptor end-to-end.
+	validateApiKey func(string) (*datastores.ApiKeyResult, error)
 }
 
 func (f *fakeDatastore) ListTickets(_ context.Context, _ datastores.TicketReferenceCache, fi *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
@@ -85,7 +88,10 @@ func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error)           
 func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error)           { panic("unused") }
 func (f *fakeDatastore) FindAwol() ([]*proto.Awol, error)                                 { panic("unused") }
 func (f *fakeDatastore) GetTableUpdates() ([]xenforo.TableInfo, error)                    { panic("unused") }
-func (f *fakeDatastore) ValidateApiKey(string) (*datastores.ApiKeyResult, error)          { panic("unused") }
+
+func (f *fakeDatastore) ValidateApiKey(token string) (*datastores.ApiKeyResult, error) {
+	return f.validateApiKey(token)
+}
 
 // makeKeyCtx builds a context carrying an ApiKeyResult with the given scope
 // set. The withTicketsKey / withMilpacsKey wrappers stay as named entry
