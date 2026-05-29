@@ -23,7 +23,7 @@ jobs:
           sed -i "s/version: \"dev\";/version: \"${VERSION}\";/" proto/milpacs.proto proto/tickets.proto
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.1.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
