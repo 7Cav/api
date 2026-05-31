@@ -142,6 +142,33 @@ func TestGetGamertagProfile_DatastoreError(t *testing.T) {
 	assert.Equal(t, codes.Internal, st.Code())
 }
 
+func TestGetRoster_NullType_InvalidArgument(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{}}
+	_, err := svc.GetRoster(withMilpacsKey("read"), &proto.RosterRequest{Roster: proto.RosterType_ROSTER_TYPE_UNSPECIFIED})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
+func TestGetLiteRoster_NullType_InvalidArgument(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{}}
+	_, err := svc.GetLiteRoster(withMilpacsKey("read"), &proto.RosterRequest{Roster: proto.RosterType_ROSTER_TYPE_UNSPECIFIED})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
+func TestGetS1UniformsRoster_NullType_InvalidArgument(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{}}
+	_, err := svc.GetS1UniformsRoster(withMilpacsKey("read"), &proto.RosterRequest{Roster: proto.RosterType_ROSTER_TYPE_UNSPECIFIED})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
 func TestGetRoster_DatastoreError(t *testing.T) {
 	svc := &MilpacsService{Datastore: &fakeDatastore{
 		findRosterByType: func(proto.RosterType) (*proto.Roster, error) {

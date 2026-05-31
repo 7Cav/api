@@ -80,7 +80,7 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 		return nil, err
 	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
-		return nil, errors.New("cannot request null roster type")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot request null roster type")
 	}
 
 	roster, err := server.Datastore.FindRosterByType(request.Roster)
@@ -138,7 +138,7 @@ func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.
 		return nil, err
 	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
-		return nil, errors.New("cannot request null roster type")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot request null roster type")
 	}
 
 	roster, err := server.Datastore.FindLiteRosterByType(request.Roster)
@@ -170,7 +170,7 @@ func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *
 		return nil, err
 	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
-		return nil, errors.New("cannot request null roster type")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot request null roster type")
 	}
 
 	roster, err := server.Datastore.FindS1UniformsRosterByType(request.Roster)
