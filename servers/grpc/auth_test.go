@@ -108,6 +108,83 @@ func TestAuthInterceptor_LogsRequestOnSuccess(t *testing.T) {
 	assert.Contains(t, logged, "key_id=17")
 }
 
+// rawAuthCtx sets the authorization metadata verbatim (no implicit "Bearer "
+// prefix), so scheme-problem cases can be exercised.
+func rawAuthCtx(authHeader, peerIP string) context.Context {
+	var ctx context.Context
+	if authHeader == "" {
+		ctx = context.Background()
+	} else {
+		ctx = metadata.NewIncomingContext(
+			context.Background(),
+			metadata.Pairs("authorization", authHeader),
+		)
+	}
+	return peer.NewContext(ctx, &peer.Peer{
+		Addr: &net.TCPAddr{IP: net.ParseIP(peerIP), Port: 4242},
+	})
+}
+
+func runInterceptor(t *testing.T, ds *fakeDatastore, ctx context.Context) (any, error, bool) {
+	t.Helper()
+	interceptor := NewAuthInterceptor(ds)
+	info := &grpc.UnaryServerInfo{FullMethod: "/proto.MilpacService/GetProfile"}
+	handlerCalled := false
+	resp, err := interceptor(ctx, "req", info, func(ctx context.Context, req any) (any, error) {
+		handlerCalled = true
+		return "ok", nil
+	})
+	return resp, err, handlerCalled
+}
+
+func TestAuthInterceptor_NoAuthHeader_NamesBearerScheme(t *testing.T) {
+	ds := &fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		t.Fatal("ValidateApiKey must not be called when no authorization metadata is present")
+		return nil, nil
+	}}
+	_, err, called := runInterceptor(t, ds, rawAuthCtx("", "10.0.0.5"))
+
+	require.Error(t, err)
+	assert.False(t, called)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+	assert.Contains(t, st.Message(), "Bearer")
+	assert.Contains(t, st.Message(), "Authorization")
+}
+
+func TestAuthInterceptor_RawKeyNoBearerPrefix_NamesBearerScheme(t *testing.T) {
+	ds := &fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		t.Fatal("ValidateApiKey must not be called when the Bearer scheme is absent")
+		return nil, nil
+	}}
+	_, err, called := runInterceptor(t, ds, rawAuthCtx("cav7_rawkeynoprefix", "10.0.0.5"))
+
+	require.Error(t, err)
+	assert.False(t, called)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+	assert.Contains(t, st.Message(), "Bearer")
+	assert.Contains(t, st.Message(), "Authorization")
+}
+
+func TestAuthInterceptor_BadKey_GenericNoLeak(t *testing.T) {
+	ds := &fakeDatastore{validateApiKey: func(token string) (*datastores.ApiKeyResult, error) {
+		assert.Equal(t, "cav7_badkey", token)
+		return nil, nil
+	}}
+	_, err, called := runInterceptor(t, ds, buildAuthCtx("cav7_badkey", "10.0.0.5"))
+
+	require.Error(t, err)
+	assert.False(t, called)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.Unauthenticated, st.Code())
+	// Generic — must not name the Bearer scheme (that's reserved for scheme errors).
+	assert.NotContains(t, st.Message(), "Bearer")
+}
+
 func TestAuthInterceptor_LogsRequestOnAuthFailure(t *testing.T) {
 	ds := &fakeDatastore{
 		validateApiKey: func(token string) (*datastores.ApiKeyResult, error) {

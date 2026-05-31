@@ -66,12 +66,20 @@ func getOpenAPIHandler() http.Handler {
 // cav7_ prefix (5) + 64 hex chars = 69; 128 gives generous headroom.
 const maxTokenLen = 128
 
+// errBearerScheme is the 401 body returned when the Authorization header is
+// missing or doesn't carry a usable Bearer token (no/empty/oversized token).
+// It names the expected format so callers who paste a raw key without the
+// "Bearer " prefix get a self-explanatory error. The key-validation-failure
+// branch stays the generic "Unauthorized" so it leaks nothing about whether a
+// key exists, is expired, or lacks scopes.
+const errBearerScheme = "Unauthorized: expected 'Authorization: Bearer <key>' header"
+
 func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := datastores.ParseBearerToken(r.Header.Get("Authorization"), maxTokenLen)
 		if token == "" {
-			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			Warn.Printf("Unauthorized HTTP access attempt (bad bearer scheme) from %s", r.RemoteAddr)
+			http.Error(w, errBearerScheme, http.StatusUnauthorized)
 			return
 		}
 
