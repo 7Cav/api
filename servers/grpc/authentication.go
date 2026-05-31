@@ -32,6 +32,13 @@ import (
 
 const maxTokenLen = 128
 
+// errBearerScheme mirrors the HTTP gateway's scheme-problem message: it names
+// the expected Authorization format so callers missing the "Bearer " prefix
+// get a self-explanatory error. Returned for any Bearer-scheme problem (no
+// metadata, no authorization header, or an empty/oversized token). The
+// key-validation-failure branch stays generic to leak nothing about the key.
+const errBearerScheme = "Unauthenticated: expected 'Authorization: Bearer <key>' metadata"
+
 func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		peerAddr := "unknown"
@@ -45,22 +52,22 @@ func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
-			return nil, status.Errorf(codes.Unauthenticated, "missing metadata")
+			return nil, status.Error(codes.Unauthenticated, errBearerScheme)
 		}
 
 		authHeaders := md.Get("authorization")
 		if len(authHeaders) < 1 {
-			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
+			return nil, status.Error(codes.Unauthenticated, errBearerScheme)
 		}
 
 		token := datastores.ParseBearerToken(authHeaders[0], maxTokenLen)
 		if token == "" {
-			return nil, status.Errorf(codes.Unauthenticated, "missing authorization token")
+			return nil, status.Error(codes.Unauthenticated, errBearerScheme)
 		}
 
 		key, err := ds.ValidateApiKey(token)
 		if err != nil || key == nil {
-			return nil, status.Errorf(codes.Unauthenticated, "invalid api key")
+			return nil, status.Error(codes.Unauthenticated, "invalid api key")
 		}
 
 		keyID = strconv.FormatUint(uint64(key.KeyId), 10)
