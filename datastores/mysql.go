@@ -110,7 +110,7 @@ func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, erro
 
 	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
-		return nil, fmt.Errorf("error generating profile")
+		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
 	return profiles[profile.RelationId], nil
@@ -134,7 +134,7 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 
 	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
 	if err != nil {
-		return nil, fmt.Errorf("error generating profile")
+		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
 	return profiles[profile.RelationId], nil
@@ -356,7 +356,7 @@ func (ds Mysql) FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.
 		milpac, err := ds.generateS1UniformsProtoProfile(profile)
 
 		if err != nil {
-			return nil, fmt.Errorf("error generating profile")
+			return nil, fmt.Errorf("error generating profile: %w", err)
 		}
 		profiles[profile.RelationId] = milpac
 	}

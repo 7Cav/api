@@ -80,7 +80,7 @@ func (server *MilpacsService) GetRoster(ctx context.Context, request *proto.Rost
 		return nil, err
 	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
-		return nil, errors.New("cannot request null roster type")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot request null roster type")
 	}
 
 	roster, err := server.Datastore.FindRosterByType(request.Roster)
@@ -98,7 +98,7 @@ func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request 
 	}
 
 	if request.GetKeycloakId() == "" {
-		Warn.Println("Empty Keycloak ID provided, cannot return profile")
+		return nil, status.Errorf(codes.InvalidArgument, "keycloak id cannot be empty")
 	}
 
 	profile, err := server.Datastore.FindProfileByKeycloakID(request.GetKeycloakId())
@@ -119,7 +119,7 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 	}
 
 	if request.GetDiscordId() == "" {
-		Warn.Println("Empty Discord ID provided, cannot return profile")
+		return nil, status.Errorf(codes.InvalidArgument, "discord id cannot be empty")
 	}
 
 	profile, err := server.Datastore.FindProfileByDiscordID(request.GetDiscordId())
@@ -138,7 +138,7 @@ func (server *MilpacsService) GetLiteRoster(ctx context.Context, request *proto.
 		return nil, err
 	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
-		return nil, errors.New("cannot request null roster type")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot request null roster type")
 	}
 
 	roster, err := server.Datastore.FindLiteRosterByType(request.Roster)
@@ -170,7 +170,7 @@ func (server *MilpacsService) GetS1UniformsRoster(ctx context.Context, request *
 		return nil, err
 	}
 	if request.Roster == proto.RosterType_ROSTER_TYPE_UNSPECIFIED {
-		return nil, errors.New("cannot request null roster type")
+		return nil, status.Errorf(codes.InvalidArgument, "cannot request null roster type")
 	}
 
 	roster, err := server.Datastore.FindS1UniformsRosterByType(request.Roster)
