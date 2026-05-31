@@ -142,6 +142,35 @@ func TestGetGamertagProfile_DatastoreError(t *testing.T) {
 	assert.Equal(t, codes.Internal, st.Code())
 }
 
+func TestGetUserViaKeycloakId_EmptyID_InvalidArgument(t *testing.T) {
+	// findProfileByKeycloakID left unset: a fall-through to the datastore
+	// nil-derefs and panics, proving the handler early-returns instead.
+	svc := &MilpacsService{Datastore: &fakeDatastore{}}
+	_, err := svc.GetUserViaKeycloakId(withMilpacsKey("read"), &proto.KeycloakIdRequest{KeycloakId: ""})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
+func TestGetUserViaDiscordId_EmptyID_InvalidArgument(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{}}
+	_, err := svc.GetUserViaDiscordId(withMilpacsKey("read"), &proto.DiscordIdRequest{DiscordId: ""})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
+func TestGetGamertagProfile_Empty_InvalidArgument(t *testing.T) {
+	svc := &MilpacsService{Datastore: &fakeDatastore{}}
+	_, err := svc.GetGamertagProfile(withMilpacsKey("read"), &proto.GamertagRequest{Gamertag: ""})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+}
+
 func TestGetRoster_NullType_InvalidArgument(t *testing.T) {
 	svc := &MilpacsService{Datastore: &fakeDatastore{}}
 	_, err := svc.GetRoster(withMilpacsKey("read"), &proto.RosterRequest{Roster: proto.RosterType_ROSTER_TYPE_UNSPECIFIED})

@@ -98,7 +98,7 @@ func (server *MilpacsService) GetUserViaKeycloakId(ctx context.Context, request 
 	}
 
 	if request.GetKeycloakId() == "" {
-		Warn.Println("Empty Keycloak ID provided, cannot return profile")
+		return nil, status.Errorf(codes.InvalidArgument, "keycloak id cannot be empty")
 	}
 
 	profile, err := server.Datastore.FindProfileByKeycloakID(request.GetKeycloakId())
@@ -119,7 +119,7 @@ func (server *MilpacsService) GetUserViaDiscordId(ctx context.Context, request *
 	}
 
 	if request.GetDiscordId() == "" {
-		Warn.Println("Empty Discord ID provided, cannot return profile")
+		return nil, status.Errorf(codes.InvalidArgument, "discord id cannot be empty")
 	}
 
 	profile, err := server.Datastore.FindProfileByDiscordID(request.GetDiscordId())
