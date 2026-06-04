@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       # Inject the release tag into proto/openapi sources so that `make
       # generate` inside the Dockerfile bakes the right version into the
