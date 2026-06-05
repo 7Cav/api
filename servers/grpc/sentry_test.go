@@ -1,8 +1,10 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -19,15 +21,38 @@ import (
 
 // captureTransport is an in-memory sentry.Transport recording every event the
 // client would have sent over the wire — the observable seam for these tests.
+// flushFails makes Flush report timeout; flushed records that a synchronous
+// flush happened at all (pinning the sync-flush-on-panic contract).
 type captureTransport struct {
-	mu     sync.Mutex
-	events []*sentry.Event
+	mu         sync.Mutex
+	events     []*sentry.Event
+	flushed    bool
+	flushFails bool
 }
 
-func (t *captureTransport) Configure(sentry.ClientOptions)        {}
-func (t *captureTransport) Flush(time.Duration) bool              { return true }
-func (t *captureTransport) FlushWithContext(context.Context) bool { return true }
-func (t *captureTransport) Close()                                {}
+func (t *captureTransport) Configure(sentry.ClientOptions) {}
+
+func (t *captureTransport) Flush(time.Duration) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.flushed = true
+	return !t.flushFails
+}
+
+func (t *captureTransport) FlushWithContext(context.Context) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.flushed = true
+	return !t.flushFails
+}
+
+func (t *captureTransport) Close() {}
+
+func (t *captureTransport) Flushed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.flushed
+}
 
 func (t *captureTransport) SendEvent(event *sentry.Event) {
 	t.mu.Lock()
@@ -47,10 +72,12 @@ const testRelease = "test-release-1.2.3"
 
 // bindCaptureClient binds a capture-only Sentry client to the global hub for
 // the duration of the test, restoring the unbound (disabled) state afterwards.
+// AttachStacktrace mirrors production (setupSentry) so string-panic events
+// carry frames here exactly as they do live.
 func bindCaptureClient(t *testing.T) *captureTransport {
 	t.Helper()
 	transport := &captureTransport{}
-	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport, Release: testRelease})
+	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport, Release: testRelease, AttachStacktrace: true})
 	require.NoError(t, err)
 	sentry.CurrentHub().BindClient(client)
 	t.Cleanup(func() { sentry.CurrentHub().BindClient(nil) })
@@ -139,6 +166,31 @@ func TestSentryInterceptor_HandlerPanic_CapturedThenRepanics(t *testing.T) {
 	assert.Equal(t, "grpc", event.Tags["transport"])
 	assert.Equal(t, sentry.LevelFatal, event.Level)
 	assert.Equal(t, testRelease, event.Release, "panic events must carry the release")
+	assert.True(t, transport.Flushed(),
+		"panic events must be flushed synchronously — the process is about to die and the async transport with it")
+	require.NotEmpty(t, event.Threads, "a string panic must carry a stack (AttachStacktrace shapes it as a thread)")
+	require.NotNil(t, event.Threads[0].Stacktrace)
+	assert.NotEmpty(t, event.Threads[0].Stacktrace.Frames, "a string panic without frames is undebuggable")
+}
+
+func TestSentryInterceptor_PanicFlushTimeout_Warns(t *testing.T) {
+	transport := bindCaptureClient(t)
+	transport.flushFails = true
+
+	var warnBuf bytes.Buffer
+	Warn.SetOutput(&warnBuf)
+	defer Warn.SetOutput(os.Stdout)
+
+	interceptor := NewSentryInterceptor()
+	assert.PanicsWithValue(t, "kaboom", func() {
+		_, _ = interceptor(context.Background(), nil, unaryInfo("/proto.TicketsService/ListTickets"),
+			func(ctx context.Context, req any) (any, error) {
+				panic("kaboom")
+			})
+	}, "a failed flush must not block the re-panic")
+
+	assert.Contains(t, warnBuf.String(), "panic event for /proto.TicketsService/ListTickets was likely dropped",
+		"a dropped crash event must at least leave a trace in the process logs")
 }
 
 func TestSentryInterceptor_NoClient_PassThrough(t *testing.T) {

@@ -57,11 +57,13 @@ func NewSentryInterceptor() grpc.UnaryServerInterceptor {
 
 		defer func() {
 			if r := recover(); r != nil {
-				hub.RecoverWithContext(ctx, r)
+				hub.RecoverWithContext(ctx, r) // event queued; ID unused — async transport
 				// The panic will take the process down (grpc-go has no
 				// recovery layer) — flush synchronously so the event
 				// survives the crash.
-				hub.Flush(sentryFlushTimeout)
+				if !hub.Flush(sentryFlushTimeout) {
+					Warn.Printf("sentry flush timed out — panic event for %s was likely dropped", info.FullMethod)
+				}
 				panic(r)
 			}
 		}()

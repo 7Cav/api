@@ -17,15 +17,38 @@ import (
 
 // captureTransport is an in-memory sentry.Transport recording every event the
 // client would have sent over the wire — the observable seam for these tests.
+// flushed records whether anything ever flushed synchronously, pinning the
+// HTTP side of the deliberate sync/async flush asymmetry (gRPC panics flush,
+// HTTP panics must not — the process survives and the async transport sends).
 type captureTransport struct {
-	mu     sync.Mutex
-	events []*sentry.Event
+	mu      sync.Mutex
+	events  []*sentry.Event
+	flushed bool
 }
 
-func (t *captureTransport) Configure(sentry.ClientOptions)        {}
-func (t *captureTransport) Flush(time.Duration) bool              { return true }
-func (t *captureTransport) FlushWithContext(context.Context) bool { return true }
-func (t *captureTransport) Close()                                {}
+func (t *captureTransport) Configure(sentry.ClientOptions) {}
+
+func (t *captureTransport) Flush(time.Duration) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.flushed = true
+	return true
+}
+
+func (t *captureTransport) FlushWithContext(context.Context) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.flushed = true
+	return true
+}
+
+func (t *captureTransport) Close() {}
+
+func (t *captureTransport) Flushed() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.flushed
+}
 
 func (t *captureTransport) SendEvent(event *sentry.Event) {
 	t.mu.Lock()
@@ -45,10 +68,12 @@ const testRelease = "test-release-1.2.3"
 
 // bindCaptureClient binds a capture-only Sentry client to the global hub for
 // the duration of the test, restoring the unbound (disabled) state afterwards.
+// AttachStacktrace mirrors production (setupSentry) so string-panic events
+// carry frames here exactly as they do live.
 func bindCaptureClient(t *testing.T) *captureTransport {
 	t.Helper()
 	transport := &captureTransport{}
-	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport, Release: testRelease})
+	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport, Release: testRelease, AttachStacktrace: true})
 	require.NoError(t, err)
 	sentry.CurrentHub().BindClient(client)
 	t.Cleanup(func() { sentry.CurrentHub().BindClient(nil) })
@@ -73,6 +98,25 @@ func TestSentryMiddleware_500Response_CapturedWithRouteAndStatus(t *testing.T) {
 	assert.Equal(t, "500", event.Tags["http_status"])
 	assert.Equal(t, "http", event.Tags["transport"])
 	assert.Equal(t, sentry.LevelError, event.Level)
+	assert.Equal(t, []string{"http-5xx", "GET", "500"}, event.Fingerprint,
+		"grouping must be method+status, not URL — parameterized paths must not fan one failure into N issues")
+}
+
+// TestSentryMiddleware_WriteThenWriteHeader_Records200 pins the implicit-200
+// latch: once a handler writes the body, net/http has committed status 200,
+// and a buggy late WriteHeader(500) must not record a false 500.
+func TestSentryMiddleware_WriteThenWriteHeader_Records200(t *testing.T) {
+	transport := bindCaptureClient(t)
+	h := sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{}`)) // commits the implicit 200
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/roster", nil))
+
+	assert.Equal(t, http.StatusOK, rr.Code, "the committed implicit 200 is what the client saw")
+	assert.Empty(t, transport.Events(), "a status the client never received must not produce an event")
 }
 
 func TestSentryMiddleware_NonServerErrorResponses_NoEvents(t *testing.T) {
@@ -124,6 +168,11 @@ func TestSentryMiddleware_HandlerPanic_CapturedThenRepanics(t *testing.T) {
 	assert.Equal(t, "http", event.Tags["transport"])
 	assert.Equal(t, sentry.LevelFatal, event.Level)
 	assert.Equal(t, testRelease, event.Release, "panic events must carry the release")
+	assert.False(t, transport.Flushed(),
+		"HTTP panics must NOT flush synchronously — the process survives and the async transport delivers")
+	require.NotEmpty(t, event.Threads, "a string panic must carry a stack (AttachStacktrace shapes it as a thread)")
+	require.NotNil(t, event.Threads[0].Stacktrace)
+	assert.NotEmpty(t, event.Threads[0].Stacktrace.Frames, "a string panic without frames is undebuggable")
 }
 
 func TestSentryMiddleware_NoClient_PassThrough(t *testing.T) {

@@ -63,7 +63,11 @@ func sentryMiddleware(next http.Handler) http.Handler {
 			if sw.status >= http.StatusInternalServerError {
 				scope.SetTag("http_status", strconv.Itoa(sw.status))
 				scope.SetLevel(sentry.LevelError)
-				hub.CaptureMessage(fmt.Sprintf("HTTP %d %s %s", sw.status, r.Method, r.URL.Path))
+				// Group by method+status, not URL: parameterized paths
+				// (/profile/{id}) must not fan one failure into N Sentry
+				// issues. The raw path stays available on the route tag.
+				scope.SetFingerprint([]string{"http-5xx", r.Method, strconv.Itoa(sw.status)})
+				hub.CaptureMessage(fmt.Sprintf("HTTP %d %s %s", sw.status, r.Method, r.URL.Path)) // event queued; ID unused — async transport
 			}
 		}()
 
@@ -71,9 +75,10 @@ func sentryMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// statusRecorder remembers the first status code written so the deferred
-// 5xx check can see what the handler chain produced. Mirrors the embedding
-// style of the package's other ResponseWriter wrappers.
+// statusRecorder captures the status the client actually saw for the
+// deferred 5xx check: the first explicit WriteHeader wins, and a body Write
+// without one latches the implicit 200 — mirroring net/http, where any later
+// WriteHeader is a superfluous no-op.
 type statusRecorder struct {
 	http.ResponseWriter
 	status      int
@@ -86,4 +91,12 @@ func (sr *statusRecorder) WriteHeader(code int) {
 		sr.wroteHeader = true
 	}
 	sr.ResponseWriter.WriteHeader(code)
+}
+
+// Write latches the implicit 200 (status already defaults to it) so a buggy
+// Write-then-WriteHeader(500) handler cannot record a status the client
+// never received.
+func (sr *statusRecorder) Write(b []byte) (int, error) {
+	sr.wroteHeader = true
+	return sr.ResponseWriter.Write(b)
 }

@@ -39,6 +39,10 @@ services:
       # Optional — enables errors-only Sentry capture (#118). The DSN lives only
       # in the prod host's compose config (#113); unset anywhere else = no-op.
       # SENTRY_DSN:
+      # Optional — verbose Sentry SDK diagnostics (one log line per event sent;
+      # send failures/drops/rate limits become visible). For debugging delivery
+      # problems without a rebuild; leave unset normally.
+      # SENTRY_DEBUG: "true"
     depends_on:
       - redis
 

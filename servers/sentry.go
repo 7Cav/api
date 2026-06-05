@@ -33,6 +33,10 @@ import (
 // events to reach Sentry before the process exits.
 const sentryShutdownFlushTimeout = 2 * time.Second
 
+// sentryStartupProbeTimeout bounds the boot-time delivery check. A var, not a
+// const, only so tests can shrink the window; production never mutates it.
+var sentryStartupProbeTimeout = 5 * time.Second
+
 // setupSentry initialises Sentry error capture (errors only, no tracing) when
 // SENTRY_DSN is present in the environment. Without a DSN it is a complete
 // no-op: no init, no capture, local/dev unaffected. Returns whether capture
@@ -43,6 +47,7 @@ const sentryShutdownFlushTimeout = 2 * time.Second
 func setupSentry() bool {
 	dsn := viper.GetString("SENTRY_DSN")
 	if dsn == "" {
+		Info.Println("Sentry disabled — SENTRY_DSN not set")
 		return false
 	}
 
@@ -53,11 +58,20 @@ func setupSentry() bool {
 		Release: version,
 		// Errors only — no tracing (PRD #112 Phase 0).
 		EnableTracing: false,
-		// SampleRate left at zero so the SDK applies its default of 1.0
-		// (every error event is sent — confirmed convention in #113).
-		// Belt-and-braces: our interceptor/middleware never attach bearer
-		// material, but scrub at the choke point so nothing future-added
-		// can leak it either.
+		// Explicit zero: the SDK normalises 0 to its default of 1.0, so
+		// every error event is sent (confirmed convention in #113).
+		SampleRate: 0,
+		// String panics (panic("msg")) become message events; without this
+		// they would arrive with no stack trace at all.
+		AttachStacktrace: true,
+		// Env-gated SDK diagnostics: send failures, drops and rate limits
+		// otherwise go to a debug logger defaulting to io.Discard. One log
+		// line per event when on — too chatty for always-on, but lets ops
+		// diagnose delivery without a rebuild.
+		Debug:       viper.GetBool("SENTRY_DEBUG"),
+		DebugWriter: Warn.Writer(),
+		// Belt-and-braces scrubbing at the choke point — see scrubEvent for
+		// the exact (request-material-only) scope of the guarantee.
 		BeforeSend: scrubEvent,
 	})
 	if err != nil {
@@ -66,7 +80,23 @@ func setupSentry() bool {
 		return false
 	}
 
-	Info.Println("Sentry error capture enabled (errors only), release:", version)
+	if sentryStartupProbe() {
+		Info.Println("Sentry error capture enabled (errors only), release:", version)
+	}
+	return true
+}
+
+// sentryStartupProbe pushes one canary event through the real transport and
+// flushes. sentry.Init does no network I/O, and the SDK reports delivery
+// failures (bad DSN host, blocked egress, rate limits) only to its internal
+// debug logger — without this probe a broken pipeline looks exactly like a
+// healthy one. Returns whether the flush confirmed the handoff.
+func sentryStartupProbe() bool {
+	sentry.CaptureMessage("sentry startup probe")
+	if !sentry.Flush(sentryStartupProbeTimeout) {
+		Warn.Println("sentry enabled but startup probe did not flush — events may not be reaching Sentry (check DSN/egress)")
+		return false
+	}
 	return true
 }
 
@@ -75,33 +105,48 @@ func setupSentry() bool {
 // shutdown path (Start blocks on Serve and the process dies by signal); this
 // is the minimal hook so error events from the final moments are not lost.
 // Only installed when Sentry is enabled, so the no-DSN path keeps today's
-// default signal behavior exactly.
+// default signal behavior exactly — guarded here as well as at the call site,
+// because installing the handler without a client would silently rewrite the
+// process's signal semantics for nothing.
 func flushSentryOnShutdown() {
+	if sentry.CurrentHub().Client() == nil {
+		return
+	}
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	go watchShutdown(signals,
-		func() { sentry.Flush(sentryShutdownFlushTimeout) },
+		func() bool { return sentry.Flush(sentryShutdownFlushTimeout) },
 		os.Exit,
 	)
 }
 
 // watchShutdown waits for a shutdown signal, flushes, then exits 0. Split
 // from flushSentryOnShutdown so the flush-before-exit ordering is testable.
-func watchShutdown(signals <-chan os.Signal, flush func(), exit func(code int)) {
+// Note on os.Exit: deferred functions do not run, and a second signal
+// arriving during the flush window is absorbed by the still-installed
+// handler — the process is already on its way down.
+func watchShutdown(signals <-chan os.Signal, flush func() bool, exit func(code int)) {
 	sig := <-signals
 	Info.Printf("received %v — flushing sentry before exit", sig)
-	flush()
+	if !flush() {
+		Warn.Println("sentry flush timed out at shutdown — buffered events were dropped")
+	}
 	exit(0)
 }
 
-// scrubEvent is the BeforeSend hook: it strips credential-bearing request
-// material (Authorization headers, cookies) from every outgoing event so a
-// bearer token can never appear in a Sentry payload.
+// scrubEvent is the BeforeSend hook closing the request-material vector: it
+// strips authorization / proxy-authorization / cookie headers
+// (case-insensitive), the cookie jar, and the raw query string from every
+// outgoing error event. It does NOT scan exception text, breadcrumbs or
+// extras — never put key material in error strings. If tracing is ever
+// enabled, transactions bypass BeforeSend and need an equivalent
+// BeforeSendTransaction hook.
 func scrubEvent(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 	if event.Request == nil {
 		return event
 	}
 	event.Request.Cookies = ""
+	event.Request.QueryString = ""
 	for name := range event.Request.Headers {
 		switch strings.ToLower(name) {
 		case "authorization", "cookie", "proxy-authorization":
