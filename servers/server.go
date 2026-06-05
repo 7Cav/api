@@ -157,8 +157,14 @@ func (server *MicroServer) Start() {
 	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.
 	// 		 If this needed to change in the future, then we will need to refactor this method
 	opts := []grpc.ServerOption{
-		// Intercept request to check the token.
-		grpc.UnaryInterceptor(grpcServices.NewAuthInterceptor(ds)),
+		// Intercept request to check the token; Sentry sits inside auth so
+		// it only sees authenticated requests, with the API key already on
+		// ctx for key-id tagging. No SENTRY_DSN → the inner interceptor is
+		// a pass-through.
+		grpc.ChainUnaryInterceptor(
+			grpcServices.NewAuthInterceptor(ds),
+			grpcServices.NewSentryInterceptor(),
+		),
 		//grpc.Creds(creds),
 	}
 
