@@ -41,12 +41,16 @@ func (t *captureTransport) Events() []*sentry.Event {
 	return append([]*sentry.Event(nil), t.events...)
 }
 
+// testRelease stands in for the build-time version injection so tests can
+// prove events carry the release tag.
+const testRelease = "test-release-1.2.3"
+
 // bindCaptureClient binds a capture-only Sentry client to the global hub for
 // the duration of the test, restoring the unbound (disabled) state afterwards.
 func bindCaptureClient(t *testing.T) *captureTransport {
 	t.Helper()
 	transport := &captureTransport{}
-	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport})
+	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport, Release: testRelease})
 	require.NoError(t, err)
 	sentry.CurrentHub().BindClient(client)
 	t.Cleanup(func() { sentry.CurrentHub().BindClient(nil) })
@@ -134,6 +138,7 @@ func TestSentryInterceptor_HandlerPanic_CapturedThenRepanics(t *testing.T) {
 	assert.Equal(t, "7", event.Tags["key_id"])
 	assert.Equal(t, "grpc", event.Tags["transport"])
 	assert.Equal(t, sentry.LevelFatal, event.Level)
+	assert.Equal(t, testRelease, event.Release, "panic events must carry the release")
 }
 
 func TestSentryInterceptor_NoClient_PassThrough(t *testing.T) {
