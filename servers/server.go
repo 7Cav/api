@@ -167,7 +167,11 @@ func (server *MicroServer) Start() {
 		// Intercept request to check the token; Sentry sits inside auth so
 		// it only sees authenticated requests, with the API key already on
 		// ctx for key-id tagging. No SENTRY_DSN → the inner interceptor is
-		// a pass-through.
+		// a pass-through. Sentry-inside-auth also means auth-layer
+		// infrastructure failures (e.g. a datastore outage producing mass
+		// Unauthenticated rejections) generate no Sentry events by design —
+		// accepted for Phase 0, revisit in the Phase 3 first-class wiring
+		// (#130–#132).
 		grpc.ChainUnaryInterceptor(
 			grpcServices.NewAuthInterceptor(ds),
 			grpcServices.NewSentryInterceptor(),

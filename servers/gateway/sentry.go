@@ -28,8 +28,14 @@ import (
 )
 
 // sentryMiddleware reports handler panics and 5xx responses to Sentry, tagged
-// with the route and the calling API key id (never the bearer token). Wired
-// inside authMiddleware so the validated key is already on the request ctx.
+// with the route and the calling API key id (never the bearer token). Expects
+// to run inside auth so the validated key is already on the request ctx; if
+// it is absent, the event simply omits the key_id tag.
+//
+// An Internal-class error on an HTTP-originated request produces two events —
+// the gRPC interceptor's exception plus this HTTP message, sharing the key_id
+// but with distinct transport tags. Deliberate Phase 0 wrap-both-ends
+// behavior.
 //
 // Without an initialised Sentry client (no SENTRY_DSN) it is a pass-through:
 // responses flow unchanged and panics propagate exactly as they do today
@@ -54,7 +60,7 @@ func sentryMiddleware(next http.Handler) http.Handler {
 
 		defer func() {
 			if rec := recover(); rec != nil {
-				hub.RecoverWithContext(r.Context(), rec)
+				hub.RecoverWithContext(r.Context(), rec) // event queued; ID unused — async transport
 				// Re-raise: net/http's per-connection recovery handles it
 				// exactly as it does today. The process survives, so the
 				// async transport delivers the event — no flush needed.

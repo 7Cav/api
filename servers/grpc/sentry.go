@@ -35,7 +35,12 @@ const sentryFlushTimeout = 2 * time.Second
 
 // NewSentryInterceptor reports handler panics and Internal-class errors to
 // Sentry, tagged with the route and the calling API key id (never the bearer
-// token). Chained inside the auth interceptor so the key is already on ctx.
+// token). Expects to run inside auth so the key is already on ctx; if it is
+// absent, the event simply omits the key_id tag.
+//
+// An Internal-class error on an HTTP-originated request produces two events —
+// this gRPC exception plus the gateway's HTTP message, sharing the key_id but
+// with distinct transport tags. Deliberate Phase 0 wrap-both-ends behavior.
 //
 // Without an initialised Sentry client (no SENTRY_DSN) it is a pass-through:
 // errors flow unchanged and panics propagate exactly as they do today.
@@ -72,7 +77,7 @@ func NewSentryInterceptor() grpc.UnaryServerInterceptor {
 		if err != nil {
 			if code := status.Code(err); isServerErrorCode(code) {
 				scope.SetTag("grpc_code", code.String())
-				hub.CaptureException(err)
+				hub.CaptureException(err) // event queued; ID unused — async transport
 			}
 		}
 		return resp, err
@@ -82,7 +87,8 @@ func NewSentryInterceptor() grpc.UnaryServerInterceptor {
 // isServerErrorCode reports whether a gRPC status code is Internal-class —
 // i.e. it maps to an HTTP 5xx under the grpc-gateway translation. Client-side
 // codes (NotFound, Unauthenticated, InvalidArgument, ...) are expected
-// behavior, not errors worth a Sentry event.
+// behavior, not errors worth a Sentry event. (Unrecognized custom codes,
+// which the gateway also maps to 500, are deliberately ignored here.)
 func isServerErrorCode(code codes.Code) bool {
 	switch code {
 	case codes.Unknown, codes.DeadlineExceeded, codes.Unimplemented,
