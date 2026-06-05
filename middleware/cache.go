@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"compress/gzip"
-	"github.com/7cav/api/cache"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +16,16 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
-func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
+// responseCache is the slice of cache.RedisCache the middleware actually
+// uses. *cache.RedisCache satisfies it implicitly, so callers are unchanged;
+// tests substitute an in-memory fake.
+type responseCache interface {
+	Get(key string) ([]byte, error)
+	Set(key string, response []byte) error
+	GenerateCacheKey(path string) string
+}
+
+func CacheMiddleware(cache responseCache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/tickets" || strings.HasPrefix(r.URL.Path, "/api/v1/tickets/") {
 			next.ServeHTTP(w, r)
@@ -28,7 +36,12 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 		r.Header.Del("Accept-Encoding")
 		endodeGzip := strings.Contains(acceptEncoding, "gzip")
 		defer func() {
-			Info.Printf("[CACHE] Request completed in %v", time.Since(start))
+			// Phase 0 measuring stick (#112/#114): duration= duplicates the
+			// human-readable elapsed value as a parseable field, appended so
+			// existing ad-hoc analytics keep matching the line. Fires on hit
+			// and miss alike. Temporary; retires once Prometheus owns metrics.
+			elapsed := time.Since(start)
+			Info.Printf("[CACHE] Request completed in %v duration=%v", elapsed, elapsed)
 		}()
 
 		if r.Method != http.MethodGet {
