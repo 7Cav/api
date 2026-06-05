@@ -34,6 +34,7 @@ import (
 	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/openapi"
 	"github.com/7cav/api/proto"
+	grpcServices "github.com/7cav/api/servers/grpc"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 )
@@ -90,7 +91,10 @@ func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		// Attach the validated key to the request ctx (mirrors the gRPC auth
+		// interceptor) so downstream consumers — e.g. Sentry key-id tagging —
+		// can identify the caller without ever seeing the bearer token.
+		next.ServeHTTP(w, r.WithContext(grpcServices.ContextWithKey(r.Context(), key)))
 	})
 }
 
@@ -159,8 +163,12 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
+	// Sentry sits inside auth so it only sees authenticated requests, with
+	// the API key already on ctx for key-id tagging, and outside the cache
+	// and compression layers so it observes the final response status. No
+	// SENTRY_DSN → it is a pass-through.
 	handler := authMiddleware(service.Datastore,
-		middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux)))
+		sentryMiddleware(middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux))))
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)
