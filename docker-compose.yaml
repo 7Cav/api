@@ -36,6 +36,9 @@ services:
       # FORUM_BASE_URL: https://7cav.us
       # Optional — refresh interval for the in-memory ticket reference cache; defaults to 15m.
       # REFERENCE_CACHE_REFRESH_INTERVAL: 15m
+      # Optional — enables errors-only Sentry capture (#118). The DSN lives only
+      # in the prod host's compose config (#113); unset anywhere else = no-op.
+      # SENTRY_DSN:
     depends_on:
       - redis
 

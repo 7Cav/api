@@ -19,11 +19,19 @@
 package servers
 
 import (
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/spf13/viper"
 )
+
+// sentryShutdownFlushTimeout bounds how long shutdown waits for buffered
+// events to reach Sentry before the process exits.
+const sentryShutdownFlushTimeout = 2 * time.Second
 
 // setupSentry initialises Sentry error capture (errors only, no tracing) when
 // SENTRY_DSN is present in the environment. Without a DSN it is a complete
@@ -60,6 +68,30 @@ func setupSentry() bool {
 
 	Info.Println("Sentry error capture enabled (errors only), release:", version)
 	return true
+}
+
+// flushSentryOnShutdown installs a signal handler that flushes buffered
+// Sentry events before the process exits. The current stack has no graceful
+// shutdown path (Start blocks on Serve and the process dies by signal); this
+// is the minimal hook so error events from the final moments are not lost.
+// Only installed when Sentry is enabled, so the no-DSN path keeps today's
+// default signal behavior exactly.
+func flushSentryOnShutdown() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go watchShutdown(signals,
+		func() { sentry.Flush(sentryShutdownFlushTimeout) },
+		os.Exit,
+	)
+}
+
+// watchShutdown waits for a shutdown signal, flushes, then exits 0. Split
+// from flushSentryOnShutdown so the flush-before-exit ordering is testable.
+func watchShutdown(signals <-chan os.Signal, flush func(), exit func(code int)) {
+	sig := <-signals
+	Info.Printf("received %v — flushing sentry before exit", sig)
+	flush()
+	exit(0)
 }
 
 // scrubEvent is the BeforeSend hook: it strips credential-bearing request

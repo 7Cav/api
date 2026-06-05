@@ -136,6 +136,13 @@ func (server *MicroServer) Start() {
 
 	Info.Println("Starting 7Cav API version:", version)
 
+	// Phase 0 observability (PRD #112): errors-only Sentry capture, gated on
+	// SENTRY_DSN. Disabled (local/dev) this is a complete no-op — no signal
+	// handler either, so shutdown behaves exactly as before.
+	if setupSentry() {
+		flushSentryOnShutdown()
+	}
+
 	//create TLS listener for TCP connections
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
 	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
