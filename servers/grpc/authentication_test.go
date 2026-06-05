@@ -45,9 +45,10 @@ func extractReqDuration(t *testing.T, logged string) time.Duration {
 	return d
 }
 
-// Phase 0 measuring stick (#114): the [REQ] line must time the whole request
-// including the handler, appended after the existing fields so the ad-hoc
-// analytics keep parsing transport/method/peer/key_id unchanged.
+// Phase 0 measuring stick (#114): the [REQ] line must time auth + handler
+// (excludes gRPC response marshal/wire write), appended after the existing
+// fields so the ad-hoc analytics keep parsing transport/method/peer/key_id
+// unchanged.
 func TestAuthInterceptor_ReqLineCarriesHandlerDuration(t *testing.T) {
 	ds := &fakeDatastore{
 		validateApiKey: func(string) (*datastores.ApiKeyResult, error) {

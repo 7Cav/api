@@ -42,11 +42,12 @@ const errBearerScheme = "Unauthenticated: expected 'Authorization: Bearer <key>'
 
 func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		// Phase 0 measuring stick (#112/#114): duration= times the whole
-		// request (handler included — the deferred line fires after the
-		// `return handler(...)` value is computed). Temporary field; retires
-		// with this stack once Prometheus owns metrics. Appended after the
-		// existing fields so the ad-hoc log analytics keep parsing.
+		// Phase 0 measuring stick (#112/#114): duration= times auth + handler
+		// (excludes gRPC response marshal/wire write). The handler is included
+		// because the deferred line fires after the `return handler(...)`
+		// value is computed. Temporary field; retires with this stack once
+		// Prometheus owns metrics. Appended after the existing fields so the
+		// ad-hoc log analytics keep parsing.
 		start := time.Now()
 		peerAddr := "unknown"
 		if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {

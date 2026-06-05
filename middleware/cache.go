@@ -16,9 +16,13 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
-// responseCache is the slice of cache.RedisCache the middleware actually
-// uses. *cache.RedisCache satisfies it implicitly, so callers are unchanged;
-// tests substitute an in-memory fake.
+// responseCache is the subset of cache.RedisCache's method set the middleware
+// actually uses. *cache.RedisCache satisfies it implicitly, so callers are
+// unchanged; tests substitute an in-memory fake.
+//
+// Get returns a non-nil error when the key is absent or the cache is
+// unreachable; the middleware treats any error as a miss. A nil error
+// guarantees the returned bytes are a complete cached response.
 type responseCache interface {
 	Get(key string) ([]byte, error)
 	Set(key string, response []byte) error
@@ -39,7 +43,8 @@ func CacheMiddleware(cache responseCache, next http.Handler) http.Handler {
 			// Phase 0 measuring stick (#112/#114): duration= duplicates the
 			// human-readable elapsed value as a parseable field, appended so
 			// existing ad-hoc analytics keep matching the line. Fires on hit
-			// and miss alike. Temporary; retires once Prometheus owns metrics.
+			// and miss alike. Temporary; this middleware is deleted at Phase 2
+			// de-cache (#123).
 			elapsed := time.Since(start)
 			Info.Printf("[CACHE] Request completed in %v duration=%v", elapsed, elapsed)
 		}()
