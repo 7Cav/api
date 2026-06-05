@@ -21,6 +21,7 @@ package grpc
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/7cav/api/datastores"
 	"google.golang.org/grpc"
@@ -41,13 +42,19 @@ const errBearerScheme = "Unauthenticated: expected 'Authorization: Bearer <key>'
 
 func NewAuthInterceptor(ds datastores.Datastore) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		// Phase 0 measuring stick (#112/#114): duration= times the whole
+		// request (handler included — the deferred line fires after the
+		// `return handler(...)` value is computed). Temporary field; retires
+		// with this stack once Prometheus owns metrics. Appended after the
+		// existing fields so the ad-hoc log analytics keep parsing.
+		start := time.Now()
 		peerAddr := "unknown"
 		if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
 			peerAddr = p.Addr.String()
 		}
 		keyID := "none"
 		defer func() {
-			Info.Printf("[REQ] transport=grpc method=%s peer=%s key_id=%s", info.FullMethod, peerAddr, keyID)
+			Info.Printf("[REQ] transport=grpc method=%s peer=%s key_id=%s duration=%v", info.FullMethod, peerAddr, keyID, time.Since(start))
 		}()
 
 		md, ok := metadata.FromIncomingContext(ctx)
