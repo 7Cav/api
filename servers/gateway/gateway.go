@@ -126,6 +126,24 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
+// buildAPIHandler assembles the /api middleware chain:
+// auth(sentry(cache(compression(inner)))). Sentry sits inside auth so it only
+// sees authenticated requests, with the API key already on ctx for key-id
+// tagging, and outside the cache and compression layers so it observes the
+// final response status. No SENTRY_DSN → it is a pass-through.
+//
+// Sentry-inside-auth also means auth-layer infrastructure failures (e.g. a
+// datastore outage producing mass 401s) generate no Sentry events by design —
+// accepted for Phase 0, revisit in the Phase 3 first-class wiring (#130–#132).
+//
+// Package-level (not inlined in Server) so the chain order is a tested
+// contract — see the buildAPIHandler tests — rather than an untestable
+// expression inside a dialing function.
+func buildAPIHandler(ds datastores.Datastore, c *cache.RedisCache, inner http.Handler) http.Handler {
+	return authMiddleware(ds,
+		sentryMiddleware(middleware.CacheMiddleware(c, compressionMiddleware(inner))))
+}
+
 func (service *Service) Server() *http.Server {
 	// relevant Grpc _dialing_ options
 	// note: commenting out the TransportCredentials option, because internally (nginx <-> golang) traffic is not encrypted.
@@ -163,12 +181,7 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	// Sentry sits inside auth so it only sees authenticated requests, with
-	// the API key already on ctx for key-id tagging, and outside the cache
-	// and compression layers so it observes the final response status. No
-	// SENTRY_DSN → it is a pass-through.
-	handler := authMiddleware(service.Datastore,
-		sentryMiddleware(middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux))))
+	handler := buildAPIHandler(service.Datastore, service.Cache, gwMux)
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)

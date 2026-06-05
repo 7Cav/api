@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -144,6 +145,78 @@ func TestSentryInterceptor_ClientClassOutcomes_NoEvents(t *testing.T) {
 	}
 
 	assert.Empty(t, transport.Events(), "expected outcomes must not generate Sentry noise")
+}
+
+// TestSentryInterceptor_CapturedErrorClass pins exactly which gRPC outcomes
+// are Internal-class (captured) versus expected behavior (silent). A plain
+// non-status error surfaces as codes.Unknown — the most common real-world
+// server bug shape — and must be captured.
+func TestSentryInterceptor_CapturedErrorClass(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		captured bool
+		wantCode string
+	}{
+		{"plain error becomes Unknown — captured", errors.New("kapow"), true, "Unknown"},
+		{"unavailable — captured", status.Error(codes.Unavailable, "downstream gone"), true, "Unavailable"},
+		{"deadline exceeded — captured", status.Error(codes.DeadlineExceeded, "too slow"), true, "DeadlineExceeded"},
+		{"aborted — silent", status.Error(codes.Aborted, "tx conflict"), false, ""},
+		{"resource exhausted — silent", status.Error(codes.ResourceExhausted, "rate limited"), false, ""},
+		{"not found — silent", status.Error(codes.NotFound, "no such row"), false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := bindCaptureClient(t)
+			interceptor := NewSentryInterceptor()
+
+			_, err := interceptor(context.Background(), nil, unaryInfo("/proto.MilpacService/GetProfile"),
+				func(ctx context.Context, req any) (any, error) {
+					return nil, tc.err
+				})
+
+			assert.Equal(t, tc.err, err, "the handler error must pass through unchanged")
+			events := transport.Events()
+			if !tc.captured {
+				assert.Empty(t, events, "expected outcomes must not generate Sentry noise")
+				return
+			}
+			require.Len(t, events, 1, "an Internal-class outcome must produce exactly one event")
+			assert.Equal(t, tc.wantCode, events[0].Tags["grpc_code"])
+		})
+	}
+}
+
+// TestSentryInterceptor_BehindAuthInterceptor_EventCarriesKeyID composes the
+// real auth interceptor around the real Sentry interceptor — mirroring the
+// grpc.ChainUnaryInterceptor order in server.go — and proves the key auth
+// attaches to ctx is what feeds the key_id tag. No test-injected key.
+func TestSentryInterceptor_BehindAuthInterceptor_EventCarriesKeyID(t *testing.T) {
+	transport := bindCaptureClient(t)
+	ds := &fakeDatastore{validateApiKey: func(token string) (*datastores.ApiKeyResult, error) {
+		assert.Equal(t, "cav7_goodkey", token)
+		return &datastores.ApiKeyResult{KeyId: 42}, nil
+	}}
+	authInterceptor := NewAuthInterceptor(ds)
+	sentryInterceptor := NewSentryInterceptor()
+	info := unaryInfo("/proto.MilpacService/GetProfile")
+
+	ctx := metadata.NewIncomingContext(context.Background(),
+		metadata.Pairs("authorization", "Bearer cav7_goodkey"))
+	handlerErr := status.Error(codes.Internal, "boom")
+	resp, err := authInterceptor(ctx, nil, info, func(ctx context.Context, req any) (any, error) {
+		return sentryInterceptor(ctx, req, info, func(ctx context.Context, req any) (any, error) {
+			return nil, handlerErr
+		})
+	})
+
+	assert.Nil(t, resp)
+	assert.Equal(t, handlerErr, err)
+	events := transport.Events()
+	require.Len(t, events, 1)
+	assert.Equal(t, "42", events[0].Tags["key_id"],
+		"the key_id must come from auth's ctx attachment, proving the chain wiring end-to-end")
+	assert.Equal(t, "grpc", events[0].Tags["transport"])
 }
 
 func TestSentryInterceptor_HandlerPanic_CapturedThenRepanics(t *testing.T) {

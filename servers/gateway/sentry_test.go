@@ -221,6 +221,56 @@ func TestSentryMiddleware_BearerTokenNeverInPayload(t *testing.T) {
 	}
 }
 
+// TestBuildAPIHandler_500BehindValidAuth_OneEventWithKeyID drives the actual
+// production chain constructor — auth(sentry(cache(compression))) — end to
+// end: a 500 from the inner handler behind valid auth must produce exactly
+// one event carrying the key_id auth attached. The /api/v1/tickets path is
+// deliberate: CacheMiddleware passes tickets straight through, so the nil
+// RedisCache is never touched.
+func TestBuildAPIHandler_500BehindValidAuth_OneEventWithKeyID(t *testing.T) {
+	transport := bindCaptureClient(t)
+	ds := &fakeAuthDatastore{validateApiKey: func(token string) (*datastores.ApiKeyResult, error) {
+		assert.Equal(t, "cav7_goodkey", token)
+		return &datastores.ApiKeyResult{KeyId: 42}, nil
+	}}
+	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream exploded", http.StatusInternalServerError)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets", nil)
+	req.Header.Set("Authorization", "Bearer cav7_goodkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	events := transport.Events()
+	require.Len(t, events, 1, "one 500 through the full chain must mean exactly one event")
+	assert.Equal(t, "42", events[0].Tags["key_id"], "the chain order is the contract: auth must run before sentry")
+	assert.Equal(t, "500", events[0].Tags["http_status"])
+}
+
+// TestBuildAPIHandler_BadAuth_401NoEvents pins the other side of the chain
+// order: rejected requests never reach Sentry (or the inner handler).
+func TestBuildAPIHandler_BadAuth_401NoEvents(t *testing.T) {
+	transport := bindCaptureClient(t)
+	ds := &fakeAuthDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		return nil, nil // zero rows — invalid key
+	}}
+	innerCalled := false
+	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		innerCalled = true
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets", nil)
+	req.Header.Set("Authorization", "Bearer cav7_badkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.False(t, innerCalled, "auth must reject before anything inner runs")
+	assert.Empty(t, transport.Events(), "auth rejections are expected behavior, not Sentry events")
+}
+
 // TestSentryMiddleware_BehindAuth_EventCarriesKeyID exercises the real chain
 // shape — authMiddleware outside, sentryMiddleware inside — and proves the
 // validated API key id reaches the event while the raw key never does.
