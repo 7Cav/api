@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -122,46 +121,23 @@ func TestBatteryIsWellFormed(t *testing.T) {
 		assert.NotEmpty(t, c.Notes, "%s: every case documents why it exists", c.Name)
 	}
 
-	// One anchored pattern per surviving route, ordered most-specific first:
-	// each case path (query string stripped) is classified to the FIRST
-	// matching route, so a literal segment (categories, ref, messages) can
-	// never satisfy a path-parameter sibling. Prefix matching would let
-	// tickets/42/messages stand in for deleted ticket-by-id cases.
-	routes := []struct {
-		label   string
-		pattern *regexp.Regexp
-	}{
-		{"ticket categories", regexp.MustCompile(`^/api/v1/tickets/categories$`)},
-		{"ticket by ref", regexp.MustCompile(`^/api/v1/tickets/ref/[^/]+$`)},
-		{"ticket messages", regexp.MustCompile(`^/api/v1/tickets/[^/]+/messages$`)},
-		{"ticket by id", regexp.MustCompile(`^/api/v1/tickets/[^/]+$`)},
-		{"tickets list", regexp.MustCompile(`^/api/v1/tickets$`)},
-		{"lite roster", regexp.MustCompile(`^/api/v1/roster/[^/]+/lite$`)},
-		{"roster", regexp.MustCompile(`^/api/v1/roster/[^/]+$`)},
-		{"s1 uniforms", regexp.MustCompile(`^/api/v1/s1/uniforms/[^/]+$`)},
-		{"position groups", regexp.MustCompile(`^/api/v1/milpacs/position/groups$`)},
-		{"position search", regexp.MustCompile(`^/api/v1/milpacs/position/search(/.*)?$`)},
-		{"ranks", regexp.MustCompile(`^/api/v1/milpacs/ranks$`)},
-		{"awol", regexp.MustCompile(`^/api/v1/milpacs/awol$`)},
-		{"profile by id", regexp.MustCompile(`^/api/v1/milpacs/profile/id/[^/]+$`)},
-		{"profile by username", regexp.MustCompile(`^/api/v1/milpacs/profile/username/[^/]+$`)},
-		{"discord lookup", regexp.MustCompile(`^/api/v1/milpac/discord/[^/]+$`)},
-		{"gamertag lookup", regexp.MustCompile(`^/api/v1/milpac/gamertag/[^/]+$`)},
-	}
+	// One anchored pattern per surviving route — publicRoutes in
+	// routes_test.go, the single test-side route truth shared with the
+	// OpenAPI spec coverage tests.
 	counts := map[string]int{}
 	for _, c := range cases {
 		path := c.Path
 		if i := strings.IndexByte(path, '?'); i >= 0 {
 			path = path[:i]
 		}
-		for _, r := range routes {
+		for _, r := range publicRoutes {
 			if r.pattern.MatchString(path) {
 				counts[r.label]++
 				break
 			}
 		}
 	}
-	for _, r := range routes {
+	for _, r := range publicRoutes {
 		assert.Positive(t, counts[r.label],
 			"no battery case covers route: %s (%s)", r.label, r.pattern)
 	}

@@ -107,14 +107,22 @@ type Golden struct {
 	BodyText *string `json:"bodyText,omitempty"`
 }
 
-// RunCase drives one battery case through the mounted stack and returns the
-// observed Golden (canonicalized, with the single keycloakId transform
-// applied) plus the raw response bytes for informational byte-level output.
-func RunCase(h http.Handler, c Case) (*Golden, []byte, error) {
+// newCaseRequest constructs the HTTP request a battery case sends — the
+// single construction shared by RunCase (recording and replay) and the spec
+// replay loop, so the two can never drift apart.
+func newCaseRequest(c Case) *http.Request {
 	req := httptest.NewRequest(c.Method, c.Path, nil)
 	if v, ok := authHeader(c.Auth); ok {
 		req.Header.Set("Authorization", v)
 	}
+	return req
+}
+
+// RunCase drives one battery case through the mounted stack and returns the
+// observed Golden (canonicalized, with the single keycloakId transform
+// applied) plus the raw response bytes for informational byte-level output.
+func RunCase(h http.Handler, c Case) (*Golden, []byte, error) {
+	req := newCaseRequest(c)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
