@@ -100,6 +100,52 @@ func getProfileByUsername(ds datastores.Datastore) http.Handler {
 	})
 }
 
+// getProfileByDiscordID serves GET /api/v1/milpac/discord/{discord_id}
+// (singular "milpac" — the historical path, frozen): the full profile looked
+// up by Discord snowflake. Error message strings frozen from the old handler
+// (servers/grpc GetUserViaDiscordId). DiscordIdRequest's only field is
+// path-bound, so nothing is query-bindable here; the old handler's
+// empty-value guard is unreachable through the mux (an empty segment never
+// matches the pattern).
+func getProfileByDiscordID(ds datastores.Datastore) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		discordID := r.PathValue("discord_id")
+		profile, err := ds.FindProfileByDiscordID(discordID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				writeError(w, r, codeNotFound, "no user found for discordid: %s", discordID)
+				return
+			}
+			writeError(w, r, codeInternal, "fetch profile by discord id: %v", err)
+			return
+		}
+		writeProfile(w, r, profile)
+	})
+}
+
+// getProfileByGamertag serves GET /api/v1/milpac/gamertag/{gamertag}: the
+// full profile looked up by console gamertag. Error message strings frozen
+// from the old handler (servers/grpc GetGamertagProfile — note its NotFound
+// formats the gamertag with %v where the discord handler uses %s; identical
+// output for strings, kept verbatim anyway). Single path-bound field, so
+// nothing is query-bindable; the empty-value guard is unreachable through
+// the mux.
+func getProfileByGamertag(ds datastores.Datastore) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gamertag := r.PathValue("gamertag")
+		profile, err := ds.FindProfileByGamertag(gamertag)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				writeError(w, r, codeNotFound, "no user found for gamertag: %v", gamertag)
+				return
+			}
+			writeError(w, r, codeInternal, "fetch profile by gamertag: %v", err)
+			return
+		}
+		writeProfile(w, r, profile)
+	})
+}
+
 // serveProfileByUsername is the shared username lookup: the by-username
 // route's body, and the by-id route's username-query override path.
 func serveProfileByUsername(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, username string) {

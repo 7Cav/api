@@ -56,6 +56,12 @@ var specRoutes = map[string]string{
 	// Profile by username: happy, not-found.
 	"/api/v1/milpacs/profile/username/Jarvis.A":   "/api/v1/milpacs/profile/username/{username}",
 	"/api/v1/milpacs/profile/username/Ghost.User": "/api/v1/milpacs/profile/username/{username}",
+	// Discord lookup: happy, not-found.
+	"/api/v1/milpac/discord/112233445566778899": "/api/v1/milpac/discord/{discordId}",
+	"/api/v1/milpac/discord/999000999":          "/api/v1/milpac/discord/{discordId}",
+	// Gamertag lookup: happy, not-found.
+	"/api/v1/milpac/gamertag/CavGamer77": "/api/v1/milpac/gamertag/{gamertag}",
+	"/api/v1/milpac/gamertag/GhostTag":   "/api/v1/milpac/gamertag/{gamertag}",
 	// The tickets 401-tier battery cases replay against this path before the
 	// route is implemented (auth runs before routing, so the observed 401s
 	// are route-independent); the operation documents 401 explicitly.

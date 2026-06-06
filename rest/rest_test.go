@@ -39,6 +39,8 @@ type fakeDatastore struct {
 	findAllRanks           func() ([]*proto.RankExpanded, error)
 	findProfilesById       func(userIds ...uint64) ([]*proto.Profile, error)
 	findProfilesByUsername func(username string) ([]*proto.Profile, error)
+	findProfileByDiscordID func(discordId string) (*proto.Profile, error)
+	findProfileByGamertag  func(gamertag string) (*proto.Profile, error)
 }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
@@ -181,6 +183,26 @@ func (f *fakeDatastore) FindProfilesByUsername(username string) ([]*proto.Profil
 	}
 }
 
+func (f *fakeDatastore) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
+	if f.findProfileByDiscordID != nil {
+		return f.findProfileByDiscordID(discordId)
+	}
+	if discordId == "112233445566778899" {
+		return seedJarvis(), nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (f *fakeDatastore) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
+	if f.findProfileByGamertag != nil {
+		return f.findProfileByGamertag(gamertag)
+	}
+	if gamertag == "CavGamer77" {
+		return seedDoe(), nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func newStack(t *testing.T) http.Handler {
 	t.Helper()
 	return rest.New(&fakeDatastore{})
@@ -203,6 +225,10 @@ var implementedCases = []string{
 	"milpacs/profile_by_id_internal_error",
 	"milpacs/profile_by_username_happy",
 	"milpacs/profile_by_username_not_found",
+	"milpacs/discord_happy",
+	"milpacs/discord_not_found",
+	"milpacs/gamertag_happy",
+	"milpacs/gamertag_not_found",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",
@@ -380,6 +406,39 @@ func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 	assert.JSONEq(t, `{"code":13,"message":"error fetching ranks: unexpected EOF","details":[]}`, rr.Body.String())
+}
+
+// A datastore failure on each profile lookup must surface as the frozen
+// Internal error shape with the handler-specific wrapped message (the by-id
+// variant is golden-pinned via profile_by_id_internal_error; the corpus has
+// no outage cases for the other three, so these pin them).
+func TestNewStack_ProfileLookupOutagesAreInternalJSON(t *testing.T) {
+	outage := func() ([]*proto.Profile, error) { return nil, io.ErrUnexpectedEOF }
+	h := rest.New(&fakeDatastore{
+		findProfilesByUsername: func(string) ([]*proto.Profile, error) { return outage() },
+		findProfileByDiscordID: func(string) (*proto.Profile, error) { return nil, io.ErrUnexpectedEOF },
+		findProfileByGamertag:  func(string) (*proto.Profile, error) { return nil, io.ErrUnexpectedEOF },
+	})
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/api/v1/milpacs/profile/username/Jarvis.A", "fetch profile by username: unexpected EOF"},
+		{"/api/v1/milpac/discord/112233445566778899", "fetch profile by discord id: unexpected EOF"},
+		{"/api/v1/milpac/gamertag/CavGamer77", "fetch profile by gamertag: unexpected EOF"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusInternalServerError, rr.Code)
+			assert.JSONEq(t, `{"code":13,"message":"`+tc.want+`","details":[]}`, rr.Body.String())
+		})
+	}
 }
 
 // --- Profile query-binding quirks (PRD #112, request-side leniency) --------
