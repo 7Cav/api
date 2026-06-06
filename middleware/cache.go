@@ -42,9 +42,10 @@ func CacheMiddleware(cache responseCache, next http.Handler) http.Handler {
 		defer func() {
 			// Phase 0 measuring stick (#112/#114): duration= duplicates the
 			// human-readable elapsed value as a parseable field, appended so
-			// existing ad-hoc analytics keep matching the line. Fires on hit
-			// and miss alike. Temporary; this middleware is deleted at Phase 2
-			// de-cache (#123).
+			// existing ad-hoc analytics keep matching the line. Fires on every
+			// request past the tickets bypass (hit, miss, and non-GET alike).
+			// Temporary; this middleware leaves the chain at Phase 2 de-cache
+			// (#123); deletion follows post-soak (#124).
 			elapsed := time.Since(start)
 			Info.Printf("[CACHE] Request completed in %v duration=%v", elapsed, elapsed)
 		}()
