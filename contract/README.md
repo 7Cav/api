@@ -96,7 +96,8 @@ Seed highlights (all referenced by path literals in the battery):
   Internal-error (500) goldens with their leaked wrapped messages — frozen.
 - position search returns hits only for the exact title
   `Regimental Technical Aide`; everything else is the frozen `{"profiles":{}}`
-  empty result (#137).
+  empty result (#137). (That exact-match behavior is the recording fake's;
+  production is SQL LIKE substring — see the spec's operation description.)
 
 ## Replaying
 
@@ -144,10 +145,12 @@ unknown-path goldens (non-operation surface, asserted to stay off-spec) and
 the one multi-segment position-search form no OpenAPI path template can
 match (`paths.FindPath` is asserted to fail; response validation runs
 against the named operation instead). `TestSpec_MutationCanary` keeps the
-loop honest by replaying goldens against deliberately broken in-memory spec
-copies and demanding loud failures, and `TestSpec_SchemasAreEmitEverything`
-pins the emit-everything strictness (all properties required,
-`additionalProperties: false`) structurally. The shared route table backing
+loop honest by replaying one golden per mutation — the ranks JSON golden for
+four of the five spec breakages, a text-401 golden for the stripped-content
+one — against deliberately broken in-memory spec copies and demanding loud
+failures, and `TestSpec_SchemasAreEmitEverything` pins the emit-everything
+strictness (all properties required, `additionalProperties: false`)
+structurally. The shared route table backing
 both this corpus and the spec coverage is `publicRoutes` in
 `routes_test.go`.
 

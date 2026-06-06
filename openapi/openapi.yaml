@@ -7,9 +7,10 @@
 # has an operation). Behavior drift the corpus witnesses fails CI naming the
 # operation and field. Structural tests additionally pin the emit-everything
 # strictness (all properties required, additionalProperties: false), explicit
-# corpus-witnessed status codes, and the wire conventions below — loosenings
-# outside those nets (e.g. widening a field's type) only fail CI when a
-# golden contradicts them.
+# corpus-witnessed status codes, and the wire conventions below — drift
+# outside those nets fails CI only when a golden contradicts it (e.g. a
+# renamed property); a pure loosening, such as a widened field type, passes
+# the corpus silently.
 #
 # Seeded by mechanically converting the generated milpacs/tickets Swagger 2.0
 # files, then corrected to OBSERVED behavior (the golden corpus is the
@@ -666,8 +667,9 @@ components:
     Any:
       description: >-
         protobuf Any as protojson renders it. Never observed populated —
-        every recorded details array is empty; shape per protojson
-        (arbitrary fields keyed by '@type', so this schema stays open).
+        every recorded details array is empty; shape per protojson ('@type'
+        alongside arbitrary additional fields determined by it, so this
+        schema stays open).
       type: object
       properties:
         '@type':
