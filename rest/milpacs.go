@@ -37,8 +37,10 @@ func getAllRanks(ds datastores.Datastore) http.Handler {
 //
 // Binding quirk (PRD request-side leniency, frozen): username — the
 // ProfileRequest field the path does NOT bind — remains query-bindable, and
-// the old handler checked username BEFORE user_id, so a username query
-// overrides the path id entirely (including the zero-id guard).
+// the old handler checked username BEFORE user_id, so a NON-EMPTY username
+// query overrides the path id entirely (including the zero-id guard). A
+// present-but-empty ?username= does not override: the gateway bound "" and
+// the old handler treated "" as unset.
 func getProfileByID(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Path binding first, query binding second — gateway order: a
@@ -53,11 +55,16 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
-		username, err := queryField(r, "username", "username")
+		username, _, err := queryField(r, "username", "username")
 		if err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
+		// Non-empty, not merely present: username is a STRING field, so the
+		// gateway bound a present-but-empty value as "" without error, and the
+		// old handler treated "" as unset — ?username= falls through to the
+		// path id (the asymmetry with the numeric user_id binding, where
+		// present-empty 400s in the parser).
 		if username != "" {
 			serveProfileByUsername(w, r, ds, username)
 			return
@@ -85,19 +92,23 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 // the old handler (servers/grpc GetProfile, username branch).
 //
 // Binding quirk (PRD request-side leniency, frozen): user_id remains
-// query-bindable here — the value still parses (a malformed one 400s, as the
-// gateway did before the handler ran) but the handler's username-first
-// precedence makes a valid one invisible.
+// query-bindable here — every PRESENT value still parses (a malformed OR
+// EMPTY one 400s, as the gateway did before the handler ran: no empty-value
+// guard in runtime/query.go) but the handler's username-first precedence
+// makes a valid one invisible.
 func getProfileByUsername(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := checkQuerySyntax(r); err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
-		if raw, err := queryField(r, "user_id", "userId"); err != nil {
+		if raw, present, err := queryField(r, "user_id", "userId"); err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
-		} else if raw != "" {
+		} else if present {
+			// PRESENT, not non-empty: the gateway parsed every present value
+			// (no empty-value guard in runtime/query.go), so ?user_id= is a
+			// 400 — "" fails ParseUint exactly as it did then.
 			if _, err := strconv.ParseUint(raw, 10, 64); err != nil {
 				// Gateway query-binding parse error, text frozen from
 				// grpc-gateway runtime (populateField).
@@ -187,10 +198,13 @@ func checkQuerySyntax(r *http.Request) error {
 
 // queryField reads a singular query-bindable message field, accepting both
 // the proto (snake_case) and JSON (camelCase) key spellings — the gateway's
-// dual-spelling leniency (PRD-frozen). Absent → "". Repeated values on a
-// singular field are an error with the gateway's message shape; the proto
-// field name is the one error messages cite.
-func queryField(r *http.Request, protoName, jsonName string) (string, error) {
+// dual-spelling leniency (PRD-frozen). present reports whether the key
+// appeared at all: the gateway parsed every PRESENT value (runtime/query.go
+// has no empty-value guard), so a present-but-empty numeric field must still
+// reach the parser — present and non-empty are distinct states. Repeated
+// values on a singular field are an error with the gateway's message shape;
+// the proto field name is the one error messages cite.
+func queryField(r *http.Request, protoName, jsonName string) (value string, present bool, err error) {
 	q := r.URL.Query()
 	vals := q[protoName]
 	if jsonName != protoName {
@@ -198,11 +212,11 @@ func queryField(r *http.Request, protoName, jsonName string) (string, error) {
 	}
 	switch len(vals) {
 	case 0:
-		return "", nil
+		return "", false, nil
 	case 1:
-		return vals[0], nil
+		return vals[0], true, nil
 	default:
-		return "", fmt.Errorf("too many values for field %q: %s", protoName, strings.Join(vals, ", "))
+		return "", true, fmt.Errorf("too many values for field %q: %s", protoName, strings.Join(vals, ", "))
 	}
 }
 

@@ -534,6 +534,41 @@ func TestNewStack_UsernameRoute_MalformedUserIdQueryIs400(t *testing.T) {
 	assert.JSONEq(t, `{"code":3,"message":"parsing field \"user_id\": strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
 }
 
+// Present-but-EMPTY ?user_id= on the username route is a 400: the old gateway
+// parsed every PRESENT value — runtime/query.go has no empty-value guard, so
+// "" went straight into strconv.ParseUint and errored. Present and non-empty
+// are distinct states; treating present-empty as absent would be a silent 200.
+func TestNewStack_UsernameRoute_EmptyUserIdQueryIs400(t *testing.T) {
+	h := newStack(t)
+
+	for _, spelling := range []string{"user_id", "userId"} {
+		t.Run(spelling, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?"+spelling+"=", nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			assert.JSONEq(t, `{"code":3,"message":"parsing field \"user_id\": strconv.ParseUint: parsing \"\": invalid syntax","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
+// The asymmetry, pinned: present-but-empty ?username= on the by-id route IS a
+// 200 — username is a STRING field, so the gateway bound "" without error and
+// the old handler treated "" as unset, falling through to the path id.
+func TestNewStack_ByIdRoute_EmptyUsernameQueryFallsThroughToPathId(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/2?username=", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"username":"John.Doe"`, "empty username binds as unset; path id 2 resolves")
+}
+
 func TestNewStack_ByIdRoute_RepeatedUsernameQueryIs400(t *testing.T) {
 	h := newStack(t)
 
