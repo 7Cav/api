@@ -45,6 +45,9 @@ const specPath = "../openapi/openapi.yaml"
 var specRoutes = map[string]string{
 	"/api/v1/milpacs/ranks":      "/api/v1/milpacs/ranks",
 	"/api/v1/tickets/categories": "/api/v1/tickets/categories",
+	"/api/v1/tickets/42":         "/api/v1/tickets/{ticketId}",
+	"/api/v1/tickets/9999":       "/api/v1/tickets/{ticketId}",
+	"/api/v1/tickets/abc":        "/api/v1/tickets/{ticketId}",
 	// The 401-tier battery cases replay against these two paths before their
 	// routes are implemented (auth runs before routing, so the observed 401s
 	// are route-independent); the operations document 401 explicitly.

@@ -95,6 +95,7 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
 	// golden-pinned by tickets/categories).
 	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", listCategories(ds, rc))
+	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", getTicketById(ds, rc))
 
 	mux.HandleFunc("/", fallback(mux))
 
