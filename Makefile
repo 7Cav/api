@@ -18,8 +18,12 @@ testdb-up:
 testdb-down:
 	$(TESTDB_COMPOSE) down -v
 
+# Fail loudly if port discovery comes back empty: an empty TESTDB_ADDR
+# would silently skip the whole integration suite and exit 0.
 test-integration: testdb-up
-	TESTDB_ADDR=$$($(TESTDB_COMPOSE) port mariadb 3306) go test ./...
+	@set -eu; addr=$$($(TESTDB_COMPOSE) port mariadb 3306); \
+	test -n "$$addr" || { echo "harness port discovery failed" >&2; exit 1; }; \
+	TESTDB_ADDR=$$addr go test ./...
 
 lint:
 	buf lint

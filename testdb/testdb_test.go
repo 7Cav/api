@@ -233,6 +233,7 @@ func TestFixtures_PostVolumeMakesPlansMeaningful(t *testing.T) {
 // wall clock (now - 7 days), so the fixtures' recent-vs-AWOL contrast
 // must hold relative to NOW, not to a fixed epoch:
 //   - Discharged.F (301) never posted (left-join NULL case),
+//   - Silent.I (302) never posted while on an ACTIVE roster,
 //   - Reservist.E (300) last posted far beyond any plausible cutoff,
 //   - Trooper.C (150) and Trooper.D (205) posted within the last day.
 func TestFixtures_AwolContrastHoldsRelativeToNow(t *testing.T) {
@@ -246,6 +247,19 @@ func TestFixtures_AwolContrastHoldsRelativeToNow(t *testing.T) {
 	}
 	if neverPosted != 0 {
 		t.Errorf("member 301 must have zero posts (left-join NULL case), got %d", neverPosted)
+	}
+
+	// 302's never-posted status is load-bearing for the AWOL never-posted
+	// exclusion pin in datastores/rosters_harness_test.go; a future recent
+	// post would silently re-vacuify it.
+	var silentPosted int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM xf_post WHERE user_id = 302`,
+	).Scan(&silentPosted); err != nil {
+		t.Fatalf("counting posts for never-posted active-roster member 302: %v", err)
+	}
+	if silentPosted != 0 {
+		t.Errorf("member 302 must have zero posts (active-roster never-posted AWOL exclusion), got %d", silentPosted)
 	}
 
 	var ancientOK bool
