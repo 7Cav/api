@@ -38,6 +38,7 @@ func init() {
 type fakeDatastore struct {
 	datastores.Datastore
 	findAllRanks           func() ([]*proto.RankExpanded, error)
+	validateApiKey         func(rawKey string) (*datastores.ApiKeyResult, error)
 	findProfilesById       func(userIds ...uint64) ([]*proto.Profile, error)
 	findProfilesByUsername func(username string) ([]*proto.Profile, error)
 	findProfileByDiscordID func(discordId string) (*proto.Profile, error)
@@ -74,6 +75,9 @@ func (*stubReferenceCache) CategoryTree() []*referencecache.CategoryRecord { ret
 func (*stubReferenceCache) ExpandSubtree(ids []uint32) []uint32            { return ids }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
+	if f.validateApiKey != nil {
+		return f.validateApiKey(rawKey)
+	}
 	scopes := func(names ...string) map[string]struct{} {
 		m := map[string]struct{}{}
 		for _, n := range names {
