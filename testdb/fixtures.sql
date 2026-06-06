@@ -130,13 +130,17 @@ FROM seq_1_to_20000;
 -- Targeted posts for roster members outside the bulk poster pool:
 -- Trooper.C (150) and Trooper.D (205) post recently; Reservist.E (300)
 -- last posted long ago (AWOL-shaped); Discharged.F (301) never posted
--- (left-join NULL case).
+-- (left-join NULL case). The "recent" rows are seeded RELATIVE to the
+-- wall clock because FindAwol computes its cutoff from now-7d — fixed
+-- epochs would silently go stale and break the recent-vs-AWOL contrast
+-- (pinned by TestFixtures_AwolContrastHoldsRelativeToNow). The ancient
+-- row stays fixed: its distance from any future "now" only grows.
 INSERT INTO xf_post
   (post_id, thread_id, user_id, username, post_date, message, position,
    type_data, reaction_users, vote_score) VALUES
-  (20001, 1, 150, 'Trooper.C',   1750000000, 'recent post', 0, '', '', 0),
-  (20002, 1, 150, 'Trooper.C',   1750000600, 'most recent post', 1, '', '', 0),
-  (20003, 1, 205, 'Trooper.D',   1750001200, 'recent post', 2, '', '', 0),
+  (20001, 1, 150, 'Trooper.C',   UNIX_TIMESTAMP() - 7200, 'recent post', 0, '', '', 0),
+  (20002, 1, 150, 'Trooper.C',   UNIX_TIMESTAMP() - 3600, 'most recent post', 1, '', '', 0),
+  (20003, 1, 205, 'Trooper.D',   UNIX_TIMESTAMP() - 1800, 'recent post', 2, '', '', 0),
   (20004, 2, 300, 'Reservist.E', 1600000000, 'ancient post', 0, '', '', 0);
 
 -- ---------------------------------------------------------------------

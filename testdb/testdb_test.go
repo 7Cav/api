@@ -266,6 +266,48 @@ func TestFixtures_HotAggregationRedPlanReproducible(t *testing.T) {
 	}
 }
 
+// The AWOL report (datastores FindAwol) computes its cutoff from the
+// wall clock (now - 7 days), so the fixtures' recent-vs-AWOL contrast
+// must hold relative to NOW, not to a fixed epoch:
+//   - Discharged.F (301) never posted (left-join NULL case),
+//   - Reservist.E (300) last posted far beyond any plausible cutoff,
+//   - Trooper.C (150) and Trooper.D (205) posted within the last day.
+func TestFixtures_AwolContrastHoldsRelativeToNow(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	var neverPosted int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM xf_post WHERE user_id = 301`,
+	).Scan(&neverPosted); err != nil {
+		t.Fatalf("counting posts for never-posted member 301: %v", err)
+	}
+	if neverPosted != 0 {
+		t.Errorf("member 301 must have zero posts (left-join NULL case), got %d", neverPosted)
+	}
+
+	var ancientOK bool
+	if err := db.QueryRow(
+		`SELECT MAX(post_date) < UNIX_TIMESTAMP() - 30*86400 FROM xf_post WHERE user_id = 300`,
+	).Scan(&ancientOK); err != nil {
+		t.Fatalf("checking ancient poster 300: %v", err)
+	}
+	if !ancientOK {
+		t.Error("member 300's last post must predate any plausible AWOL cutoff (older than 30 days)")
+	}
+
+	for _, userID := range []int{150, 205} {
+		var recentOK bool
+		if err := db.QueryRow(
+			`SELECT MAX(post_date) > UNIX_TIMESTAMP() - 86400 FROM xf_post WHERE user_id = ?`, userID,
+		).Scan(&recentOK); err != nil {
+			t.Fatalf("checking recent poster %d: %v", userID, err)
+		}
+		if !recentOK {
+			t.Errorf("member %d's last post must be within the last day so FindAwol's now-7d cutoff never flags it", userID)
+		}
+	}
+}
+
 // Ticket fixtures must span categories, statuses and states so the
 // tickets datastore tests (#120) can exercise every filter knob:
 // multiple categories (with a parent/child pair for subtree expansion),
