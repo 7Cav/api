@@ -67,6 +67,10 @@ func ParseBearerToken(raw string, maxLen int) string {
 }
 
 type Datastore interface {
+	// FindProfilesById and FindProfilesByUsername return a NON-EMPTY slice of
+	// non-nil profiles on a nil error — no-match is gorm.ErrRecordNotFound,
+	// never an empty slice. Handlers index [0] under this invariant (with a
+	// defensive 500 guard for implementations that break it).
 	FindProfilesById(userId ...uint64) ([]*proto.Profile, error)
 	FindProfilesByUsername(username string) ([]*proto.Profile, error)
 	FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error)

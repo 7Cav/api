@@ -104,6 +104,12 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 
 	// --- milpacs (scope: read) -------------------------------------------
 	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
+	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", getProfileByID(ds))
+	handle(mux, "GET /api/v1/milpacs/profile/username/{username}", "read", getProfileByUsername(ds))
+	// Historical path prefix: singular "milpac" on the connected-account
+	// lookups, plural "milpacs" everywhere else. Frozen by the corpus.
+	handle(mux, "GET /api/v1/milpac/discord/{discord_id}", "read", getProfileByDiscordID(ds))
+	handle(mux, "GET /api/v1/milpac/gamertag/{gamertag}", "read", getProfileByGamertag(ds))
 
 	// --- tickets (scope: read:tickets) -----------------------------------
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
