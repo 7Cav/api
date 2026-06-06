@@ -3,9 +3,13 @@
 #
 # This document is executable: contract/spec_test.go replays every committed
 # golden in contract/goldens/ against it and asserts two-way route coverage
-# (every operation has a golden; every golden route has an operation).
-# Editing behavior here without a matching golden — or shipping behavior the
-# spec does not describe — fails CI naming the operation and field.
+# (every operation has a golden, with at least one 2xx; every golden route
+# has an operation). Behavior drift the corpus witnesses fails CI naming the
+# operation and field. Structural tests additionally pin the emit-everything
+# strictness (all properties required, additionalProperties: false), explicit
+# corpus-witnessed status codes, and the wire conventions below — loosenings
+# outside those nets (e.g. widening a field's type) only fail CI when a
+# golden contradicts them.
 #
 # Seeded by mechanically converting the generated milpacs/tickets Swagger 2.0
 # files, then corrected to OBSERVED behavior (the golden corpus is the
@@ -242,12 +246,13 @@ paths:
       operationId: MilpacService_SearchByPosition
       summary: Search for profiles by position title
       description: >-
-        Search for profiles by exact primary/secondary position title; returns
-        lite profiles. The live route is a multi-segment glob
-        ({positionQuery=**}): slashes inside the query and the bare
-        trailing-slash form also reach the handler — forms an OpenAPI path
-        template cannot express; this document records the canonical
-        single-segment form.
+        Search for profiles by position title substring (SQL LIKE '%query%'
+        against primary and secondary-capable position titles); returns lite
+        profiles. The live route is a multi-segment glob
+        ({position_query=**}, proto/milpacs.proto): slashes inside the query
+        and the bare trailing-slash form also reach the handler — forms an
+        OpenAPI path template cannot express; this document records the
+        canonical single-segment form.
       tags: [milpacs]
       parameters:
         - name: positionQuery
@@ -333,7 +338,9 @@ paths:
       summary: List tickets
       description: >-
         List tickets matching optional filters. Cursor-paginated, sorted by
-        last_modified_date DESC. Every query key is accepted in both
+        last_modified_date DESC with ticket_id DESC as the tiebreaker (the
+        cursor is stable under the non-unique sort key). Every query key is
+        accepted in both
         lowerCamelCase and snake_case spellings (e.g. perPage / per_page);
         unknown query parameters are ignored. Multi-select filters repeat the
         param (?statusId=1&statusId=5); the comma-separated form is NOT
@@ -604,7 +611,8 @@ components:
         Missing or invalid bearer credentials. Plain text, two tiers:
         "Unauthorized: expected 'Authorization: Bearer <key>' header" when
         the Bearer scheme is absent; "Unauthorized" for a well-formed but
-        unknown key.
+        unknown key. Recorded 401 bodies carry a trailing newline
+        (http.Error appends one).
       headers:
         X-Content-Type-Options:
           required: true
@@ -618,6 +626,10 @@ components:
     # Every non-401 error: the gRPC-status JSON shape with the frozen
     # code→HTTP mapping (3→400, 5→404, 7→403, 13→500). Handler-specific
     # message strings are frozen behavior, including leaked parse-error text.
+    # Operations declare an explicit entry per corpus-witnessed error status
+    # (enforced by the replay loop — default resolution does not count);
+    # `default` documents that any unwitnessed error status carries this
+    # same shape.
     Error:
       description: >-
         gRPC-status JSON error body. code is the numeric gRPC code (3
@@ -652,7 +664,10 @@ components:
       additionalProperties: false
 
     Any:
-      description: protobuf Any as protojson renders it (observed always empty).
+      description: >-
+        protobuf Any as protojson renders it. Never observed populated —
+        every recorded details array is empty; shape per protojson
+        (arbitrary fields keyed by '@type', so this schema stays open).
       type: object
       properties:
         '@type':
@@ -818,6 +833,29 @@ components:
       required: [awardDetails, awardName, awardDate, awardImageUrl, awardUid]
       additionalProperties: false
 
+    # Emit-everything null unions: protojson EmitUnpopulated renders unset
+    # message-typed fields as null, so the profile shapes reference these
+    # nullable forms rather than repeating the oneOf inline.
+    NullableUser:
+      oneOf:
+        - $ref: '#/components/schemas/User'
+        - type: 'null'
+
+    NullableRank:
+      oneOf:
+        - $ref: '#/components/schemas/Rank'
+        - type: 'null'
+
+    NullablePosition:
+      oneOf:
+        - $ref: '#/components/schemas/Position'
+        - type: 'null'
+
+    NullableS1UniformsRank:
+      oneOf:
+        - $ref: '#/components/schemas/S1UniformsRank'
+        - type: 'null'
+
     # Emit-everything: every key below is always present. Unset nested
     # messages are null (protojson EmitUnpopulated), hence the null unions on
     # message-typed fields; unset strings are ""; empty collections are [].
@@ -825,13 +863,9 @@ components:
       type: object
       properties:
         user:
-          oneOf:
-            - $ref: '#/components/schemas/User'
-            - type: 'null'
+          $ref: '#/components/schemas/NullableUser'
         rank:
-          oneOf:
-            - $ref: '#/components/schemas/Rank'
-            - type: 'null'
+          $ref: '#/components/schemas/NullableRank'
         realName:
           type: string
         uniformUrl:
@@ -839,9 +873,7 @@ components:
         roster:
           $ref: '#/components/schemas/RosterType'
         primary:
-          oneOf:
-            - $ref: '#/components/schemas/Position'
-            - type: 'null'
+          $ref: '#/components/schemas/NullablePosition'
         secondaries:
           type: array
           items:
@@ -888,13 +920,9 @@ components:
       type: object
       properties:
         user:
-          oneOf:
-            - $ref: '#/components/schemas/User'
-            - type: 'null'
+          $ref: '#/components/schemas/NullableUser'
         rank:
-          oneOf:
-            - $ref: '#/components/schemas/Rank'
-            - type: 'null'
+          $ref: '#/components/schemas/NullableRank'
         realName:
           type: string
         uniformUrl:
@@ -902,9 +930,7 @@ components:
         roster:
           $ref: '#/components/schemas/RosterType'
         primary:
-          oneOf:
-            - $ref: '#/components/schemas/Position'
-            - type: 'null'
+          $ref: '#/components/schemas/NullablePosition'
         secondaries:
           type: array
           items:
@@ -993,13 +1019,9 @@ components:
       type: object
       properties:
         user:
-          oneOf:
-            - $ref: '#/components/schemas/User'
-            - type: 'null'
+          $ref: '#/components/schemas/NullableUser'
         rank:
-          oneOf:
-            - $ref: '#/components/schemas/S1UniformsRank'
-            - type: 'null'
+          $ref: '#/components/schemas/NullableS1UniformsRank'
         realName:
           type: string
         uniformUrl:
