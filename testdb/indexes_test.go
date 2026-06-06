@@ -76,6 +76,38 @@ func TestIndexDDL_RelationPreloadsGoIndexBacked(t *testing.T) {
 	}
 }
 
+// The re-apply procedure is "run the same one command again" — e.g.
+// after a forum add-on upgrade rebuilt a table and dropped the
+// indexes. The script must therefore be idempotent: applying it to a
+// database that already carries the indexes succeeds and leaves
+// exactly one of each.
+func TestIndexDDL_IsIdempotent(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	applyIndexDDL(t, db)
+	applyIndexDDL(t, db)
+
+	for _, idx := range []struct{ table, index string }{
+		{"xf_post", "user_id_post_date"},
+		{"xf_nf_rosters_service_record", "idx_relation_id"},
+		{"xf_nf_rosters_user_award", "idx_relation_id"},
+		{"xf_nf_rosters_user", "idx_user_id"},
+	} {
+		var n int
+		err := db.QueryRow(
+			`SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics
+			 WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+			idx.table, idx.index,
+		).Scan(&n)
+		if err != nil {
+			t.Fatalf("checking index %s.%s: %v", idx.table, idx.index, err)
+		}
+		if n != 1 {
+			t.Errorf("expected exactly one index %s on %s after double apply, got %d", idx.index, idx.table, n)
+		}
+	}
+}
+
 // explainFirstRow returns the first EXPLAIN row of the query as a
 // column-name -> value map (NULLs become empty strings).
 func explainFirstRow(t *testing.T, db *sql.DB, query string) map[string]string {
