@@ -17,9 +17,11 @@ import (
 
 // captureTransport is an in-memory sentry.Transport recording every event the
 // client would have sent over the wire — the observable seam for these tests.
-// flushed records whether anything ever flushed synchronously, pinning the
-// HTTP side of the deliberate sync/async flush asymmetry (gRPC panics flush,
-// HTTP panics must not — the process survives and the async transport sends).
+// Flush here always drains (per the SDK contract Flush reports queue drain,
+// not delivery); flushed records whether anything ever flushed synchronously,
+// pinning the HTTP side of the deliberate sync/async flush asymmetry (gRPC
+// panics flush, HTTP panics must not — the process survives and the async
+// transport sends).
 type captureTransport struct {
 	mu      sync.Mutex
 	events  []*sentry.Event
@@ -198,7 +200,10 @@ func TestSentryMiddleware_BearerTokenNeverInPayload(t *testing.T) {
 	const secret = "cav7_topsecrettokenvalue"
 
 	makeReq := func() *http.Request {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/roster", nil)
+		// Secret in BOTH vectors — header and query string — so the
+		// whole-payload sweep below also pins the query-borne path
+		// (?api_key=...), not just the Authorization header.
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/roster?api_key="+secret, nil)
 		req.Header.Set("Authorization", "Bearer "+secret)
 		return req
 	}

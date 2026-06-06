@@ -77,6 +77,14 @@ func NewSentryInterceptor() grpc.UnaryServerInterceptor {
 		if err != nil {
 			if code := status.Code(err); isServerErrorCode(code) {
 				scope.SetTag("grpc_code", code.String())
+				// status.Error values carry no stack, so the SDK stamps every
+				// capture here with the identical interceptor-frame stack —
+				// default grouping would fold all Internal-class errors across
+				// all methods into ONE Sentry issue. Group by code+method
+				// instead (mirrors the HTTP middleware's method+status
+				// fingerprint). Panic events are untouched: they carry real
+				// stacks and group fine on default rules.
+				scope.SetFingerprint([]string{"grpc-error", code.String(), info.FullMethod})
 				hub.CaptureException(err) // event queued; ID unused — async transport
 			}
 		}

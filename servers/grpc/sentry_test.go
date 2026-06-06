@@ -22,13 +22,16 @@ import (
 
 // captureTransport is an in-memory sentry.Transport recording every event the
 // client would have sent over the wire — the observable seam for these tests.
-// flushFails makes Flush report timeout; flushed records that a synchronous
-// flush happened at all (pinning the sync-flush-on-panic contract).
+// drainTimesOut makes Flush report a drain timeout (queue still busy when the
+// window closes), NOT a delivery failure — per the SDK's Flush contract, fast
+// send failures dequeue and "flush" successfully. flushed records that a
+// synchronous flush happened at all (pinning the sync-flush-on-panic
+// contract).
 type captureTransport struct {
-	mu         sync.Mutex
-	events     []*sentry.Event
-	flushed    bool
-	flushFails bool
+	mu            sync.Mutex
+	events        []*sentry.Event
+	flushed       bool
+	drainTimesOut bool
 }
 
 func (t *captureTransport) Configure(sentry.ClientOptions) {}
@@ -37,14 +40,14 @@ func (t *captureTransport) Flush(time.Duration) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.flushed = true
-	return !t.flushFails
+	return !t.drainTimesOut
 }
 
 func (t *captureTransport) FlushWithContext(context.Context) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.flushed = true
-	return !t.flushFails
+	return !t.drainTimesOut
 }
 
 func (t *captureTransport) Close() {}
@@ -183,6 +186,8 @@ func TestSentryInterceptor_CapturedErrorClass(t *testing.T) {
 			}
 			require.Len(t, events, 1, "an Internal-class outcome must produce exactly one event")
 			assert.Equal(t, tc.wantCode, events[0].Tags["grpc_code"])
+			assert.Equal(t, []string{"grpc-error", tc.wantCode, "/proto.MilpacService/GetProfile"}, events[0].Fingerprint,
+				"status errors carry no stack — without an explicit code+method fingerprint the SDK stamps every capture with the same interceptor frames and folds all Internal-class errors into one issue")
 		})
 	}
 }
@@ -248,7 +253,7 @@ func TestSentryInterceptor_HandlerPanic_CapturedThenRepanics(t *testing.T) {
 
 func TestSentryInterceptor_PanicFlushTimeout_Warns(t *testing.T) {
 	transport := bindCaptureClient(t)
-	transport.flushFails = true
+	transport.drainTimesOut = true
 
 	var warnBuf bytes.Buffer
 	Warn.SetOutput(&warnBuf)
@@ -294,10 +299,13 @@ func TestSentryInterceptor_BearerTokenNeverInPayload(t *testing.T) {
 	interceptor := NewSentryInterceptor()
 
 	// Simulate the real request shape: the bearer token sits in the incoming
-	// gRPC metadata on ctx, exactly where the auth interceptor read it.
+	// gRPC metadata on ctx, exactly where the auth interceptor read it. The
+	// query-shaped gateway URI pair extends the whole-payload sweep to the
+	// query-borne vector (?api_key=...) arriving through forwarded metadata.
 	const secret = "cav7_topsecrettokenvalue"
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
 		"authorization", "Bearer "+secret,
+		"grpcgateway-uri", "/api/v1/roster?api_key="+secret,
 	))
 	ctx = ContextWithKey(ctx, &datastores.ApiKeyResult{KeyId: 42})
 
