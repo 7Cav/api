@@ -315,6 +315,23 @@ func TestNewStack_WrongMethodOnUnknownRouteStays404(t *testing.T) {
 	assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String())
 }
 
+// Auth runs BEFORE routing (chain order), so a wrong-method request without
+// credentials is answered by the auth tier, not the method fallback: 401
+// scheme-tier plain text, no Allow header. The 405 only exists for callers
+// who already authenticated.
+func TestNewStack_WrongMethodWithoutCredsIs401NotAllow(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/milpacs/ranks", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusUnauthorized, rr.Code, "auth precedes method handling")
+	assert.Empty(t, rr.Header().Get("Allow"), "no method advertisement to unauthenticated callers")
+	assert.Equal(t, "Unauthorized: expected 'Authorization: Bearer <key>' header",
+		strings.TrimSpace(rr.Body.String()), "scheme-tier 401 body, frozen")
+}
+
 // HEAD is a supported read verb: Go's mux matches HEAD against GET patterns
 // (kept deliberately), and net/http suppresses the response body for HEAD at
 // the server. The body suppression lives in the real server's ResponseWriter
