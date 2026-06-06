@@ -95,5 +95,192 @@ func TestMetrics_CounterLabelsRouteMethodStatusKeyId(t *testing.T) {
 	assert.Equal(t, before+1, after, "one 200 must increment the fully-labeled counter child by one")
 }
 
-// keep imports referenced while later slices land
-var _ = io.Discard
+// histogramSampleCount returns the observation count of the named histogram
+// child whose label set matches exactly, or 0 when the child does not exist.
+func histogramSampleCount(t *testing.T, families map[string]*dto.MetricFamily, name string, labels map[string]string) uint64 {
+	t.Helper()
+
+	mf, ok := families[name]
+	if !ok {
+		return 0
+	}
+	for _, m := range mf.GetMetric() {
+		if len(m.GetLabel()) != len(labels) {
+			continue
+		}
+		match := true
+		for _, lp := range m.GetLabel() {
+			if labels[lp.GetName()] != lp.GetValue() {
+				match = false
+				break
+			}
+		}
+		if match {
+			return m.GetHistogram().GetSampleCount()
+		}
+	}
+	return 0
+}
+
+// The duration histogram observes once per request, labeled route/method
+// ONLY — no key_id label anywhere in the family (cardinality discipline: a
+// per-key histogram would multiply every bucket by the key population).
+func TestMetrics_DurationHistogramRouteMethodOnly(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "GET",
+	}
+
+	before := histogramSampleCount(t, scrapeMetrics(t), "api_http_request_duration_seconds", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/milpacs/ranks", "cav7_readkey")
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	families := scrapeMetrics(t)
+	after := histogramSampleCount(t, families, "api_http_request_duration_seconds", labels)
+	assert.Equal(t, before+1, after, "one request must observe the route/method histogram once")
+
+	mf := families["api_http_request_duration_seconds"]
+	require.NotNil(t, mf)
+	for _, m := range mf.GetMetric() {
+		for _, lp := range m.GetLabel() {
+			labelName := lp.GetName()
+			assert.Contains(t, []string{"route", "method"}, labelName,
+				"histogram label %q breaks cardinality discipline: route/method only, never key_id", labelName)
+		}
+	}
+}
+
+// Metrics sit OUTSIDE auth (PRD chain order), so rejected requests are
+// counted too — error rates are half the point of #92. A request auth
+// rejects never reaches routing and never validates a key: route and key_id
+// stay empty, distinct from the catch-all's "/".
+func TestMetrics_AuthRejectedRequestCountsWithEmptyRouteAndKey(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "",
+		"method": "GET",
+		"status": "401",
+		"key_id": "",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/milpacs/ranks", "") // no credentials
+	require.Equal(t, http.StatusUnauthorized, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "401s must meter with empty route/key_id labels")
+}
+
+// A scope denial happens INSIDE the mux (per-route requireScope), after auth
+// validated the key: the 403 meters under the route it was denied on, with
+// the denied key's id — per-key error attribution.
+func TestMetrics_ScopeDenialCountsUnderRouteWithKeyId(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "GET",
+		"status": "403",
+		"key_id": "102",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/milpacs/ranks", "cav7_ticketskey") // read:tickets ≠ read
+	require.Equal(t, http.StatusForbidden, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "scope 403s must meter under the denied route with the key id")
+}
+
+// Unknown paths land on the route-labeled catch-all: bounded "/" route label
+// (never the raw request path — unknown-path cardinality is attacker-
+// controlled), still attributed to the authenticated key.
+func TestMetrics_UnknownPathCountsUnderCatchAllPattern(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "/",
+		"method": "GET",
+		"status": "404",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/does/not/exist", "cav7_readkey")
+	require.Equal(t, http.StatusNotFound, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "404s must meter under the catch-all pattern, not the raw path")
+}
+
+// The exposition carries the default Go runtime and process collectors
+// alongside the request metrics.
+func TestMetrics_RuntimeCollectorsServed(t *testing.T) {
+	families := scrapeMetrics(t)
+
+	assert.Contains(t, families, "go_goroutines", "default Go collector must be registered")
+	assert.Contains(t, families, "go_memstats_alloc_bytes", "default Go collector must be registered")
+	assert.Contains(t, families, "process_cpu_seconds_total", "process collector must be registered")
+}
+
+// Bearer material must NEVER appear in metric names or labels — the only
+// key-derived label value is the validated numeric key id. Drive every auth
+// tier with its real token, then sweep the ENTIRE raw exposition (names,
+// labels, help text) for the cav7_ key prefix.
+func TestMetrics_BearerMaterialAbsentFromExposition(t *testing.T) {
+	h := newStack(t)
+
+	for _, bearer := range []string{
+		"cav7_readkey",    // valid, scoped — 200
+		"cav7_ticketskey", // valid, wrong scope — 403
+		"cav7_noscopekey", // valid, no scopes — 403
+		"cav7_unknownkey", // unknown — generic 401
+		"",                // missing header — scheme 401
+	} {
+		do(h, http.MethodGet, "/api/v1/milpacs/ranks", bearer)
+	}
+
+	srv := httptest.NewServer(rest.MetricsHandler())
+	defer srv.Close()
+	res, err := srv.Client().Get(srv.URL + "/metrics")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(raw), "cav7_",
+		"bearer material leaked into the exposition — key_id is the only permitted key-derived value")
+	assert.Contains(t, string(raw), `key_id="101"`,
+		"the validated key id (not the token) is how consumers are attributed")
+}
+
+// The exposition is served on its OWN listener only (#130: a port the
+// reverse proxy never routes and compose never publishes — deploy-config
+// assertion for cutover documented on MetricsHandler). Through the PUBLIC
+// chain, /metrics is just another path: auth answers 401 without
+// credentials, and an authenticated probe gets the JSON 404 — never the
+// exposition.
+func TestMetrics_NotServedThroughPublicChain(t *testing.T) {
+	h := newStack(t)
+
+	rr := do(h, http.MethodGet, "/metrics", "")
+	assert.Equal(t, http.StatusUnauthorized, rr.Code, "public chain: auth precedes everything")
+
+	rr = do(h, http.MethodGet, "/metrics", "cav7_readkey")
+	assert.Equal(t, http.StatusNotFound, rr.Code, "public chain mounts no metrics route")
+	assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String())
+
+	// The internal mount serves it: same process, separate handler/listener.
+	srv := httptest.NewServer(rest.MetricsHandler())
+	defer srv.Close()
+	res, err := srv.Client().Get(srv.URL + "/metrics")
+	require.NoError(t, err)
+	defer res.Body.Close()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	raw, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "api_http_requests_total", "internal listener serves the exposition")
+}
