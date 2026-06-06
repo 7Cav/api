@@ -877,10 +877,22 @@ func TestSpec_EveryOperationHasGolden(t *testing.T) {
 // TestSpec_DeclaredStatusesAreCorpusWitnessed is the inverse of the replay
 // loop's explicit-status rule. The replay loop demands every witnessed
 // status be declared; this test demands every DECLARED status be witnessed,
-// so a fictional response code cannot ride along undetected. The single
-// carve-out is "401": the pre-routing auth tier is uniform across the
-// surface, declared on every operation, but witnessed by goldens on only
-// two of them — every other residual entry is a spec bug.
+// so a fictional response code cannot ride along undetected. Carve-outs:
+// "401" (the pre-routing auth tier is uniform across the surface, declared
+// on every operation, but witnessed by goldens on only two of them) and the
+// enumerated liveWitnessedStatuses — every other residual entry is a spec
+// bug.
+//
+// liveWitnessedStatuses are statuses the new stack demonstrably emits but
+// the FROZEN corpus never recorded: the witness is a live per-test outage
+// observation in rest/spec_test.go (TestNewStack_SpecValidation's
+// lite_roster_500_outage / s1_uniforms_500_outage subtests), with the frozen
+// bodies pinned by TestNewStack_LiteAndS1OutagesAreInternalJSON.
+var liveWitnessedStatuses = map[string]map[string]bool{
+	"GET /api/v1/roster/{roster}/lite": {"500": true},
+	"GET /api/v1/s1/uniforms/{roster}": {"500": true},
+}
+
 func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
 	_, model := loadSpec(t)
 
@@ -923,7 +935,12 @@ func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
 					unwitnessed401Ops++
 					continue
 				}
-				t.Errorf("declared status %s on %s is witnessed by no golden — explicit statuses must be corpus-witnessed (401 carve-out only)", code, id)
+				if liveWitnessedStatuses[key][code] {
+					// Witnessed live against the new stack (see the map's
+					// doc comment) — the frozen corpus cannot grow a golden.
+					continue
+				}
+				t.Errorf("declared status %s on %s is witnessed by no golden — explicit statuses must be corpus-witnessed (401 and liveWitnessedStatuses carve-outs only)", code, id)
 			}
 		}
 	}

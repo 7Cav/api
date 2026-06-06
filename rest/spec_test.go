@@ -7,8 +7,8 @@ package rest_test
 // operation, the four profile lookup operations (id, username, discord,
 // gamertag — #126), all five tickets operations (#129), and the three roster
 // operations (full/lite/S1 uniforms — #127) — the remaining operations are
-// witnessed once their routes land (#128). Same
-// non-vacuousness rules as the contract replay loop: the observed status
+// witnessed once their routes land (#128). Same non-vacuousness rules as the
+// contract replay loop: the observed status
 // must be EXPLICITLY documented on the operation, a JSON response requires
 // an application/json schema to validate against, and every implemented
 // case's path must be classified in specRoutes — unclassified paths fail,
@@ -26,6 +26,8 @@ import (
 	"testing"
 
 	"github.com/7cav/api/contract"
+	"github.com/7cav/api/proto"
+	"github.com/7cav/api/rest"
 	"github.com/pb33f/libopenapi"
 	"github.com/pb33f/libopenapi-validator/paths"
 	"github.com/pb33f/libopenapi-validator/responses"
@@ -234,5 +236,35 @@ func TestNewStack_SpecValidation(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusUnauthorized, g.Status)
 		validateObserved(t, model, rv, "/api/v1/milpacs/ranks", g)
+	})
+
+	// The lite and S1-uniforms outage tier, observed live against per-test
+	// outage fakes — the corpus has no committed outage goldens for these two
+	// operations (TestNewStack_LiteAndS1OutagesAreInternalJSON pins the frozen
+	// bodies), so the spec's explicit "500" on each operation is witnessed
+	// here, per the explicit-status rule.
+	t.Run("lite_roster_500_outage", func(t *testing.T) {
+		oh := rest.New(&fakeDatastore{
+			findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
+		}, &stubReferenceCache{})
+		g, _, err := contract.RunCase(oh, contract.Case{
+			Name: "lite-roster-500", Method: http.MethodGet, Path: "/api/v1/roster/ROSTER_TYPE_COMBAT/lite", Auth: contract.AuthRead,
+			Notes: "synthesized: outage tier observed on the lite-roster operation",
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusInternalServerError, g.Status)
+		validateObserved(t, model, rv, "/api/v1/roster/ROSTER_TYPE_COMBAT/lite", g)
+	})
+	t.Run("s1_uniforms_500_outage", func(t *testing.T) {
+		oh := rest.New(&fakeDatastore{
+			findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
+		}, &stubReferenceCache{})
+		g, _, err := contract.RunCase(oh, contract.Case{
+			Name: "s1-uniforms-500", Method: http.MethodGet, Path: "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT", Auth: contract.AuthRead,
+			Notes: "synthesized: outage tier observed on the S1-uniforms operation",
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusInternalServerError, g.Status)
+		validateObserved(t, model, rv, "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT", g)
 	})
 }

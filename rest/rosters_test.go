@@ -204,17 +204,33 @@ func TestNewStack_NilRosterWithNilErrorIsInternalJSON(t *testing.T) {
 }
 
 // A roster message whose profiles map is nil (distinct from empty) still
-// serves {"profiles":{}} — the old stack's EmitUnpopulated marshaler emitted
-// {} for a nil proto map, and the mapper's unconditional allocation preserves
-// that.
+// serves {"profiles":{}} on ALL THREE shapes — the old stack's
+// EmitUnpopulated marshaler emitted {} for a nil proto map, and each mapper's
+// unconditional allocation preserves that. The loop closes the S1-empty and
+// nil-proto-map gaps in one stroke: no shape can serve null.
 func TestNewStack_NilProfilesMapServesEmptyObject(t *testing.T) {
-	h := rest.New(&fakeDatastore{
-		findRosterByType: func(proto.RosterType) (*proto.Roster, error) { return &proto.Roster{}, nil },
-	}, &stubReferenceCache{})
-
-	rr := rosterGet(t, h, "/api/v1/roster/ROSTER_TYPE_COMBAT")
-	require.Equal(t, http.StatusOK, rr.Code)
-	assert.JSONEq(t, `{"profiles":{}}`, rr.Body.String())
+	cases := []struct {
+		path string
+		fake *fakeDatastore
+	}{
+		{"/api/v1/roster/ROSTER_TYPE_COMBAT", &fakeDatastore{
+			findRosterByType: func(proto.RosterType) (*proto.Roster, error) { return &proto.Roster{}, nil },
+		}},
+		{"/api/v1/roster/ROSTER_TYPE_COMBAT/lite", &fakeDatastore{
+			findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return &proto.LiteRoster{}, nil },
+		}},
+		{"/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT", &fakeDatastore{
+			findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return &proto.S1UniformsRoster{}, nil },
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			h := rest.New(tc.fake, &stubReferenceCache{})
+			rr := rosterGet(t, h, tc.path)
+			require.Equal(t, http.StatusOK, rr.Code)
+			assert.JSONEq(t, `{"profiles":{}}`, rr.Body.String())
+		})
+	}
 }
 
 // Wrong-method on a roster route keeps the ruled 405 + Allow (the fallback's

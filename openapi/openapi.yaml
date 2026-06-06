@@ -217,6 +217,8 @@ paths:
           $ref: '#/components/responses/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
 
@@ -239,6 +241,8 @@ paths:
           $ref: '#/components/responses/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
 
