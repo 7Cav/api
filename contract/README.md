@@ -61,7 +61,8 @@ needs one. The exported surface is exactly five entries:
 
 1. `Cases() []Case` / `Case` — the recorded request battery.
 2. `Auth` and its constants (`AuthNone`, `AuthRawKey`, `AuthInvalidKey`,
-   `AuthRead`, `AuthReadTickets`, `AuthNoScopes`) — credential tiers.
+   `AuthRead`, `AuthReadTickets`, `AuthNoScopes`) plus `Auth.Valid()` —
+   credential tiers.
 3. `Golden` — the recorded contract for one case.
 4. `RunCase(http.Handler, Case)` — drive one case through a mounted stack,
    returning the observed `Golden` (canonicalized, transform applied).

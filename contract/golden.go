@@ -29,6 +29,15 @@ const (
 	AuthNoScopes Auth = "no-scopes"
 )
 
+// Valid reports whether a is one of the defined credential tiers.
+func (a Auth) Valid() bool {
+	switch a {
+	case AuthNone, AuthRawKey, AuthInvalidKey, AuthRead, AuthReadTickets, AuthNoScopes:
+		return true
+	}
+	return false
+}
+
 // authHeader maps an Auth tier to the Authorization header the harness sends.
 // The token strings are battery fixtures: the recording fake datastore (and
 // any future stack's test seed) must accept exactly these.
@@ -217,15 +226,26 @@ func CompareGolden(want, got *Golden) []string {
 	return diffs
 }
 
-// goldenPath maps a case name to its file under dir.
-func goldenPath(dir, name string) string {
-	return filepath.Join(dir, filepath.FromSlash(name)+".golden.json")
+// goldenPath maps a case name to its file under dir. Empty names and names
+// that resolve outside dir (path traversal, absolute paths) are rejected.
+func goldenPath(dir, name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("golden name must not be empty")
+	}
+	rel := filepath.FromSlash(name)
+	if !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("golden name %q escapes the goldens directory", name)
+	}
+	return filepath.Join(dir, rel+".golden.json"), nil
 }
 
 // SaveGolden writes g to its file under dir, creating directories as needed.
 // The file itself is deterministic: fixed field order, canonical body.
 func SaveGolden(dir string, g *Golden) error {
-	path := goldenPath(dir, g.Case)
+	path, err := goldenPath(dir, g.Case)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -243,15 +263,29 @@ func SaveGolden(dir string, g *Golden) error {
 	return os.WriteFile(path, append(marshalCanonical(pretty), '\n'), 0o644)
 }
 
-// LoadGolden reads the committed golden for a case name.
+// LoadGolden reads the committed golden for a case name and validates its
+// structural invariants: exactly one of body/bodyText set and a defined auth
+// tier — a hand-edited golden violating either is an error, not a silent
+// pass.
 func LoadGolden(dir, name string) (*Golden, error) {
-	raw, err := os.ReadFile(goldenPath(dir, name))
+	path, err := goldenPath(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	var g Golden
 	if err := json.Unmarshal(raw, &g); err != nil {
 		return nil, fmt.Errorf("golden %s: %w", name, err)
+	}
+	if (g.Body != nil) == (g.BodyText != nil) {
+		return nil, fmt.Errorf("golden %s: exactly one of body/bodyText must be set (json=%t text=%t)",
+			name, g.Body != nil, g.BodyText != nil)
+	}
+	if !g.Auth.Valid() {
+		return nil, fmt.Errorf("golden %s: invalid auth tier %q", name, g.Auth)
 	}
 	return &g, nil
 }

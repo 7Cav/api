@@ -196,10 +196,59 @@ func TestRunCase_DeclaredJSONThatDoesNotParseIsAnError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLoadGolden_RejectsBodyBodyTextXORViolation(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name+".golden.json"), []byte(content), 0o644))
+	}
+
+	write("both", `{"case":"both","method":"GET","path":"/x","auth":"read","status":200,"header":{},"body":{"a":1},"bodyText":"t"}`)
+	_, err := LoadGolden(dir, "both")
+	require.Error(t, err, "a golden with both body and bodyText is malformed")
+
+	write("neither", `{"case":"neither","method":"GET","path":"/x","auth":"read","status":200,"header":{}}`)
+	_, err = LoadGolden(dir, "neither")
+	require.Error(t, err, "a golden with neither body nor bodyText is malformed")
+}
+
+func TestLoadGolden_RejectsInvalidAuthTier(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"case":"bad","method":"GET","path":"/x","auth":"superadmin","status":200,"header":{},"body":{"a":1}}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bad.golden.json"), []byte(raw), 0o644))
+	_, err := LoadGolden(dir, "bad")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auth")
+}
+
+func TestAuthValid(t *testing.T) {
+	for _, a := range []Auth{AuthNone, AuthRawKey, AuthInvalidKey, AuthRead, AuthReadTickets, AuthNoScopes} {
+		assert.True(t, a.Valid(), "%s is a defined tier", a)
+	}
+	assert.False(t, Auth("").Valid())
+	assert.False(t, Auth("superadmin").Valid())
+}
+
+func TestGoldenPathRejectsTraversalAndEmptyNames(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"", "../escape", "sub/../../escape", "/abs/path"} {
+		t.Run("load_"+name, func(t *testing.T) {
+			_, err := LoadGolden(dir, name)
+			require.Error(t, err, "name %q must not resolve outside the goldens dir", name)
+		})
+		t.Run("save_"+name, func(t *testing.T) {
+			g := jsonGolden(200, `{"a":1}`)
+			g.Case = name
+			g.Auth = AuthRead
+			require.Error(t, SaveGolden(dir, g), "name %q must not resolve outside the goldens dir", name)
+		})
+	}
+}
+
 func TestSaveLoadGolden_RoundTripsBigNumbersExactly(t *testing.T) {
 	dir := t.TempDir()
 	g := jsonGolden(200, `{"big":9007199254740993,"id":"42"}`)
 	g.Case = "sub/dir/case"
+	g.Auth = AuthRead
 	require.NoError(t, SaveGolden(dir, g))
 
 	loaded, err := LoadGolden(dir, "sub/dir/case")
