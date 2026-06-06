@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
@@ -25,6 +26,10 @@ var _ datastores.Datastore = recordingDatastore{}
 var (
 	stackHandler http.Handler
 	stackErr     error
+	// grpcServeErr receives the srv.Serve result if Serve ever returns
+	// (buffered 1, written exactly once). Peeked via pendingServeErr so a
+	// startup or mid-run server death is reported instead of discarded.
+	grpcServeErr chan error
 )
 
 // TestMain mounts the CURRENT production stack in-process exactly once:
@@ -50,10 +55,27 @@ func TestMain(m *testing.M) {
 
 func currentStack(t *testing.T) http.Handler {
 	t.Helper()
+	if stackErr == nil {
+		if err := pendingServeErr(); err != nil {
+			stackErr = fmt.Errorf("grpc server exited mid-run: %w", err)
+		}
+	}
 	if stackErr != nil {
 		t.Fatalf("mounting current stack: %v", stackErr)
 	}
 	return stackHandler
+}
+
+// pendingServeErr non-blockingly peeks at grpcServeErr and puts any value
+// back, so the one Serve result stays observable by every later caller.
+func pendingServeErr() error {
+	select {
+	case err := <-grpcServeErr:
+		grpcServeErr <- err
+		return err
+	default:
+		return nil
+	}
 }
 
 func mountCurrentStack() (http.Handler, error) {
@@ -72,8 +94,9 @@ func mountCurrentStack() (http.Handler, error) {
 	))
 	proto.RegisterMilpacServiceServer(srv, &grpcServices.MilpacsService{Datastore: ds})
 	proto.RegisterTicketsServiceServer(srv, &grpcServices.TicketsService{Datastore: ds})
+	grpcServeErr = make(chan error, 1)
 	go func() {
-		_ = srv.Serve(lis)
+		grpcServeErr <- srv.Serve(lis)
 	}()
 
 	redisHost, redisPort, err := startMissingRedis()
@@ -87,7 +110,25 @@ func mountCurrentStack() (http.Handler, error) {
 		Cache:     deadRedis,
 		Datastore: ds,
 	}
-	httpSrv := svc.Server()
+	// gateway.Service.Server() dials with grpc.WithBlock() on
+	// context.Background() — an unbounded blocking dial. If the gRPC server
+	// never came up, that dial would hang TestMain forever with zero output,
+	// so run the mount in a goroutine and watchdog it: finish, see the Serve
+	// error, or time out — never hang silently.
+	const mountTimeout = 10 * time.Second
+	mounted := make(chan *http.Server, 1)
+	go func() {
+		mounted <- svc.Server()
+	}()
+	var httpSrv *http.Server
+	select {
+	case httpSrv = <-mounted:
+	case err := <-grpcServeErr:
+		grpcServeErr <- err // keep it observable for pendingServeErr
+		return nil, fmt.Errorf("grpc server exited before gateway mount; serve error: %v", err)
+	case <-time.After(mountTimeout):
+		return nil, fmt.Errorf("grpc dial did not become ready in %s; serve error: %v", mountTimeout, pendingServeErr())
+	}
 	if httpSrv == nil {
 		return nil, fmt.Errorf("gateway.Service.Server() returned nil (dial or registration failure)")
 	}
@@ -133,6 +174,11 @@ func startMissingRedis() (host, port string, err error) {
 
 // quietProductionLoggers silences the chatty Info/Warn loggers of the stack
 // under test so corpus runs stay readable. Errors stay visible.
+//
+// Do NOT silence gateway.Error (or the grpc Error loggers): gateway.Service.
+// Server() reports dial/registration failure only via its Error log plus a
+// nil return, so muting Error would reduce a mount failure to a bare
+// "returned nil" with no cause.
 func quietProductionLoggers() {
 	for _, l := range []interface{ SetOutput(io.Writer) }{
 		gateway.Info, gateway.Warn,
