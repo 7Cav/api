@@ -7,16 +7,20 @@
 # Matches the forum's major version (MariaDB 11.5). Data lives on tmpfs:
 # every `up` starts empty; the testdb package creates a fresh database
 # per test and seeds it from its embedded schema/fixtures.
+# Container and network names derive from the compose project, which the
+# make/mage targets set uniquely per checkout (testdb-<dirname>), and the
+# host port is ephemeral — so parallel worktrees can each run their own
+# harness. Discover the port with:
+#   docker compose -p testdb-<dirname> -f testdb/compose.yaml port mariadb 3306
 services:
   mariadb:
     image: mariadb:11.5
-    container_name: 7cav-api-testdb
     environment:
       # Throwaway credential for disposable fixture data; mirrored in
       # testdb.go and .github/workflows/go.yml.
       MARIADB_ROOT_PASSWORD: harness
     ports:
-      - "3310:3306"
+      - "127.0.0.1::3306"
     tmpfs:
       - /var/lib/mysql
     healthcheck:
