@@ -15,8 +15,19 @@ package rest
 //     re-panic, reports it, and writes the contract 500 so the request still
 //     completes. sentryLabel (inside auth, outside gzip) fills the route and
 //     key-id tags the recovery point cannot see.
-//   - reportServerError — the 5xx report hook the writeError choke point
-//     calls: one place, every error.
+//   - reportServerError — the 5xx report hook the writeStatusJSON choke
+//     point calls (the error-writer behind writeError; methodNotAllowed
+//     reaches it without writeError): one place, every error.
+//
+// What this file deliberately does NOT reproduce — servers/sentry.go's three
+// boot-lifecycle pieces, which the cutover slice (#134) must port before
+// deleting that file: sentryDialCheck (warn-only TCP reachability check of
+// the DSN ingest host at boot), sentryStartupProbe (one canary event flushed
+// through the real transport before any listener opens), and
+// flushSentryOnShutdown (the SIGTERM/interrupt flush handler servers.Start
+// installs after setupSentry). Dropping them silently would make a
+// Sentry-down misconfig invisible at boot and lose every still-buffered
+// event on SIGTERM.
 //
 // Tag discipline (PRD #112): events carry the validated key ID and the
 // matched route pattern — bearer material NEVER (same rule as the metrics
@@ -38,6 +49,9 @@ import (
 // sentryTransport overrides the SDK's default HTTP transport. Always nil in
 // production; swapped only by tests so the full SetupSentry path is
 // exercisable without network (same seam idiom as write.go's marshalJSON).
+// Caveat: a non-nil Transport puts the SDK on its legacy direct-send path,
+// not production's async telemetry-processor pipeline — tests do not observe
+// production queueing/drop semantics.
 var sentryTransport sentry.Transport
 
 // SetupSentry initialises Sentry error capture (errors only, no tracing) when
@@ -114,9 +128,9 @@ func sentryDebugEnabled() bool {
 // metricLabels (#130), and for the same reason: the recovery point is the
 // OUTERMOST layer, where the request never carries the matched pattern (the
 // mux sets it on auth's inner clone) or the validated key (attached to the
-// inner context). It also carries the panic de-dup flag the writeError choke
-// point consults: the recovery's own contract-500 write must not turn one
-// panic into a second (message) event.
+// inner context). It also carries the panic de-dup flag the writeStatusJSON
+// choke point consults: the recovery's own contract-500 write must not turn
+// one panic into a second (message) event.
 type sentryLabels struct {
 	hub      *sentry.Hub
 	route    string // mux pattern, e.g. "GET /api/v1/milpacs/ranks"; "" if never routed
@@ -172,11 +186,17 @@ func sentryMiddleware(next http.Handler) http.Handler {
 			}
 			if rec == http.ErrAbortHandler { // raw comparison — net/http's own idiom
 				// The stdlib's DELIBERATE-abort sentinel (net/http suppresses
-				// its stack; httputil.ReverseProxy — the cutover docs proxy —
-				// panics with it on client disconnects): not an error, no
-				// event, no 500 rewrite. Re-raise for net/http to honour.
+				// its stack; e.g. httputil.ReverseProxy panics with it on
+				// client disconnects): not an error, no event, no 500
+				// rewrite. Re-raise for net/http to honour.
 				panic(rec)
 			}
+			// Log FIRST — the recovery swallows what net/http would have
+			// logged, and the SDK capture below runs synchronously (stack
+			// symbolisation reads source files, BeforeSend runs) and could
+			// itself fail or panic: the original panic and stack must already
+			// be in the process logs before any of that runs.
+			Error.Printf("panic serving %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
 			labels.panicked = true
 			scope := hub.Scope()
 			if labels.route != "" {
@@ -186,11 +206,10 @@ func sentryMiddleware(next http.Handler) http.Handler {
 				scope.SetTag("key_id", labels.keyID)
 			}
 			hub.RecoverWithContext(r.Context(), rec) // event queued; ID unused — async transport
-			// The recovery swallows what net/http would have logged — keep
-			// panics visible in process logs even when Sentry delivery fails.
-			Error.Printf("panic serving %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
 			if cw.committed {
-				panic(rec) // status already on the wire — see the doc comment
+				// Status already on the wire — see the doc comment. net/http
+				// logs this re-raise a second time: accepted duplication.
+				panic(rec)
 			}
 			writeError(cw, r, codeInternal, "Internal Server Error")
 		}()
@@ -235,8 +254,11 @@ func sentryLabel(next http.Handler) http.Handler {
 //
 // No-op when the request never passed an enabled sentry middleware: no
 // SENTRY_DSN (the complete-no-op guarantee), or a chain that does not mount
-// it (the legacy gateway reuses AuthMiddleware — and so this choke point —
-// until cutover; its own Phase 0 sentry layer reports those). Also a no-op
+// it — the legacy gateway reuses AuthMiddleware (and so this choke point)
+// until cutover, but its Phase 0 sentry layer sits INSIDE auth, so on that
+// chain auth's 503s stay unreported until cutover (accepted Phase 0 gap,
+// documented in servers/gateway/gateway.go); the new stack is what closes
+// it. Also a no-op
 // for the recovery layer's own contract-500 write after a panic: that event
 // is already captured, and one failure must not become two issues.
 func reportServerError(r *http.Request, status int) {
@@ -262,9 +284,15 @@ func reportServerError(r *http.Request, status int) {
 }
 
 // commitWriter tracks whether anything reached the wire, so the panic
-// recovery knows whether the contract 500 can still be written. Outermost
-// wrapper in the chain — Unwrap keeps http.ResponseController tunnelling
-// through it (same obligation as the metrics statusWriter it wraps).
+// recovery knows whether the contract 500 can still be written. Created by
+// the OUTERMOST middleware but the INNERMOST wrapper in write delegation —
+// writes run gzipWriter → statusWriter → commitWriter → the server's writer
+// (metrics builds its statusWriter around this one). Unwrap keeps
+// http.ResponseController tunnelling through it (same obligation as the
+// metrics statusWriter that wraps it). FlushError closes the tunnel's blind
+// spot: without it ResponseController.Flush would reach the base writer via
+// Unwrap WITHOUT setting committed, and a flush-then-panic would write a
+// contract 500 over a 200 already on the wire.
 type commitWriter struct {
 	http.ResponseWriter
 	committed bool
@@ -278,6 +306,15 @@ func (w *commitWriter) WriteHeader(code int) {
 func (w *commitWriter) Write(b []byte) (int, error) {
 	w.committed = true
 	return w.ResponseWriter.Write(b)
+}
+
+// FlushError marks the response committed before delegating the flush — see
+// the type doc for the blind spot this closes. Delegating through a fresh
+// ResponseController keeps the downstream search semantics identical
+// (http.ErrNotSupported surfaces naturally when nothing below can flush).
+func (w *commitWriter) FlushError() error {
+	w.committed = true
+	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 func (w *commitWriter) Unwrap() http.ResponseWriter {

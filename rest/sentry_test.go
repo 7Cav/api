@@ -23,6 +23,7 @@ import (
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
 	"github.com/getsentry/sentry-go"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,8 +35,9 @@ import (
 // "read" — the id (never the token) is what events must carry.
 type sentryFakeDatastore struct {
 	datastores.Datastore
-	findAllRanks   func() ([]*proto.RankExpanded, error)
-	validateApiKey func(string) (*datastores.ApiKeyResult, error)
+	findAllRanks     func() ([]*proto.RankExpanded, error)
+	findProfilesById func(...uint64) ([]*proto.Profile, error)
+	validateApiKey   func(string) (*datastores.ApiKeyResult, error)
 }
 
 func (f *sentryFakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
@@ -50,6 +52,10 @@ func (f *sentryFakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyR
 
 func (f *sentryFakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
 	return f.findAllRanks()
+}
+
+func (f *sentryFakeDatastore) FindProfilesById(ids ...uint64) ([]*proto.Profile, error) {
+	return f.findProfilesById(ids...)
 }
 
 // sentryStubCache is the no-op TicketReferenceCache the sentry tests mount —
@@ -128,6 +134,21 @@ func TestSetupSentry_NoDSNInitialisesNothing(t *testing.T) {
 	assert.Nil(t, sentry.CurrentHub().Client(), "no DSN must bind no client")
 }
 
+// A malformed DSN must fail SAFE — telemetry must never take the API down
+// (the init-failure branch in SetupSentry): Init errors, capture reports
+// disabled, no client binds, and nothing panics. The API then runs exactly as
+// in the no-DSN case.
+func TestSetupSentry_InvalidDSNFailsSafeWithoutClient(t *testing.T) {
+	viper.Set("SENTRY_DSN", "not-a-dsn")
+	t.Cleanup(func() { viper.Set("SENTRY_DSN", "") })
+
+	var enabled bool
+	require.NotPanics(t, func() { enabled = SetupSentry(testRelease) },
+		"a bad DSN must never panic the boot path")
+	assert.False(t, enabled, "a failed init must report capture disabled")
+	assert.Nil(t, sentry.CurrentHub().Client(), "a failed init must bind no client")
+}
+
 // With a DSN the client is initialised and release-tagged from the build-time
 // version the caller passes — every event carries it.
 func TestSetupSentry_DSNEnablesClientWithRelease(t *testing.T) {
@@ -145,7 +166,10 @@ func TestSetupSentry_DSNEnablesClientWithRelease(t *testing.T) {
 // pattern — and the request still completes as a 500 in the contract error
 // shape instead of net/http killing the connection. One event, not two: the
 // recovery's own 500 write passes the choke point, which must not
-// double-report a panic it already captured.
+// double-report a panic it already captured. The metrics half of the
+// recovery-outside-metrics ruling is pinned alongside: exactly one counter
+// increment, status="500", under the route — metering already done when the
+// re-panic reaches this layer.
 func TestSentry_PanicCompletesAs500AndReportsTaggedEvent(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t) // panic + 5xx logging stays server-side, not in test output
@@ -153,9 +177,15 @@ func TestSentry_PanicCompletesAs500AndReportsTaggedEvent(t *testing.T) {
 		panic("ranks exploded")
 	}}, &sentryStubCache{})
 
+	panicCounter := requestsTotal.WithLabelValues("GET /api/v1/milpacs/ranks", "GET", "500", "7")
+	before := testutil.ToFloat64(panicCounter)
+
 	var rr *httptest.ResponseRecorder
 	require.NotPanics(t, func() { rr = doRanks(h) },
 		"the sentry layer must recover the metrics layer's re-panic")
+
+	assert.Equal(t, before+1, testutil.ToFloat64(panicCounter),
+		`exactly one status="500" increment under the route — recovery outside metrics must not skip or double metering`)
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
@@ -425,9 +455,76 @@ func TestSentry_GzippedPanicReportsAndRepanics(t *testing.T) {
 	assert.Equal(t, "7", events[0].Tags["key_id"])
 }
 
+// Two simultaneously in-flight failing requests must keep ISOLATED tags:
+// each event carries its own request's key_id and route, never the other's.
+// This is what the per-request hub.Clone() in sentryMiddleware buys — a
+// future "simplification" to the global hub would make concurrent requests
+// race on one shared scope. Channel-gated (a WaitGroup both handlers block
+// on) so both requests are inside the chain at the same time; CI runs plain
+// `go test`, so the -race run of this test is the only realistic guard.
+func TestSentry_ConcurrentRequestsKeepIsolatedTags(t *testing.T) {
+	tr := enableSentry(t)
+	captureErrorLog(t)
+
+	var inside sync.WaitGroup
+	inside.Add(2)
+	gate := func() {
+		inside.Done()
+		inside.Wait() // releases only once BOTH requests are inside the chain
+	}
+	h := New(&sentryFakeDatastore{
+		validateApiKey: func(raw string) (*datastores.ApiKeyResult, error) {
+			switch raw {
+			case "cav7_key_a":
+				return &datastores.ApiKeyResult{KeyId: 11, UserId: 3, Scopes: map[string]struct{}{"read": {}}}, nil
+			case "cav7_key_b":
+				return &datastores.ApiKeyResult{KeyId: 22, UserId: 4, Scopes: map[string]struct{}{"read": {}}}, nil
+			}
+			return nil, nil
+		},
+		findAllRanks: func() ([]*proto.RankExpanded, error) {
+			gate()
+			return nil, errOutageSentry
+		},
+		findProfilesById: func(...uint64) ([]*proto.Profile, error) {
+			gate()
+			return nil, errOutageSentry
+		},
+	}, &sentryStubCache{})
+
+	send := func(path, bearer string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		return rr
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	var rrA, rrB *httptest.ResponseRecorder
+	go func() { defer wg.Done(); rrA = send("/api/v1/milpacs/ranks", "cav7_key_a") }()
+	go func() { defer wg.Done(); rrB = send("/api/v1/milpacs/profile/id/5", "cav7_key_b") }()
+	wg.Wait()
+
+	require.Equal(t, http.StatusInternalServerError, rrA.Code)
+	require.Equal(t, http.StatusInternalServerError, rrB.Code)
+
+	events := tr.Events()
+	require.Len(t, events, 2, "two failing requests = two events")
+	routeByKey := map[string]string{}
+	for _, ev := range events {
+		routeByKey[ev.Tags["key_id"]] = ev.Tags["route"]
+	}
+	assert.Equal(t, map[string]string{
+		"11": "GET /api/v1/milpacs/ranks",
+		"22": "GET /api/v1/milpacs/profile/id/{user_id}",
+	}, routeByKey, "each event must carry its OWN request's key_id and route — per-request hub.Clone() isolation")
+}
+
 // http.ErrAbortHandler is the stdlib's sentinel for a DELIBERATE abort —
-// net/http suppresses its stack trace, and httputil.ReverseProxy (the docs
-// proxy the cutover slice mounts) panics with it on client disconnects. The
+// net/http suppresses its stack trace, and stdlib handlers panic with it on
+// purpose (e.g. httputil.ReverseProxy on client disconnects). The
 // recovery layer must re-raise it unreported: not an error, no event, no 500
 // rewrite — aborting means the connection dies, exactly as the handler asked.
 func TestSentry_ErrAbortHandlerRepanicsUnreported(t *testing.T) {
@@ -451,10 +548,11 @@ func TestSentry_ErrAbortHandlerRepanicsUnreported(t *testing.T) {
 	assert.Empty(t, tr.Events(), "a deliberate abort is not an error — no event")
 }
 
-// commitWriter is the outermost wrapper when sentry is enabled, so it must
-// expose Unwrap for http.ResponseController — otherwise Flusher/Hijacker/
-// deadline control silently vanish for every inner layer (same obligation the
-// metrics statusWriter pins one layer in).
+// commitWriter sits in the write-delegation chain when sentry is enabled, so
+// it must keep http.ResponseController working — Flush via its own FlushError
+// (which marks the response committed), Hijacker/deadline control via Unwrap
+// — otherwise that control silently vanishes for every inner layer (same
+// obligation the metrics statusWriter carries).
 func TestSentry_ResponseControllerTunnelsThroughCommitWriter(t *testing.T) {
 	enableSentry(t)
 
@@ -470,5 +568,33 @@ func TestSentry_ResponseControllerTunnelsThroughCommitWriter(t *testing.T) {
 	require.NoError(t, err)
 	res.Body.Close()
 	require.NoError(t, <-flushErr,
-		"ResponseController.Flush must reach the underlying writer via commitWriter.Unwrap")
+		"ResponseController.Flush must reach the underlying writer through commitWriter")
+}
+
+// Flush-then-panic: FlushError marks the response committed, so a panic after
+// an explicit flush re-raises (connection abort) instead of writing a
+// contract 500 over the response already flushed to the wire — the blind spot
+// Unwrap-only tunnelling had (Flush used to bypass the committed flag
+// entirely).
+func TestSentry_PanicAfterFlushRepanicsInsteadOfRewriting(t *testing.T) {
+	tr := enableSentry(t)
+	captureErrorLog(t)
+
+	h := sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, http.NewResponseController(w).Flush(),
+			"the recorder is a Flusher — FlushError must delegate to it")
+		panic("exploded after the flush")
+	}))
+
+	rr := httptest.NewRecorder()
+	panicked := func() (p any) {
+		defer func() { p = recover() }()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/flush-boom", nil))
+		return nil
+	}()
+	require.Equal(t, "exploded after the flush", panicked,
+		"a flushed (committed) response must re-raise — no honest 500 is possible any more")
+	assert.True(t, rr.Flushed, "the flush must have reached the base writer")
+	assert.Zero(t, rr.Body.Len(), "no contract 500 body behind the flushed response")
+	require.Len(t, tr.Events(), 1, "the panic is still captured even when the response cannot be rewritten")
 }

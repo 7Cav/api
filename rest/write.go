@@ -91,12 +91,15 @@ type statusBody struct {
 // the guard would otherwise be unreachable dead weight. Swapped only by tests.
 var marshalJSON = json.Marshal
 
-// writeError is the single error choke point of the new stack: every non-401
-// error response is written here — one place to keep the wire shape, the
-// code→HTTP mapping, the ≥500 server-side logging, and the 5xx Sentry
-// reports (#132, reportServerError). The plain-text 401 tier deliberately bypasses
-// it: the auth middleware writes those itself (two-tier behavior golden-pinned
-// by #106). r supplies the method/path request context for the log lines.
+// writeError is the error choke point's main entrance: every non-401 error
+// response is written here or through writeStatusJSON below (the
+// status-decoupled form methodNotAllowed reaches directly) — one place to
+// keep the wire shape and the code→HTTP mapping; the ≥500 server-side
+// logging and the 5xx Sentry reports (#132, reportServerError) live in
+// writeStatusJSON so both entrances share them. The plain-text 401 tier
+// deliberately bypasses it: the auth middleware writes those itself (two-tier
+// behavior golden-pinned by #106). r supplies the method/path request context
+// for the log lines.
 //
 // Handler-specific message strings are frozen behavior (including the ones
 // that leak wrapped error text) — callers format them verbatim.
@@ -129,6 +132,12 @@ func writeStatusJSON(w http.ResponseWriter, r *http.Request, status int, c code,
 		// message, or the real error vanishes behind the generic body.
 		Error.Printf("%s %s: marshaling error body failed (original code %d, message %q): %v",
 			r.Method, r.URL.Path, c, msg, err)
+		if status < 500 {
+			// The wire status just became a 500 even though the original was
+			// 4xx — report it like every other server error (the choke-point
+			// rule; the ≥500 branch above already reported the rest).
+			reportServerError(r, http.StatusInternalServerError)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, werr := w.Write([]byte(`{"code":13,"message":"failed to encode error","details":[]}`)); werr != nil {
