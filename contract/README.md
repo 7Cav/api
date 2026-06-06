@@ -13,9 +13,11 @@ One file per battery case (`battery.go` → `Cases()`), named
 - the request (method, path, auth tier — see `Auth` in `golden.go`),
 - the response **status code**,
 - the **contract-relevant headers** — allowlist in `golden.go`
-  (`Content-Type`, `X-Content-Type-Options`); everything else
-  (`Date`, `Content-Length`, `X-Cache`, `Grpc-Metadata-*`) is infrastructure
-  of the current stack, not contract,
+  (`Content-Type`, `X-Content-Type-Options`, `WWW-Authenticate`); everything
+  else (`Date`, `Content-Length`, `X-Cache`, `Grpc-Metadata-*`) is
+  infrastructure of the current stack, not contract. `WWW-Authenticate` pins
+  an *absence*: #106 froze the 401 tiers as challenge-free, so no golden
+  records it and a stack that adds it diffs red,
 - the response **body**: canonicalized JSON (`body`) or, for the plain-text
   401 tier pinned by #106, the verbatim text (`bodyText`).
 

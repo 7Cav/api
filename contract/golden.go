@@ -74,7 +74,11 @@ type Case struct {
 //     tier pinned by #106.
 //   - X-Content-Type-Options rides along on the plain-text error responses
 //     (http.Error sets it) and clients may rely on it.
-var contractHeaders = []string{"Content-Type", "X-Content-Type-Options"}
+//   - WWW-Authenticate pins an ABSENCE: #106 froze the 401 tiers as having
+//     no challenge header. RunCase skips empty headers, so goldens carry no
+//     WWW-Authenticate key; a rewrite whose auth middleware adds one shows
+//     up in CompareGolden as ""-vs-set — a red diff.
+var contractHeaders = []string{"Content-Type", "X-Content-Type-Options", "WWW-Authenticate"}
 
 // Golden is the recorded contract for one case: status, allowlisted headers,
 // and the response body. JSON bodies are stored canonicalized (sorted keys,

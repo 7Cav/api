@@ -149,6 +149,33 @@ func TestRunCase_AppliesTransformAndAllowlist(t *testing.T) {
 	assert.False(t, recorded, "only allowlisted headers are contract")
 }
 
+func TestWWWAuthenticateAbsenceIsPinned(t *testing.T) {
+	// #106 pinned the 401 tiers as having NO WWW-Authenticate. A standard
+	// auth middleware in the rewrite would add one; that must be a red diff.
+	// Mechanism under test: RunCase skips empty headers (the recorded golden
+	// has no WWW-Authenticate key), so CompareGolden sees ""-vs-set.
+	c := Case{Name: "x", Method: "GET", Path: "/api/v1/x", Auth: AuthNone}
+
+	current := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	})
+	want, _, err := RunCase(current, c)
+	require.NoError(t, err)
+	_, recorded := want.Header["WWW-Authenticate"]
+	require.False(t, recorded, "absent header must not be recorded as an empty value")
+
+	rewrite := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="api"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	})
+	got, _, err := RunCase(rewrite, c)
+	require.NoError(t, err)
+
+	diffs := CompareGolden(want, got)
+	require.NotEmpty(t, diffs, "rewrite adding WWW-Authenticate must produce a red diff")
+	assert.Contains(t, strings.Join(diffs, "\n"), "WWW-Authenticate")
+}
+
 func TestRunCase_NonJSONContentTypeRecordsVerbatimText(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
