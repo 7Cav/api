@@ -65,7 +65,7 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 func requireScope(scope string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !KeyFromContext(r.Context()).HasScope(scope) {
-			writeError(w, codePermissionDenied, "scope required: %s", scope)
+			writeError(w, r, codePermissionDenied, "scope required: %s", scope)
 			return
 		}
 		next.ServeHTTP(w, r)

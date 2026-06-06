@@ -1,7 +1,10 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +13,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// captureErrorLog redirects the package Error logger into a buffer for one
+// test and restores the previous writer afterwards.
+func captureErrorLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := Error.Writer()
+	Error.SetOutput(&buf)
+	t.Cleanup(func() { Error.SetOutput(prev) })
+	return &buf
+}
+
 // The error writer is the single choke point for every non-401 error the new
 // stack emits: the gRPC-status JSON shape ({"code":N,"message":...,
 // "details":[]}) with the frozen code→HTTP mapping. The plain-text 401 tier
@@ -17,7 +31,7 @@ import (
 
 func TestWriteError_GRPCStatusJSONShape(t *testing.T) {
 	rr := httptest.NewRecorder()
-	writeError(rr, codePermissionDenied, "scope required: %s", "read")
+	writeError(rr, httptest.NewRequest(http.MethodGet, "/api/v1/x", nil), codePermissionDenied, "scope required: %s", "read")
 
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
@@ -79,7 +93,7 @@ func TestNotFoundHandler_JSON404(t *testing.T) {
 // the choke point instead of a half-written 200.
 func TestWriteJSON(t *testing.T) {
 	rr := httptest.NewRecorder()
-	writeJSON(rr, map[string]string{"hello": "world"})
+	writeJSON(rr, httptest.NewRequest(http.MethodGet, "/api/v1/x", nil), map[string]string{"hello": "world"})
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
@@ -87,11 +101,68 @@ func TestWriteJSON(t *testing.T) {
 }
 
 func TestWriteJSON_MarshalFailureBecomesInternalError(t *testing.T) {
+	captureErrorLog(t)
 	rr := httptest.NewRecorder()
-	writeJSON(rr, func() {}) // func values cannot marshal
+	writeJSON(rr, httptest.NewRequest(http.MethodGet, "/api/v1/x", nil), func() {}) // func values cannot marshal
 
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
 	assert.Equal(t, float64(13), body["code"])
+}
+
+// Every ≥500 response is Error-logged at the choke point with code, message,
+// method, and path — cheap insurance that a production outage is visible
+// server-side even if cutover (#134) lands before the Sentry slice (#132).
+func TestWriteError_500sAreLoggedWithRequestContext(t *testing.T) {
+	buf := captureErrorLog(t)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	writeError(rr, req, codeInternal, "error fetching ranks: %v", io.ErrUnexpectedEOF)
+
+	logged := buf.String()
+	assert.Contains(t, logged, "GET")
+	assert.Contains(t, logged, "/api/v1/milpacs/ranks")
+	assert.Contains(t, logged, "code 13")
+	assert.Contains(t, logged, "error fetching ranks: unexpected EOF")
+}
+
+func TestWriteError_4xxIsNotErrorLogged(t *testing.T) {
+	buf := captureErrorLog(t)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	writeError(rr, req, codePermissionDenied, "scope required: read")
+
+	assert.Empty(t, buf.String(), "client errors must not spam the Error log")
+}
+
+// The marshal-failure fallback (statusBody cannot fail to marshal today; the
+// guard protects future edits) must stay on-contract: a hand-written constant
+// JSON body with application/json — NOT http.Error, which would emit
+// text/plain + X-Content-Type-Options: nosniff and append a newline — and the
+// failure must be logged with the original code/message and request context,
+// or the original error would vanish without a trace.
+func TestWriteError_MarshalFailureFallback(t *testing.T) {
+	buf := captureErrorLog(t)
+	prev := marshalJSON
+	marshalJSON = func(any) ([]byte, error) { return nil, errors.New("marshal exploded") }
+	t.Cleanup(func() { marshalJSON = prev })
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	writeError(rr, req, codePermissionDenied, "scope required: %s", "read")
+
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+	assert.Empty(t, rr.Header().Get("X-Content-Type-Options"),
+		"fallback must be hand-written, not http.Error (which adds nosniff)")
+	assert.Equal(t, `{"code":13,"message":"failed to encode error","details":[]}`, rr.Body.String(),
+		"constant fallback body, verbatim — no trailing newline")
+
+	logged := buf.String()
+	assert.Contains(t, logged, "marshal exploded")
+	assert.Contains(t, logged, "code 7", "the original code must survive into the log")
+	assert.Contains(t, logged, "scope required: read", "the original message must survive into the log")
+	assert.Contains(t, logged, "GET")
+	assert.Contains(t, logged, "/api/v1/milpacs/ranks")
 }

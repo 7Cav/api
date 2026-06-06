@@ -15,10 +15,10 @@ func getAllRanks(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ranks, err := ds.FindAllRanks()
 		if err != nil {
-			writeError(w, codeInternal, "error fetching ranks: %v", err)
+			writeError(w, r, codeInternal, "error fetching ranks: %v", err)
 			return
 		}
-		writeJSON(w, types.RanksResponse{Ranks: ranksFromProto(ranks)})
+		writeJSON(w, r, types.RanksResponse{Ranks: ranksFromProto(ranks)})
 	})
 }
 

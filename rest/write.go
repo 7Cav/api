@@ -86,50 +86,80 @@ type statusBody struct {
 	Details []any  `json:"details"`
 }
 
+// marshalJSON is json.Marshal behind a package seam so the marshal-failure
+// fallback below stays testable: statusBody itself cannot fail to marshal, so
+// the guard would otherwise be unreachable dead weight. Swapped only by tests.
+var marshalJSON = json.Marshal
+
 // writeError is the single error choke point of the new stack: every non-401
 // error response is written here — one place to keep the wire shape, the
-// code→HTTP mapping, and (extension point, #132) the 5xx Sentry reports.
-// The plain-text 401 tier deliberately bypasses it: the auth middleware
-// writes those itself (two-tier behavior golden-pinned by #106).
+// code→HTTP mapping, the ≥500 server-side logging, and (extension point,
+// #132) the 5xx Sentry reports. The plain-text 401 tier deliberately bypasses
+// it: the auth middleware writes those itself (two-tier behavior golden-pinned
+// by #106). r supplies the method/path request context for the log lines.
 //
 // Handler-specific message strings are frozen behavior (including the ones
 // that leak wrapped error text) — callers format them verbatim.
-func writeError(w http.ResponseWriter, c code, format string, args ...any) {
-	body, err := json.Marshal(statusBody{
+func writeError(w http.ResponseWriter, r *http.Request, c code, format string, args ...any) {
+	writeStatusJSON(w, r, c.httpStatus(), c, format, args...)
+}
+
+// writeStatusJSON is writeError with the HTTP status decoupled from the code:
+// for the rare response whose status the frozen code→HTTP table cannot
+// produce. Everything else must go through writeError so code and status can
+// never disagree by accident.
+func writeStatusJSON(w http.ResponseWriter, r *http.Request, status int, c code, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	if status >= 500 {
+		// Cheap insurance: production 5xx outages stay visible server-side
+		// even if cutover (#134) lands before the Sentry slice (#132).
+		Error.Printf("%s %s: %d (code %d): %s", r.Method, r.URL.Path, status, c, msg)
+	}
+	body, err := marshalJSON(statusBody{
 		Code:    c,
-		Message: fmt.Sprintf(format, args...),
+		Message: msg,
 		Details: []any{},
 	})
 	if err != nil {
 		// statusBody cannot fail to marshal; guard against future edits.
-		http.Error(w, `{"code":13,"message":"failed to encode error","details":[]}`, http.StatusInternalServerError)
+		// Hand-written fallback, NOT http.Error: that would emit text/plain +
+		// X-Content-Type-Options: nosniff and append a newline — off-contract
+		// in three ways. Log the marshal failure WITH the original code and
+		// message, or the real error vanishes behind the generic body.
+		Error.Printf("%s %s: marshaling error body failed (original code %d, message %q): %v",
+			r.Method, r.URL.Path, c, msg, err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		if _, werr := w.Write([]byte(`{"code":13,"message":"failed to encode error","details":[]}`)); werr != nil {
+			Error.Printf("%s %s: writing fallback error response: %v", r.Method, r.URL.Path, werr)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(c.httpStatus())
+	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {
-		Error.Printf("writing error response: %v", err)
+		Error.Printf("%s %s: writing error response: %v", r.Method, r.URL.Path, err)
 	}
 }
 
 // notFound is the JSON 404 for unknown paths under the API prefix — the
 // gateway-mux body the corpus pinned, not the stdlib text 404.
-func notFound(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, codeNotFound, "Not Found")
+func notFound(w http.ResponseWriter, r *http.Request) {
+	writeError(w, r, codeNotFound, "Not Found")
 }
 
 // writeJSON writes a 200 application/json response. It marshals BEFORE
 // touching the ResponseWriter so an encoding failure can still surface as a
 // clean Internal error through the choke point instead of a truncated 200.
-func writeJSON(w http.ResponseWriter, v any) {
+func writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	body, err := json.Marshal(v)
 	if err != nil {
-		Error.Printf("encoding response: %v", err)
-		writeError(w, codeInternal, "failed to encode response")
+		Error.Printf("%s %s: encoding response: %v", r.Method, r.URL.Path, err)
+		writeError(w, r, codeInternal, "failed to encode response")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if _, err := w.Write(body); err != nil {
-		Error.Printf("writing response: %v", err)
+		Error.Printf("%s %s: writing response: %v", r.Method, r.URL.Path, err)
 	}
 }
