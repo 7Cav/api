@@ -227,18 +227,16 @@ func TestSentryMiddleware_BearerTokenNeverInPayload(t *testing.T) {
 }
 
 // TestBuildAPIHandler_500BehindValidAuth_OneEventWithKeyID drives the actual
-// production chain constructor — auth(sentry(cache(compression))) — end to
-// end: a 500 from the inner handler behind valid auth must produce exactly
-// one event carrying the key_id auth attached. The /api/v1/tickets path is
-// deliberate: CacheMiddleware passes tickets straight through, so the nil
-// RedisCache is never touched.
+// production chain constructor — auth(sentry(compression)) — end to end: a
+// 500 from the inner handler behind valid auth must produce exactly one
+// event carrying the key_id auth attached.
 func TestBuildAPIHandler_500BehindValidAuth_OneEventWithKeyID(t *testing.T) {
 	transport := bindCaptureClient(t)
 	ds := &fakeAuthDatastore{validateApiKey: func(token string) (*datastores.ApiKeyResult, error) {
 		assert.Equal(t, "cav7_goodkey", token)
 		return &datastores.ApiKeyResult{KeyId: 42}, nil
 	}}
-	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := buildAPIHandler(ds, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream exploded", http.StatusInternalServerError)
 	}))
 
@@ -262,7 +260,7 @@ func TestBuildAPIHandler_BadAuth_401NoEvents(t *testing.T) {
 		return nil, nil // zero rows — invalid key
 	}}
 	innerCalled := false
-	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := buildAPIHandler(ds, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		innerCalled = true
 	}))
 

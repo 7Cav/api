@@ -28,7 +28,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	milpacs "github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
@@ -50,7 +49,6 @@ type MicroServer struct {
 	addr           string
 	httpServer     *http.Server
 	grpcServer     *grpc.Server
-	cache          *cache.RedisCache
 	referenceCache *referencecache.Cache
 }
 
@@ -70,27 +68,6 @@ var (
 	Warn  = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
-
-func setupRedis() *cache.RedisCache {
-	redisHost := viper.GetString("REDIS_HOST")
-	if redisHost == "" {
-		Error.Println("no redis host provided")
-		os.Exit(1)
-	}
-
-	redisPort := viper.GetString("REDIS_PORT")
-	if redisPort == "" {
-		Error.Println("no redis port provided")
-		os.Exit(1)
-	}
-
-	redisPassword := viper.GetString("REDIS_PASSWORD")
-	if redisPassword == "" {
-		Info.Println("REDIS_PASSWORD empty — connecting without AUTH")
-	}
-
-	return cache.NewRedisCache(redisHost, redisPort, redisPassword)
-}
 
 func setupDatasource() *datastores.Mysql {
 
@@ -147,22 +124,22 @@ func (server *MicroServer) Start() {
 		flushSentryOnShutdown()
 	}
 
-	//create TLS listener for TCP connections
+	// plain-TCP listeners (no TLS — nginx terminates; see the creds note below)
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
-	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
-
 	if err != nil {
-		Error.Fatalf("Failed to listen on %s: %v", server.addr, err)
+		Error.Fatalf("Failed to listen on 0.0.0.0:10000: %v", err)
+	}
+	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
+	if err != nil {
+		Error.Fatalf("Failed to listen on 0.0.0.0:11000: %v", err)
 	}
 
 	ds := setupDatasource()
-	server.cache = setupRedis()
 	server.referenceCache = referencecache.New(ds)
 	if err := server.referenceCache.Refresh(context.Background()); err != nil {
 		Error.Fatalf("initial reference cache load failed: %v", err)
 	}
 	go runReferenceCacheRefresh(context.Background(), server.referenceCache)
-	go cache.CacheManager(server.cache, ds)
 
 	// relevant Grpc options
 	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.
@@ -219,7 +196,7 @@ func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOptio
 }
 
 func servHTTP(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
-	service := httpServices.Service{Address: server.addr, Cache: server.cache, Datastore: ds}
+	service := httpServices.Service{Address: server.addr, Datastore: ds}
 	server.httpServer = service.Server()
 	if err := server.httpServer.Serve(lis); err != nil {
 		Error.Fatalf("unable to start HTTP servers: %v", err)
