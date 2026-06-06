@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -226,7 +227,11 @@ func TestSpec_WireConventions(t *testing.T) {
 // ALL of them and close itself with additionalProperties: false. Without
 // this, deleting a required: list or an additionalProperties: false line is
 // a silent loosening — goldens witness presence, not the spec's tolerance
-// for absence. Any is the documented exception: protobuf Any is an open type
+// for absence. A property-less object schema is forbidden outright unless
+// its additionalProperties is itself a schema (the legitimate map shapes,
+// e.g. Roster.profiles): a bare `type: object` validates ANY object, so
+// gutting a schema wholesale would otherwise keep the replay loop green
+// vacuously. Any is the documented exception: protobuf Any is an open type
 // by design (arbitrary fields per @type), so it cannot be closed.
 func TestSpec_SchemasAreEmitEverything(t *testing.T) {
 	_, model := loadSpec(t)
@@ -236,7 +241,12 @@ func TestSpec_SchemasAreEmitEverything(t *testing.T) {
 			return // open by design; see schema description
 		}
 		if orderedmap.Len(s.Properties) == 0 {
-			return // the rule binds object schemas that declare properties
+			if slices.Contains(s.Type, "object") {
+				isMap := s.AdditionalProperties != nil && s.AdditionalProperties.IsA()
+				assert.True(t, isMap,
+					"%s: object schema declares no properties — a bare object validates anything; declare its properties or make it an explicit map (additionalProperties as a schema)", path)
+			}
+			return // the required/closed rule binds object schemas that declare properties
 		}
 		var props []string
 		for pair := orderedmap.First(s.Properties); pair != nil; pair = pair.Next() {
@@ -248,6 +258,64 @@ func TestSpec_SchemasAreEmitEverything(t *testing.T) {
 		assert.True(t, closed,
 			"%s: object schema must set additionalProperties: false (emit-everything)", path)
 	})
+}
+
+// TestSpec_NullableUnionsAreExact pins the shape of the Nullable* null
+// unions structurally. Their null branches are corpus-unwitnessed except for
+// "primary": null, so a null branch quietly rewritten to another type (or a
+// wrapper growing extra branches/keywords) would stay green against the
+// goldens. Every components.schemas.Nullable* must therefore be EXACTLY a
+// oneOf of two branches — one $ref (the non-null target) and one bare
+// {type: 'null'} — and nothing else.
+func TestSpec_NullableUnionsAreExact(t *testing.T) {
+	_, model := loadSpec(t)
+	require.NotNil(t, model.Components)
+
+	count := 0
+	for pair := orderedmap.First(model.Components.Schemas); pair != nil; pair = pair.Next() {
+		name := pair.Key()
+		if !strings.HasPrefix(name, "Nullable") {
+			continue
+		}
+		count++
+		where := "components.schemas." + name
+		s := pair.Value().Schema()
+		require.NotNil(t, s, "%s: schema does not build", where)
+
+		// The wrapper carries the oneOf and nothing else.
+		assert.Len(t, s.OneOf, 2, "%s: Nullable* must be exactly a oneOf of 2 branches", where)
+		assert.Empty(t, s.Type, "%s: Nullable* wrapper must not declare a type", where)
+		assert.Zero(t, orderedmap.Len(s.Properties), "%s: Nullable* wrapper must not declare properties", where)
+		assert.Empty(t, s.AnyOf, "%s: Nullable* wrapper must not use anyOf", where)
+		assert.Empty(t, s.AllOf, "%s: Nullable* wrapper must not use allOf", where)
+		assert.Nil(t, s.Not, "%s: Nullable* wrapper must not use not", where)
+		assert.Empty(t, s.Enum, "%s: Nullable* wrapper must not declare an enum", where)
+
+		refs, nulls := 0, 0
+		for _, branch := range s.OneOf {
+			if branch.IsReference() {
+				refs++
+				continue
+			}
+			bs := branch.Schema()
+			if bs == nil {
+				continue
+			}
+			bare := len(bs.Type) == 1 && bs.Type[0] == "null" &&
+				orderedmap.Len(bs.Properties) == 0 && bs.Items == nil &&
+				len(bs.OneOf) == 0 && len(bs.AnyOf) == 0 && len(bs.AllOf) == 0 &&
+				bs.Not == nil && len(bs.Enum) == 0
+			if bare {
+				nulls++
+			}
+		}
+		assert.Equal(t, 1, refs,
+			"%s: exactly one branch must be a $ref to the non-null target", where)
+		assert.Equal(t, 1, nulls,
+			"%s: exactly one branch must be a bare {type: 'null'}", where)
+	}
+	assert.Equal(t, 4, count,
+		"the Nullable* component set is pinned (User, Rank, Position, S1UniformsRank)")
 }
 
 // --- Golden replay against the spec --------------------------------------
@@ -543,8 +611,8 @@ func TestSpec_GoldenReplay(t *testing.T) {
 			if !skipRequestValidation {
 				valid, verrs := v.ValidateHttpRequestSyncWithPathItem(req, pathItem, specPath)
 				if entry, bad := specViolatingRequests[c.Name]; bad {
-					require.GreaterOrEqual(t, golden.Status, 400,
-						"case %s: must-fail entries record 4xx responses", c.Name)
+					require.True(t, golden.Status >= 400 && golden.Status < 500,
+						"case %s: must-fail entries record 4xx responses, got %d", c.Name, golden.Status)
 					assert.False(t, valid,
 						"case %s: request must violate the spec (%s) but validated clean", c.Name, entry.reason)
 					assert.True(t, hasValidationError(verrs, entry.wantType, entry.wantMessage),
@@ -588,12 +656,13 @@ func mutateSpec(t *testing.T, find, replace string) (libopenapi.Document, *v3.Do
 }
 
 // TestSpec_MutationCanary is the permanent teeth-check for response
-// validation: it replays a golden against a deliberately broken in-memory
-// copy of the spec and demands a LOUD failure naming the operation and the
-// broken piece. The underlying library returns valid=true for nil responses,
-// missing content and non-JSON media types — if the replay loop ever turns
-// vacuous again (nil responses, stripped content, default-swallowed
-// statuses, loosened types), this test fails first.
+// validation: each of the five mutations replays one golden against a
+// deliberately broken in-memory copy of the spec and demands a LOUD failure
+// naming the operation and the broken piece. The underlying library returns
+// valid=true for nil responses, missing content and non-JSON media types —
+// if the replay loop ever turns vacuous again (nil responses, stripped
+// content, default-swallowed statuses, loosened types, or the text-golden
+// no-content branch), this test fails first.
 func TestSpec_MutationCanary(t *testing.T) {
 	const ranks200Block = `        "200":
           description: Rank reference list.
@@ -615,6 +684,7 @@ func TestSpec_MutationCanary(t *testing.T) {
 		replace  string
 		caseName string
 		want     string // substring the failure must carry
+		wantOp   string // operation name the failure must carry
 	}{
 		{
 			name:     "flipped field type fails schema validation",
@@ -622,6 +692,7 @@ func TestSpec_MutationCanary(t *testing.T) {
 			replace:  "rankDisplayOrder:\n          type: string",
 			caseName: "milpacs/ranks",
 			want:     "rankDisplayOrder",
+			wantOp:   "MilpacService_GetAllRanks",
 		},
 		{
 			name: "witnessed status must be explicitly documented, not default-swallowed",
@@ -631,6 +702,7 @@ func TestSpec_MutationCanary(t *testing.T) {
           description: Rank reference list.`,
 			caseName: "milpacs/ranks",
 			want:     "status 200",
+			wantOp:   "MilpacService_GetAllRanks",
 		},
 		{
 			name:     "JSON golden requires an application/json response schema",
@@ -638,6 +710,7 @@ func TestSpec_MutationCanary(t *testing.T) {
 			replace:  "        \"200\":\n          description: Rank reference list.\n",
 			caseName: "milpacs/ranks",
 			want:     "application/json",
+			wantOp:   "MilpacService_GetAllRanks",
 		},
 		{
 			name:     "operation must declare responses",
@@ -645,6 +718,22 @@ func TestSpec_MutationCanary(t *testing.T) {
 			replace:  "",
 			caseName: "milpacs/ranks",
 			want:     "declares no responses",
+			wantOp:   "MilpacService_GetAllRanks",
+		},
+		{
+			// The text-golden substance branch: a 401 golden records a
+			// plain-text body, so a response stripped of its content must
+			// fail loudly rather than validate vacuously.
+			name: "text golden requires declared content on the response",
+			find: `      content:
+        text/plain:
+          schema:
+            type: string
+`,
+			replace:  "",
+			caseName: "auth/milpacs_missing_header",
+			want:     "declares no content but the golden records a body",
+			wantOp:   "MilpacService_GetProfile",
 		},
 	}
 
@@ -665,7 +754,7 @@ func TestSpec_MutationCanary(t *testing.T) {
 				"broken spec (%s) must fail response validation — the replay loop has gone vacuous", m.name)
 			joined := strings.Join(problems, "\n")
 			assert.Contains(t, joined, m.want, "failure must name the broken piece")
-			assert.Contains(t, joined, "MilpacService_GetAllRanks", "failure must name the operation")
+			assert.Contains(t, joined, m.wantOp, "failure must name the operation")
 		})
 	}
 }
@@ -718,6 +807,63 @@ func TestSpec_EveryOperationHasGolden(t *testing.T) {
 		}
 	}
 	assert.NotZero(t, total, "spec declares no operations")
+}
+
+// TestSpec_DeclaredStatusesAreCorpusWitnessed is the inverse of the replay
+// loop's explicit-status rule. The replay loop demands every witnessed
+// status be declared; this test demands every DECLARED status be witnessed,
+// so a fictional response code cannot ride along undetected. The single
+// carve-out is "401": the pre-routing auth tier is uniform across the
+// surface, declared on every operation, but witnessed by goldens on only
+// two of them — every other residual entry is a spec bug.
+func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
+	_, model := loadSpec(t)
+
+	witnessed := map[string]map[string]bool{} // "GET /path" -> set of golden statuses
+	for _, c := range Cases() {
+		if _, off := offSpecCases[c.Name]; off {
+			continue
+		}
+		specPath := classifySpecPath(c.Path)
+		if tmpl, ok := templateUnmatchableCases[c.Name]; ok {
+			specPath = tmpl
+		}
+		require.NotEmpty(t, specPath, "case %s: path %s matches no known route", c.Name, c.Path)
+		golden, err := LoadGolden(goldensDir, c.Name)
+		require.NoError(t, err)
+		key := "GET " + specPath
+		if witnessed[key] == nil {
+			witnessed[key] = map[string]bool{}
+		}
+		witnessed[key][strconv.Itoa(golden.Status)] = true
+	}
+
+	unwitnessed401Ops := 0
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		specPath := pair.Key()
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			key := strings.ToUpper(method) + " " + specPath
+			id := operationID(op, method, specPath)
+			if op.Responses == nil {
+				continue // absence of responses is the replay loop's failure to report
+			}
+			for rp := orderedmap.First(op.Responses.Codes); rp != nil; rp = rp.Next() {
+				code := rp.Key()
+				if witnessed[key][code] {
+					continue
+				}
+				if code == "401" {
+					// The uniform pre-routing 401, declared everywhere but
+					// witnessed only where a 401 golden exists.
+					unwitnessed401Ops++
+					continue
+				}
+				t.Errorf("declared status %s on %s is witnessed by no golden — explicit statuses must be corpus-witnessed (401 carve-out only)", code, id)
+			}
+		}
+	}
+	assert.Equal(t, 14, unwitnessed401Ops,
+		"the 401 carve-out covers exactly the operations lacking a 401 golden")
 }
 
 // TestSpec_EveryGoldenRouteInSpec is coverage direction B: every golden's
