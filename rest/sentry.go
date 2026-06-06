@@ -170,6 +170,13 @@ func sentryMiddleware(next http.Handler) http.Handler {
 			if rec == nil {
 				return
 			}
+			if rec == http.ErrAbortHandler { // raw comparison — net/http's own idiom
+				// The stdlib's DELIBERATE-abort sentinel (net/http suppresses
+				// its stack; httputil.ReverseProxy — the cutover docs proxy —
+				// panics with it on client disconnects): not an error, no
+				// event, no 500 rewrite. Re-raise for net/http to honour.
+				panic(rec)
+			}
 			labels.panicked = true
 			scope := hub.Scope()
 			if labels.route != "" {

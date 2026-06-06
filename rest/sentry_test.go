@@ -425,6 +425,32 @@ func TestSentry_GzippedPanicReportsAndRepanics(t *testing.T) {
 	assert.Equal(t, "7", events[0].Tags["key_id"])
 }
 
+// http.ErrAbortHandler is the stdlib's sentinel for a DELIBERATE abort —
+// net/http suppresses its stack trace, and httputil.ReverseProxy (the docs
+// proxy the cutover slice mounts) panics with it on client disconnects. The
+// recovery layer must re-raise it unreported: not an error, no event, no 500
+// rewrite — aborting means the connection dies, exactly as the handler asked.
+func TestSentry_ErrAbortHandlerRepanicsUnreported(t *testing.T) {
+	tr := enableSentry(t)
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /abort", sentryLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic(http.ErrAbortHandler)
+	})))
+	h := sentryMiddleware(metricsMiddleware(mux))
+
+	rr := httptest.NewRecorder()
+	panicked := func() (p any) {
+		defer func() { p = recover() }()
+		h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/abort", nil))
+		return nil
+	}()
+	require.Equal(t, http.ErrAbortHandler, panicked,
+		"the abort sentinel must propagate for net/http to honour")
+	assert.Zero(t, rr.Body.Len(), "an abort must not be rewritten into a contract 500")
+	assert.Empty(t, tr.Events(), "a deliberate abort is not an error — no event")
+}
+
 // commitWriter is the outermost wrapper when sentry is enabled, so it must
 // expose Unwrap for http.ResponseController — otherwise Flusher/Hijacker/
 // deadline control silently vanish for every inner layer (same obligation the
