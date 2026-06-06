@@ -45,7 +45,14 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Path binding first, query binding second — gateway order: a
 		// malformed path id 400s even when a username query is present.
-		userID, err := strconv.ParseUint(r.PathValue("user_id"), 10, 64)
+		//
+		// BASE 0, not 10 — the gateway's runtime.Uint64 was
+		// strconv.ParseUint(val, 0, 64) (grpc-gateway v2.29.0
+		// runtime/convert.go), so the path id inherits Go integer-literal
+		// parsing: 0x1 is hex 1, 010 is OCTAL 8 (a wrong-profile hazard if
+		// parsed base 10), 0b1 is binary 1, 1_0 is 10, and 09 is invalid
+		// syntax (octal with a 9). Frozen as-is (PRD #112 leniency tier).
+		userID, err := strconv.ParseUint(r.PathValue("user_id"), 0, 64)
 		if err != nil {
 			// Gateway type-mismatch tier, parse-error text leaked. Frozen.
 			writeError(w, r, codeInvalidArgument, "type mismatch, parameter: %s, error: %v", "user_id", err)

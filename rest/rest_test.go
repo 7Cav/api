@@ -782,6 +782,67 @@ func TestNewStack_ConnectedAccountRoutes_MalformedQuerySyntaxIgnored(t *testing.
 	}
 }
 
+// --- Path-id parse base (gateway base-0 quirk, frozen) ----------------------
+//
+// The old gateway's runtime.Uint64 is strconv.ParseUint(val, 0, 64) — BASE 0
+// (grpc-gateway v2.29.0 runtime/convert.go), so the path id accepts Go
+// integer-literal prefixes (0x hex, 0b binary, leading-0 octal) and digit
+// underscores. Verified against the real old stack in-process: /profile/id/0x1
+// resolved relation 1, /profile/id/010 resolved relation EIGHT (octal!),
+// /profile/id/09 was a 400 (octal with a 9 — invalid syntax), /profile/id/1_0
+// resolved relation 10. Wrong-profile-resolution risk if the new stack parses
+// base 10; frozen as-is, base 0.
+//
+// The not-found message names the PARSED number, not the raw path text — the
+// old handler built it from the already-bound request field.
+func TestNewStack_ByIdRoute_PathIdParsesBaseZero(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		name     string
+		path     string
+		wantCode int
+		check    func(t *testing.T, body string)
+	}{
+		{"hex_0x1_resolves_relation_1", "/api/v1/milpacs/profile/id/0x1", http.StatusOK,
+			func(t *testing.T, body string) {
+				assert.Contains(t, body, `"username":"Jarvis.A"`)
+				assert.Contains(t, body, `"userId":"3"`)
+			}},
+		{"binary_0b1_resolves_relation_1", "/api/v1/milpacs/profile/id/0b1", http.StatusOK,
+			func(t *testing.T, body string) {
+				assert.Contains(t, body, `"username":"Jarvis.A"`)
+			}},
+		{"octal_010_is_relation_8", "/api/v1/milpacs/profile/id/010", http.StatusNotFound,
+			func(t *testing.T, body string) {
+				// The fake seeds no relation 8: the not-found shape naming the
+				// PARSED number 8 (not 10, not "010") proves base-0 + the
+				// parsed-value message in one observation.
+				assert.JSONEq(t, `{"code":5,"message":"no profile found for user ID: 8","details":[]}`, body)
+			}},
+		{"underscore_1_0_is_relation_10", "/api/v1/milpacs/profile/id/1_0", http.StatusNotFound,
+			func(t *testing.T, body string) {
+				assert.JSONEq(t, `{"code":5,"message":"no profile found for user ID: 10","details":[]}`, body)
+			}},
+		{"octal_09_is_invalid_syntax_400", "/api/v1/milpacs/profile/id/09", http.StatusBadRequest,
+			func(t *testing.T, body string) {
+				// Base 0 reads the leading 0 as octal; 9 is no octal digit.
+				assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: user_id, error: strconv.ParseUint: parsing \"09\": invalid syntax","details":[]}`, body)
+			}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, tc.wantCode, rr.Code)
+			tc.check(t, rr.Body.String())
+		})
+	}
+}
+
 // Path parse precedes the username-override: a malformed path id 400s with
 // the gateway's type-mismatch tier even when a valid ?username= is present —
 // the generated handler parsed pathParams before ParseForm/query binding.
