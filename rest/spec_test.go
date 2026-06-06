@@ -4,13 +4,14 @@ package rest_test
 // against the NEW stack too: every implemented battery case's OBSERVED
 // response (not the committed golden — contract/spec_test.go already covers
 // those) is validated against the document. Today that means the ranks
-// operation's full surface plus the 401 tiers observed on the profile-by-id
-// and tickets-list operations — the rest of the spec's operations are
-// witnessed only once their routes land (#126–#129). Same non-vacuousness
-// rules as the contract replay loop: the observed status must be EXPLICITLY
-// documented on the operation, a JSON response requires an application/json
-// schema to validate against, and every implemented case's path must be
-// classified in specRoutes — unclassified paths fail, never skip.
+// operation, the four profile lookup operations (id, username, discord,
+// gamertag — #126), and all five tickets operations (#129) — the remaining
+// operations are witnessed once their routes land (#127–#128). Same
+// non-vacuousness rules as the contract replay loop: the observed status
+// must be EXPLICITLY documented on the operation, a JSON response requires
+// an application/json schema to validate against, and every implemented
+// case's path must be classified in specRoutes — unclassified paths fail,
+// never skip.
 
 import (
 	"bytes"
@@ -44,12 +45,39 @@ const specPath = "../openapi/openapi.yaml"
 // to stay unmatched.
 var specRoutes = map[string]string{
 	"/api/v1/milpacs/ranks": "/api/v1/milpacs/ranks",
-	// The 401-tier battery cases replay against these two paths before their
-	// routes are implemented (auth runs before routing, so the observed 401s
-	// are route-independent); the operations document 401 explicitly.
-	"/api/v1/milpacs/profile/id/1": "/api/v1/milpacs/profile/id/{userId}",
+	// Tickets (#129): categories, by id (happy/not-found/parse-error), by
+	// ref (happy/not-found), messages (happy/page-two/parse-error), list —
+	// the list path also carries the 401-tier battery cases (auth runs
+	// before routing, so the observed 401s are route-independent).
 	"/api/v1/tickets":              "/api/v1/tickets",
-	"/api/v1/does/not/exist":       "", // off-spec: unknown-path tier (mux behavior, not an operation)
+	"/api/v1/tickets/categories":   "/api/v1/tickets/categories",
+	"/api/v1/tickets/42":           "/api/v1/tickets/{ticketId}",
+	"/api/v1/tickets/9999":         "/api/v1/tickets/{ticketId}",
+	"/api/v1/tickets/abc":          "/api/v1/tickets/{ticketId}",
+	"/api/v1/tickets/ref/MF1UI9HE": "/api/v1/tickets/ref/{ticketRef}",
+	"/api/v1/tickets/ref/NOPE9999": "/api/v1/tickets/ref/{ticketRef}",
+	"/api/v1/tickets/42/messages":  "/api/v1/tickets/{ticketId}/messages",
+	"/api/v1/tickets/555/messages": "/api/v1/tickets/{ticketId}/messages",
+	"/api/v1/tickets/abc/messages": "/api/v1/tickets/{ticketId}/messages",
+	// Profile by id: happy (1), sparse (2), not-found (999), zero (0),
+	// parse-error (abc), injected outage (777) — plus the 401-tier battery
+	// cases that replay against /id/1.
+	"/api/v1/milpacs/profile/id/1":   "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/2":   "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/999": "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/0":   "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/abc": "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/777": "/api/v1/milpacs/profile/id/{userId}",
+	// Profile by username: happy, not-found.
+	"/api/v1/milpacs/profile/username/Jarvis.A":   "/api/v1/milpacs/profile/username/{username}",
+	"/api/v1/milpacs/profile/username/Ghost.User": "/api/v1/milpacs/profile/username/{username}",
+	// Discord lookup: happy, not-found.
+	"/api/v1/milpac/discord/112233445566778899": "/api/v1/milpac/discord/{discordId}",
+	"/api/v1/milpac/discord/999000999":          "/api/v1/milpac/discord/{discordId}",
+	// Gamertag lookup: happy, not-found.
+	"/api/v1/milpac/gamertag/CavGamer77": "/api/v1/milpac/gamertag/{gamertag}",
+	"/api/v1/milpac/gamertag/GhostTag":   "/api/v1/milpac/gamertag/{gamertag}",
+	"/api/v1/does/not/exist":             "", // off-spec: unknown-path tier (mux behavior, not an operation)
 }
 
 func loadSpecModel(t *testing.T) *v3.Document {

@@ -264,7 +264,7 @@ func TestMetrics_ExoticMethodClampsToOther(t *testing.T) {
 func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		panic("datastore exploded")
-	}})
+	}}, &stubReferenceCache{})
 	labels := map[string]string{
 		"route":  "GET /api/v1/milpacs/ranks",
 		"method": "GET",
@@ -294,7 +294,7 @@ func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
 func TestMetrics_HandlerError500MetersUnderRouteAndKey(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, io.ErrUnexpectedEOF
-	}})
+	}}, &stubReferenceCache{})
 	labels := map[string]string{
 		"route":  "GET /api/v1/milpacs/ranks",
 		"method": "GET",
@@ -317,7 +317,7 @@ func TestMetrics_HandlerError500MetersUnderRouteAndKey(t *testing.T) {
 func TestMetrics_AuthDatastoreOutage503MetersWithEmptyRouteAndKey(t *testing.T) {
 	h := rest.New(&fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
 		return nil, io.ErrUnexpectedEOF
-	}})
+	}}, &stubReferenceCache{})
 	labels := map[string]string{
 		"route":  "",
 		"method": "GET",
@@ -517,7 +517,7 @@ func TestMetrics_BearerMaterialAbsentFromExposition(t *testing.T) {
 	// drive it so the sweep covers every tier that handles key material.
 	outage := rest.New(&fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
 		return nil, io.ErrUnexpectedEOF
-	}})
+	}}, &stubReferenceCache{})
 	do(outage, http.MethodGet, "/api/v1/milpacs/ranks", "cav7_readkey")
 
 	srv := httptest.NewServer(rest.MetricsHandler())

@@ -92,6 +92,15 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 // per-handler; "read" does not imply "read:tickets" and vice versa). A key
 // lacking the scope gets the PermissionDenied JSON via the error-writer
 // choke point — message string frozen by the goldens.
+//
+// RULED CUTOVER BREAK (round-2 R1; 405-ruling precedent — ratify in the PR
+// body): this gate runs BEFORE the handler's request binding, so wrong-scope
+// + malformed input is the 403. The old stack answered 400 there — every
+// binding 400 (path type-mismatch, query parsing-field/list, ParseForm
+// syntax) fired in the gateway before the RPC body where RequireScope lived.
+// Kept deliberately: uniform 401 (auth) → 403 (scope) → route-semantics
+// layering. Pinned by TestNewStack_ScopeGatePrecedesBindingErrors. The one
+// scope-INDEPENDENT exception is the refMessagesParity shim (see tickets.go).
 func requireScope(scope string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !KeyFromContext(r.Context()).HasScope(scope) {

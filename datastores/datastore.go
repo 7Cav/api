@@ -67,6 +67,10 @@ func ParseBearerToken(raw string, maxLen int) string {
 }
 
 type Datastore interface {
+	// FindProfilesById and FindProfilesByUsername return a NON-EMPTY slice of
+	// non-nil profiles on a nil error — no-match is gorm.ErrRecordNotFound,
+	// never an empty slice. Handlers index [0] under this invariant (with a
+	// defensive 500 guard for implementations that break it).
 	FindProfilesById(userId ...uint64) ([]*proto.Profile, error)
 	FindProfilesByUsername(username string) ([]*proto.Profile, error)
 	FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error)
@@ -102,3 +106,8 @@ type TicketReferenceCache interface {
 	CategoryTree() []*referencecache.CategoryRecord
 	ExpandSubtree(ids []uint32) []uint32
 }
+
+// Conformance pin: the production cache satisfies the slice. Lives HERE (not
+// next to the grpc server that also consumes the cache) so the check
+// survives Phase 4's deletion of the grpc stack.
+var _ TicketReferenceCache = (*referencecache.Cache)(nil)
