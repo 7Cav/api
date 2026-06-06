@@ -23,6 +23,28 @@ func Lint() error {
 	return run("buf", "breaking", "--against", "https://github.com/7cav/api.git#branch=develop")
 }
 
+// Run the test suite (MariaDB integration tests skip unless TESTDB_ADDR is set)
+func Test() error {
+	fmt.Println("Running tests...")
+	return run("go", "test", "./...")
+}
+
+// Spin up the dockerized MariaDB harness and run the full test suite against it
+func TestIntegration() error {
+	fmt.Println("Running integration tests against the MariaDB harness...")
+	if err := run("docker", "compose", "-f", "testdb/compose.yaml", "up", "-d", "--wait"); err != nil {
+		return err
+	}
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Env = append(os.Environ(), "TESTDB_ADDR=127.0.0.1:3310")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("integration tests failed: %w", err)
+	}
+	return nil
+}
+
 // Install dependencies and tools
 func Install() error {
 	fmt.Println("Installing dependencies and tools...")

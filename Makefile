@@ -1,6 +1,20 @@
 generate:
 	buf generate
 
+test:
+	go test ./...
+
+# Dockerized MariaDB integration harness (testdb/). Tests opt into the
+# real database via TESTDB_ADDR; without it they skip.
+testdb-up:
+	docker compose -f testdb/compose.yaml up -d --wait
+
+testdb-down:
+	docker compose -f testdb/compose.yaml down -v
+
+test-integration: testdb-up
+	TESTDB_ADDR=127.0.0.1:3310 go test ./...
+
 lint:
 	buf lint
 	buf breaking --against 'https://github.com/7cav/api.git#branch=develop'

@@ -22,6 +22,33 @@ jobs:
       run: go mod tidy
     - name: Build
       run: go build -v ./...
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        # Matches the forum's major version and testdb/compose.yaml.
+        image: mariadb:11.5
+        env:
+          # Throwaway credential for disposable fixture data; mirrored in
+          # testdb/testdb.go and testdb/compose.yaml.
+          MARIADB_ROOT_PASSWORD: harness
+        ports:
+          - 3310:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=24
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v6.0.2
+    - name: Test (no harness — integration tests must skip)
+      run: go test ./...
+    - name: Test with MariaDB harness
+      run: go test ./...
+      env:
+        TESTDB_ADDR: 127.0.0.1:3310
   lint:
     name: Lint
     runs-on: ubuntu-latest
