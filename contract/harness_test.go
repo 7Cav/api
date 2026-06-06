@@ -35,16 +35,18 @@ var (
 // TestMain mounts the CURRENT production stack in-process exactly once:
 //
 //	httptest request → gateway.Service.Server().Handler (real /api routing,
-//	real auth middleware, real sentry/cache/compression chain) → real gRPC
+//	real auth middleware, real sentry/compression chain) → real gRPC
 //	client conn over TCP → real grpc.Server with the production interceptor
 //	chain (auth outer, sentry inner; mirrors servers.apiUnaryInterceptors)
 //	→ MilpacsService + TicketsService handlers → recordingDatastore.
 //
 // Differences from production, all behavior-neutral by construction:
 //   - the datastore is the seeded fake (no MySQL),
-//   - Redis is the always-erroring RESP stub (startMissingRedis), so the
-//     middleware treats every request as a miss (the post-#123 stack has no
-//     cache at all; X-Cache is not a contract header),
+//   - Redis is the always-erroring RESP stub (startMissingRedis). The cache
+//     middleware left the chain at Phase 2 de-cache (#123), so nothing
+//     touches it today; the stub stays through the soak so the documented
+//     one-line revert of #123 keeps this corpus runnable (X-Cache was never
+//     a contract header),
 //   - SENTRY_DSN is unset, so both sentry layers are pass-throughs,
 //   - the TicketsService reference cache is nil — the fake never touches it.
 func TestMain(m *testing.M) {
@@ -136,12 +138,12 @@ func mountCurrentStack() (http.Handler, error) {
 }
 
 // startMissingRedis serves a minimal RESP endpoint that answers every command
-// with -ERR. The cache middleware treats any Get error as a miss and ignores
-// Set errors, so every request deterministically exercises the cache-miss
-// path — same observable behavior as an unreachable Redis, but without
-// go-redis's network-error retry backoff (command errors are not retried),
-// keeping corpus runs fast. The cache layer leaves the stack at Phase 2
-// (#123); X-Cache is not a contract header.
+// with -ERR. With the cache middleware out of the chain since Phase 2
+// de-cache (#123) nothing dials it, but it stays so the documented one-line
+// revert of #123 keeps the corpus runnable: under the reverted chain every
+// command errors deterministically (a miss), without go-redis's
+// network-error retry backoff. Dies with the cache package at #124. X-Cache
+// is not a contract header.
 func startMissingRedis() (host, port string, err error) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

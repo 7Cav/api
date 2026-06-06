@@ -1,5 +1,11 @@
 # ADR 0003: Redis response cache invalidated by polling MySQL UPDATE_TIME
 
+> **Status: being retired** (PRD #112, Phase 2 — De-cache). The cache
+> middleware left the HTTP chain at #123 (with it, the `X-Cache` header —
+> an enumerated break); the revert is the documented one-liner in
+> `buildAPIHandler`. The cache package, the polling goroutine, and Redis
+> keep running unused through the soak; #124 deletes them.
+
 ## Context
 
 The API is a read layer over a MySQL database it does not own. Almost
