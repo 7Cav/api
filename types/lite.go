@@ -28,7 +28,9 @@ type LiteProfile struct {
 // LiteRoster is the lite-profiles-by-relation-id map envelope: the position
 // search response, and (from #127) the lite roster route's. encoding/json
 // emits uint64 map keys as decimal strings — the protojson map<uint64,...>
-// wire form ("1": {...}) — and sorts them. The map must be ALLOCATED even
+// wire form ("1": {...}) — and sorts them (lexically on the stringified keys,
+// "10" before "2", not protojson's numeric order — JSON-equal, not
+// byte-equal). The map must be ALLOCATED even
 // when empty ({} on the wire, never null): a nil map marshals as null, so
 // the allocation discipline lives in the handlers (the goldens enforce it —
 // {"profiles":{}} is the frozen empty-result form, see #137).

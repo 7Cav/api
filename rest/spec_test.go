@@ -5,8 +5,9 @@ package rest_test
 // response (not the committed golden — contract/spec_test.go already covers
 // those) is validated against the document. Today that means the ranks
 // operation, the four profile lookup operations (id, username, discord,
-// gamertag — #126), and all five tickets operations (#129) — the remaining
-// operations are witnessed once their routes land (#127–#128). Same
+// gamertag — #126), all five tickets operations (#129), and the position
+// groups, position search and AWOL operations (#128) — the remaining
+// operations are witnessed once their routes land (#127). Same
 // non-vacuousness rules as the contract replay loop: the observed status
 // must be EXPLICITLY documented on the operation, a JSON response requires
 // an application/json schema to validate against, and every implemented
