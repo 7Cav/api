@@ -34,16 +34,19 @@ var (
 		prometheus.CounterOpts{
 			Name: "api_http_requests_total",
 			Help: "API requests by mux route pattern, method, HTTP status, and validated key id. " +
-				"route is empty when auth rejected the request before routing; \"/\" is the " +
-				"catch-all (unknown path / wrong method). key_id is empty when no key validated.",
+				"route is empty when the request never reached routing (auth 401s, datastore 503); " +
+				"\"/\" is the catch-all (unknown path / wrong method). key_id is empty when no key validated.",
 		},
 		[]string{"route", "method", "status", "key_id"},
 	)
 
 	requestDuration = promauto.With(metricsRegistry).NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "api_http_request_duration_seconds",
-			Help:    "API request latency by mux route pattern and method. Deliberately NO key_id label (cardinality discipline).",
+			Name: "api_http_request_duration_seconds",
+			Help: "API request latency by mux route pattern and method. " +
+				"route is empty when the request never reached routing (auth 401s, datastore 503); " +
+				"\"/\" is the catch-all (unknown path / wrong method). " +
+				"Deliberately NO key_id label (cardinality discipline).",
 			Buckets: prometheus.DefBuckets,
 		},
 		[]string{"route", "method"},
@@ -115,7 +118,11 @@ func metricLabelsFromContext(ctx context.Context) *metricLabels {
 
 // routeLabel fills the label-holder's route slot from r.Pattern — it must run
 // INSIDE the mux (wrapping each registered handler), the only place the
-// matched pattern is set on the request the handler sees.
+// matched pattern is set on the request the handler sees. The nil-holder
+// check is NOT the legacy-gateway path (that is auth.go's nil check, on the
+// middleware the gateway reuses): routeLabel mounts only inside this
+// package's mux, always under metricsMiddleware — the check exists purely as
+// mis-wiring defense.
 func routeLabel(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if labels := metricLabelsFromContext(r.Context()); labels != nil {

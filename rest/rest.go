@@ -17,11 +17,13 @@
 //     the chain; 5xx Sentry reports hook the writeError choke point.
 //   - metricsMiddleware (#130, metrics.go): Prometheus request counter
 //     (route/method/status/key_id) and latency histogram (route/method).
-//     Outside auth, so rejected requests are counted. Both labels reach this
-//     OUTER layer via the context label-holder (metricLabels): AuthMiddleware
-//     fills the key-id slot, the routeLabel wrapper inside the mux fills the
-//     route slot from r.Pattern. The exposition is served by MetricsHandler
-//     on the INTERNAL-ONLY listener, never through this chain.
+//     Outside auth, so rejected requests are counted. The route and key_id
+//     labels reach this OUTER layer via the context label-holder
+//     (metricLabels): AuthMiddleware fills the key-id slot, the routeLabel
+//     wrapper inside the mux fills the route slot from r.Pattern. The
+//     exposition is never served through this chain; the cutover slice
+//     (#134) mounts MetricsHandler on its own INTERNAL-ONLY listener — until
+//     then it is test-mounted only.
 //   - AuthMiddleware: bearer-key validation with the golden-pinned two-tier
 //     plain-text 401s. Runs BEFORE routing, so an unknown path without
 //     credentials is a 401, not a 404 (golden-pinned). Scope checks are
@@ -143,7 +145,3 @@ func fallback(mux *http.ServeMux) http.HandlerFunc {
 func sentryMiddleware(next http.Handler) http.Handler {
 	return next
 }
-
-// metricsMiddleware lives in metrics.go (#130): Prometheus request counter
-// labeled route/method/status/key_id and duration histogram labeled
-// route/method, plumbed through the context label-holder (metricLabels).
