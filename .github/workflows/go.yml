@@ -49,15 +49,16 @@ jobs:
       run: go test ./...
     # `go test ./...` prints identical output whether the integration
     # tests ran or all skipped, so env-wiring drift would silently turn
-    # the harness suite into a no-op forever. Surface the ./testdb
-    # verdicts verbosely and fail loudly on any skip before running the
-    # full suite.
+    # the harness suite into a no-op forever. Surface the verdicts of
+    # both harness-backed packages (./testdb and the ./datastores
+    # behavior tests) verbosely and fail loudly on any skip before
+    # running the full suite.
     - name: Test with MariaDB harness
       run: |
         set -euo pipefail
-        go test -v ./testdb 2>&1 | tee testdb-harness.log
+        go test -v ./testdb ./datastores 2>&1 | tee testdb-harness.log
         if grep -q -- '--- SKIP' testdb-harness.log; then
-          echo "::error::testdb integration tests skipped despite TESTDB_ADDR being set — env wiring has drifted and the harness suite degraded to a no-op"
+          echo "::error::harness integration tests skipped despite TESTDB_ADDR being set — env wiring has drifted and the harness suite degraded to a no-op"
           exit 1
         fi
         go test ./...
