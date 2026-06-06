@@ -2,9 +2,17 @@
 # (PRD #112, issue #121; supersedes the generated Swagger 2.0 assets).
 #
 # This document is executable: contract/spec_test.go replays every committed
-# golden in contract/goldens/ against it and asserts two-way route coverage.
+# golden in contract/goldens/ against it and asserts two-way route coverage
+# (every operation has a golden; every golden route has an operation).
 # Editing behavior here without a matching golden — or shipping behavior the
 # spec does not describe — fails CI naming the operation and field.
+#
+# Seeded by mechanically converting the generated milpacs/tickets Swagger 2.0
+# files, then corrected to OBSERVED behavior (the golden corpus is the
+# truth): real gRPC-status error bodies, the plain-text two-tier 401s, the
+# name-or-number enum path forms, uint64-as-string vs uint32-as-number — and
+# the deprecated identity-provider lookup surface removed (it dies at
+# cutover; see contract/README.md on the single corpus transform).
 #
 # Wire conventions (verified by the golden corpus, adopted as house style):
 #   - JSON field names are lowerCamelCase.
@@ -33,7 +41,490 @@ tags:
 security:
   - bearer: []
 
-paths: {}
+paths:
+  /api/v1/milpacs/profile/id/{userId}:
+    get:
+      operationId: MilpacService_GetProfile
+      summary: Get given user milpac Profile
+      description: >-
+        Get milpac Profile data for a specific user. The path value is the
+        milpac RELATION key, not the forum user id.
+      tags: [milpacs]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+            description: 64-bit id in its decimal-string wire form.
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The full milpac profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpacs/profile/username/{username}:
+    get:
+      operationId: MilpacService_GetProfile2
+      summary: Get given user milpac Profile
+      description: Get milpac Profile data for a specific user by username.
+      tags: [milpacs]
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+      responses:
+        "200":
+          description: The full milpac profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpac/discord/{discordId}:
+    get:
+      operationId: MilpacService_GetUserViaDiscordId
+      summary: Get a Milpac profile via Discord ID
+      description: Get all milpac Profile data for a given user via their Discord ID.
+      tags: [milpacs]
+      parameters:
+        - name: discordId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The full milpac profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpac/gamertag/{gamertag}:
+    get:
+      operationId: MilpacService_GetGamertagProfile
+      summary: Get a Milpac profile via Gamertag
+      description: Get all milpac Profile data for a given user via their console Gamertag.
+      tags: [milpacs]
+      parameters:
+        - name: gamertag
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The full milpac profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/roster/{roster}:
+    get:
+      operationId: MilpacService_GetRoster
+      summary: Get a given roster
+      description: Get all milpac Profile data for a given roster.
+      tags: [milpacs]
+      parameters:
+        - $ref: '#/components/parameters/RosterPath'
+      responses:
+        "200":
+          description: Profiles keyed by milpac relation id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Roster'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/roster/{roster}/lite:
+    get:
+      operationId: MilpacService_GetLiteRoster
+      summary: Get a given roster with minimal profile data
+      description: >-
+        Get basic milpac Profile data for a given roster, excluding records
+        and awards.
+      tags: [milpacs]
+      parameters:
+        - $ref: '#/components/parameters/RosterPath'
+      responses:
+        "200":
+          description: Lite profiles keyed by milpac relation id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiteRoster'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/s1/uniforms/{roster}:
+    get:
+      operationId: MilpacService_GetS1UniformsRoster
+      summary: Get a given roster tailored for S1 Uniforms
+      description: Get the specified roster with data tailored for the S1 uniforms tool.
+      tags: [milpacs]
+      parameters:
+        - $ref: '#/components/parameters/RosterPath'
+      responses:
+        "200":
+          description: S1 uniforms profiles keyed by milpac relation id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/S1UniformsRoster'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpacs/position/search/{positionQuery}:
+    get:
+      operationId: MilpacService_SearchByPosition
+      summary: Search for profiles by position title
+      description: >-
+        Search for profiles by exact primary/secondary position title; returns
+        lite profiles. The live route is a multi-segment glob
+        ({positionQuery=**}): slashes inside the query and the bare
+        trailing-slash form also reach the handler — forms an OpenAPI path
+        template cannot express; this document records the canonical
+        single-segment form.
+      tags: [milpacs]
+      parameters:
+        - name: positionQuery
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: >-
+            Matching lite profiles keyed by milpac relation id; {} when
+            nothing matches (200, never 404).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiteRoster'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpacs/ranks:
+    get:
+      operationId: MilpacService_GetAllRanks
+      summary: Get all ranks
+      description: Get a list of all ranks and their details.
+      tags: [milpacs]
+      responses:
+        "200":
+          description: Rank reference list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RanksResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpacs/position/groups:
+    get:
+      operationId: MilpacService_GetPositionGroups
+      summary: Get all position groups with positions
+      description: >-
+        Get a hierarchical list of all position groups and their associated
+        positions.
+      tags: [milpacs]
+      responses:
+        "200":
+          description: Position group reference tree.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionGroupsResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/milpacs/awol:
+    get:
+      operationId: MilpacService_GetAwol
+      summary: Get all AWOL troopers
+      description: Get a list of all troopers that have not posted in the last 7 days.
+      tags: [milpacs]
+      responses:
+        "200":
+          description: AWOL list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AwolResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/tickets:
+    get:
+      operationId: TicketsService_ListTickets
+      summary: List tickets
+      description: >-
+        List tickets matching optional filters. Cursor-paginated, sorted by
+        last_modified_date DESC. Every query key is accepted in both
+        lowerCamelCase and snake_case spellings (e.g. perPage / per_page);
+        unknown query parameters are ignored. Multi-select filters repeat the
+        param (?statusId=1&statusId=5); the comma-separated form is NOT
+        supported.
+      tags: [tickets]
+      parameters:
+        - name: categoryId
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        - name: excludeSubcategories
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: ticketState
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+        - name: statusId
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        - name: prefixId
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        - name: assignedUserId
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        - name: starterUserId
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              minimum: 0
+        - name: modifiedSince
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: includeHidden
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: perPage
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: afterCursor
+          in: query
+          required: false
+          schema:
+            type: string
+            description: >-
+              Opaque cursor; empty string = first page. Round-trip the
+              nextCursor from the previous response.
+      responses:
+        "200":
+          description: One page of tickets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTicketsResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/tickets/{ticketId}:
+    get:
+      operationId: TicketsService_GetTicket
+      summary: Get a ticket by numeric ID
+      description: >-
+        Fetch a single ticket by its integer ticket id. Response includes the
+        first 10 messages (oldest first) and the total message count; use
+        ListTicketMessages for the full thread.
+      tags: [tickets]
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: The ticket with its first messages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTicketResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/tickets/ref/{ticketRef}:
+    get:
+      operationId: TicketsService_GetTicketByRef
+      summary: Get a ticket by ref slug
+      description: >-
+        Fetch a single ticket by its user-facing alphanumeric reference
+        (e.g. MF1UI9HE). Same response shape as GetTicket.
+      tags: [tickets]
+      parameters:
+        - name: ticketRef
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The ticket with its first messages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTicketResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/tickets/{ticketId}/messages:
+    get:
+      operationId: TicketsService_ListTicketMessages
+      summary: List messages on a ticket
+      description: >-
+        Paginated thread of messages for a single ticket, ordered by position
+        ascending. An unknown ticket id yields an empty page, not 404. Query
+        keys accept both lowerCamelCase and snake_case spellings.
+      tags: [tickets]
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+        - name: perPage
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: afterCursor
+          in: query
+          required: false
+          schema:
+            type: string
+            description: >-
+              Opaque cursor; empty string = first page. Pagination is by
+              message position ascending.
+        - name: includeHidden
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: One page of the message thread.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTicketMessagesResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/tickets/categories:
+    get:
+      operationId: TicketsService_ListCategories
+      summary: List ticket categories
+      description: >-
+        Returns the full nixfifty category tree. Reference data for the
+        categoryId filter on ListTickets.
+      tags: [tickets]
+      responses:
+        "200":
+          description: Category reference tree.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListCategoriesResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
 
 components:
   securitySchemes:
@@ -47,3 +538,770 @@ components:
         Requests without the Bearer scheme receive a plain-text 401 naming
         the expected header form; unknown keys receive a generic plain-text
         401; valid keys lacking the operation's scope receive a JSON 403.
+
+  parameters:
+    # Roster enum path parameter: the gateway accepts the enum NAME or its
+    # NUMBER (observed: ROSTER_TYPE_COMBAT and 1 return the same payload);
+    # anything else is a 400. The zero value parses but the handler rejects
+    # it with 'cannot request null roster type'.
+    RosterPath:
+      name: roster
+      in: path
+      required: true
+      schema:
+        # The explicit top-level type matters: it routes the value through
+        # full JSON-schema validation, so a literal that is neither an enum
+        # name nor a number is a request-contract violation (observed 400).
+        type: string
+        anyOf:
+          - $ref: '#/components/schemas/RosterType'
+          - type: string
+            pattern: '^[0-9]+$'
+            description: Numeric form of the RosterType enum.
+
+  responses:
+    # The plain-text 401 tier (frozen by #106): scheme errors name the
+    # expected header form, unknown keys get the generic line. No
+    # WWW-Authenticate challenge is sent.
+    Unauthorized:
+      description: >-
+        Missing or invalid bearer credentials. Plain text, two tiers:
+        "Unauthorized: expected 'Authorization: Bearer <key>' header" when
+        the Bearer scheme is absent; "Unauthorized" for a well-formed but
+        unknown key.
+      headers:
+        X-Content-Type-Options:
+          required: true
+          schema:
+            type: string
+            const: nosniff
+      content:
+        text/plain:
+          schema:
+            type: string
+    # Every non-401 error: the gRPC-status JSON shape with the frozen
+    # code→HTTP mapping (3→400, 5→404, 7→403, 13→500). Handler-specific
+    # message strings are frozen behavior, including leaked parse-error text.
+    Error:
+      description: >-
+        gRPC-status JSON error body. code is the numeric gRPC code (3
+        InvalidArgument→400, 5 NotFound→404, 7 PermissionDenied→403,
+        13 Internal→500); message strings are frozen verbatim.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Status'
+
+  schemas:
+    # --- shared wire forms -------------------------------------------------
+    Uint64String:
+      type: string
+      pattern: '^[0-9]+$'
+      description: 64-bit integer in its decimal-string wire form (protojson).
+
+    Status:
+      description: The gRPC-status error body, frozen by the golden corpus.
+      type: object
+      properties:
+        code:
+          type: integer
+          description: Numeric gRPC status code.
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/Any'
+      required: [code, message, details]
+      additionalProperties: false
+
+    Any:
+      description: protobuf Any as protojson renders it (observed always empty).
+      type: object
+      properties:
+        '@type':
+          type: string
+      additionalProperties: true
+
+    # --- milpacs -----------------------------------------------------------
+    RosterType:
+      type: string
+      enum:
+        - ROSTER_TYPE_UNSPECIFIED
+        - ROSTER_TYPE_COMBAT
+        - ROSTER_TYPE_RESERVE
+        - ROSTER_TYPE_ELOA
+        - ROSTER_TYPE_WALL_OF_HONOR
+        - ROSTER_TYPE_ARLINGTON
+        - ROSTER_TYPE_PAST_MEMBERS
+
+    RecordType:
+      type: string
+      enum:
+        - RECORD_TYPE_UNSPECIFIED
+        - RECORD_TYPE_PROMOTION
+        - RECORD_TYPE_OPERATION
+        - RECORD_TYPE_TRANSFER
+        - RECORD_TYPE_DISCIPLINARY
+        - RECORD_TYPE_DISCHARGE
+        - RECORD_TYPE_ASSIGNMENT
+        - RECORD_TYPE_NAME_CHANGE
+        - RECORD_TYPE_ELOA
+        - RECORD_TYPE_GRADUATION
+
+    User:
+      type: object
+      properties:
+        userId:
+          $ref: '#/components/schemas/Uint64String'
+        username:
+          type: string
+      required: [userId, username]
+      additionalProperties: false
+
+    Rank:
+      type: object
+      properties:
+        rankShort:
+          type: string
+        rankFull:
+          type: string
+        rankImageUrl:
+          type: string
+        rankId:
+          $ref: '#/components/schemas/Uint64String'
+      required: [rankShort, rankFull, rankImageUrl, rankId]
+      additionalProperties: false
+
+    RankExpanded:
+      type: object
+      properties:
+        rankShort:
+          type: string
+        rankFull:
+          type: string
+        rankImageUrl:
+          type: string
+        rankId:
+          $ref: '#/components/schemas/Uint64String'
+        rankDisplayOrder:
+          type: integer
+          minimum: 0
+      required: [rankShort, rankFull, rankImageUrl, rankId, rankDisplayOrder]
+      additionalProperties: false
+
+    RanksResponse:
+      type: object
+      properties:
+        ranks:
+          type: array
+          items:
+            $ref: '#/components/schemas/RankExpanded'
+      required: [ranks]
+      additionalProperties: false
+
+    Position:
+      type: object
+      properties:
+        positionTitle:
+          type: string
+        positionId:
+          $ref: '#/components/schemas/Uint64String'
+      required: [positionTitle, positionId]
+      additionalProperties: false
+
+    PositionExpanded:
+      type: object
+      properties:
+        positionTitle:
+          type: string
+        positionId:
+          $ref: '#/components/schemas/Uint64String'
+        positionDisplayOrder:
+          type: integer
+          minimum: 0
+        positionPossibleSecondary:
+          type: boolean
+      required: [positionTitle, positionId, positionDisplayOrder, positionPossibleSecondary]
+      additionalProperties: false
+
+    PositionGroup:
+      type: object
+      properties:
+        groupId:
+          $ref: '#/components/schemas/Uint64String'
+        groupTitle:
+          type: string
+        groupDisplayOrder:
+          type: integer
+          minimum: 0
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionExpanded'
+      required: [groupId, groupTitle, groupDisplayOrder, positions]
+      additionalProperties: false
+
+    PositionGroupsResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionGroup'
+      required: [groups]
+      additionalProperties: false
+
+    Record:
+      type: object
+      properties:
+        recordDetails:
+          type: string
+        recordType:
+          $ref: '#/components/schemas/RecordType'
+        recordDate:
+          type: string
+        recordUid:
+          $ref: '#/components/schemas/Uint64String'
+      required: [recordDetails, recordType, recordDate, recordUid]
+      additionalProperties: false
+
+    Award:
+      type: object
+      properties:
+        awardDetails:
+          type: string
+        awardName:
+          type: string
+        awardDate:
+          type: string
+        awardImageUrl:
+          type: string
+        awardUid:
+          $ref: '#/components/schemas/Uint64String'
+      required: [awardDetails, awardName, awardDate, awardImageUrl, awardUid]
+      additionalProperties: false
+
+    # Emit-everything: every key below is always present. Unset nested
+    # messages are null (protojson EmitUnpopulated), hence the null unions on
+    # message-typed fields; unset strings are ""; empty collections are [].
+    Profile:
+      type: object
+      properties:
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        rank:
+          oneOf:
+            - $ref: '#/components/schemas/Rank'
+            - type: 'null'
+        realName:
+          type: string
+        uniformUrl:
+          type: string
+        roster:
+          $ref: '#/components/schemas/RosterType'
+        primary:
+          oneOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+        secondaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/Record'
+        awards:
+          type: array
+          items:
+            $ref: '#/components/schemas/Award'
+        joinDate:
+          type: string
+        promotionDate:
+          type: string
+        discordId:
+          type: string
+        lastForumPostDate:
+          type: string
+        mos:
+          type: string
+        consoleGamertag:
+          type: string
+      required:
+        - user
+        - rank
+        - realName
+        - uniformUrl
+        - roster
+        - primary
+        - secondaries
+        - records
+        - awards
+        - joinDate
+        - promotionDate
+        - discordId
+        - lastForumPostDate
+        - mos
+        - consoleGamertag
+      additionalProperties: false
+
+    LiteProfile:
+      type: object
+      properties:
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        rank:
+          oneOf:
+            - $ref: '#/components/schemas/Rank'
+            - type: 'null'
+        realName:
+          type: string
+        uniformUrl:
+          type: string
+        roster:
+          $ref: '#/components/schemas/RosterType'
+        primary:
+          oneOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+        secondaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
+        joinDate:
+          type: string
+        promotionDate:
+          type: string
+        discordId:
+          type: string
+        awardDate:
+          type: string
+        recordDate:
+          type: string
+        lastForumPostDate:
+          type: string
+        mos:
+          type: string
+        consoleGamertag:
+          type: string
+      required:
+        - user
+        - rank
+        - realName
+        - uniformUrl
+        - roster
+        - primary
+        - secondaries
+        - joinDate
+        - promotionDate
+        - discordId
+        - awardDate
+        - recordDate
+        - lastForumPostDate
+        - mos
+        - consoleGamertag
+      additionalProperties: false
+
+    Roster:
+      type: object
+      properties:
+        profiles:
+          type: object
+          description: Profiles keyed by milpac relation id (uint64 keys as strings).
+          propertyNames:
+            pattern: '^[0-9]+$'
+          additionalProperties:
+            $ref: '#/components/schemas/Profile'
+      required: [profiles]
+      additionalProperties: false
+
+    LiteRoster:
+      type: object
+      properties:
+        profiles:
+          type: object
+          description: Lite profiles keyed by milpac relation id (uint64 keys as strings).
+          propertyNames:
+            pattern: '^[0-9]+$'
+          additionalProperties:
+            $ref: '#/components/schemas/LiteProfile'
+      required: [profiles]
+      additionalProperties: false
+
+    S1UniformsRank:
+      type: object
+      properties:
+        rankShort:
+          type: string
+        rankFull:
+          type: string
+        rankImageUrl:
+          type: string
+      required: [rankShort, rankFull, rankImageUrl]
+      additionalProperties: false
+
+    S1UniformsPosition:
+      type: object
+      properties:
+        positionTitle:
+          type: string
+      required: [positionTitle]
+      additionalProperties: false
+
+    S1UniformsProfile:
+      type: object
+      properties:
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        rank:
+          oneOf:
+            - $ref: '#/components/schemas/S1UniformsRank'
+            - type: 'null'
+        realName:
+          type: string
+        uniformUrl:
+          type: string
+        uniformDate:
+          type: string
+        uniformUpdateTriggerDate:
+          type: string
+        roster:
+          $ref: '#/components/schemas/RosterType'
+        primaryPositionTitle:
+          type: string
+        secondaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/S1UniformsPosition'
+        joinDate:
+          type: string
+        promotionDate:
+          type: string
+        areaOfResponsibility:
+          type: string
+      required:
+        - user
+        - rank
+        - realName
+        - uniformUrl
+        - uniformDate
+        - uniformUpdateTriggerDate
+        - roster
+        - primaryPositionTitle
+        - secondaries
+        - joinDate
+        - promotionDate
+        - areaOfResponsibility
+      additionalProperties: false
+
+    S1UniformsRoster:
+      type: object
+      properties:
+        profiles:
+          type: object
+          description: S1 uniforms profiles keyed by milpac relation id (uint64 keys as strings).
+          propertyNames:
+            pattern: '^[0-9]+$'
+          additionalProperties:
+            $ref: '#/components/schemas/S1UniformsProfile'
+      required: [profiles]
+      additionalProperties: false
+
+    Awol:
+      type: object
+      properties:
+        groupName:
+          type: string
+        rankName:
+          type: string
+        username:
+          type: string
+        userId:
+          $ref: '#/components/schemas/Uint64String'
+        humanDate:
+          type: string
+        timestamp:
+          $ref: '#/components/schemas/Uint64String'
+        postId:
+          $ref: '#/components/schemas/Uint64String'
+        milpacId:
+          $ref: '#/components/schemas/Uint64String'
+      required: [groupName, rankName, username, userId, humanDate, timestamp, postId, milpacId]
+      additionalProperties: false
+
+    AwolResponse:
+      type: object
+      properties:
+        awols:
+          type: array
+          items:
+            $ref: '#/components/schemas/Awol'
+      required: [awols]
+      additionalProperties: false
+
+    # --- tickets -----------------------------------------------------------
+    # All tickets integers are proto uint32: JSON numbers on the wire (the
+    # 64-bit-as-string convention applies only to 64-bit fields).
+    Ticket:
+      type: object
+      properties:
+        ticketId:
+          type: integer
+          minimum: 0
+        ticketRef:
+          type: string
+        title:
+          type: string
+        categoryId:
+          type: integer
+          minimum: 0
+        categoryTitle:
+          type: string
+        categoryAncestorIds:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        ticketState:
+          type: string
+        statusId:
+          type: integer
+          minimum: 0
+        statusName:
+          type: string
+        priorityId:
+          type: integer
+          minimum: 0
+        priorityName:
+          type: string
+        prefixId:
+          type: integer
+          minimum: 0
+        prefixName:
+          type: string
+        discussionState:
+          type: string
+        ticketLocked:
+          type: boolean
+        starterUserId:
+          type: integer
+          minimum: 0
+        starterUsername:
+          type: string
+        assignedUserId:
+          type: integer
+          minimum: 0
+        assignedUsername:
+          type: string
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketParticipant'
+        startDate:
+          type: integer
+          minimum: 0
+        lastMessageDate:
+          type: integer
+          minimum: 0
+        lastMessageUserId:
+          type: integer
+          minimum: 0
+        lastMessageUsername:
+          type: string
+        lastModifiedDate:
+          type: integer
+          minimum: 0
+        replyCount:
+          type: integer
+          minimum: 0
+        totalMessageCount:
+          type: integer
+          minimum: 0
+          description: >-
+            Total messages in this ticket including the starter post.
+            Equivalent to replyCount + 1.
+        customFields:
+          type: object
+          additionalProperties:
+            type: string
+        forumUrl:
+          type: string
+      required:
+        - ticketId
+        - ticketRef
+        - title
+        - categoryId
+        - categoryTitle
+        - categoryAncestorIds
+        - ticketState
+        - statusId
+        - statusName
+        - priorityId
+        - priorityName
+        - prefixId
+        - prefixName
+        - discussionState
+        - ticketLocked
+        - starterUserId
+        - starterUsername
+        - assignedUserId
+        - assignedUsername
+        - participants
+        - startDate
+        - lastMessageDate
+        - lastMessageUserId
+        - lastMessageUsername
+        - lastModifiedDate
+        - replyCount
+        - totalMessageCount
+        - customFields
+        - forumUrl
+      additionalProperties: false
+
+    TicketParticipant:
+      type: object
+      properties:
+        userId:
+          type: integer
+          minimum: 0
+        lastReadDate:
+          type: integer
+          minimum: 0
+      required: [userId, lastReadDate]
+      additionalProperties: false
+
+    Message:
+      type: object
+      properties:
+        messageId:
+          type: integer
+          minimum: 0
+        ticketId:
+          type: integer
+          minimum: 0
+        userId:
+          type: integer
+          minimum: 0
+        username:
+          type: string
+        messageDate:
+          type: integer
+          minimum: 0
+        message:
+          type: string
+        messageState:
+          type: string
+        position:
+          type: integer
+          minimum: 0
+        attachCount:
+          type: integer
+          minimum: 0
+        lastEditDate:
+          type: integer
+          minimum: 0
+        editCount:
+          type: integer
+          minimum: 0
+      required:
+        - messageId
+        - ticketId
+        - userId
+        - username
+        - messageDate
+        - message
+        - messageState
+        - position
+        - attachCount
+        - lastEditDate
+        - editCount
+      additionalProperties: false
+
+    Category:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+          minimum: 0
+        title:
+          type: string
+        description:
+          type: string
+        parentCategoryId:
+          type: integer
+          minimum: 0
+        depth:
+          type: integer
+          minimum: 0
+        displayOrder:
+          type: integer
+          minimum: 0
+        ticketCount:
+          type: integer
+          minimum: 0
+      required: [categoryId, title, description, parentCategoryId, depth, displayOrder, ticketCount]
+      additionalProperties: false
+
+    GetTicketResponse:
+      type: object
+      properties:
+        ticket:
+          $ref: '#/components/schemas/Ticket'
+        firstMessages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        totalMessageCount:
+          type: integer
+          minimum: 0
+          deprecated: true
+          description: 'DEPRECATED: use ticket.totalMessageCount. Removal target: v2.3.0.'
+      required: [ticket, firstMessages, totalMessageCount]
+      additionalProperties: false
+
+    ListTicketsResponse:
+      type: object
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+        nextCursor:
+          type: string
+          description: Opaque cursor; empty when hasMore is false.
+        hasMore:
+          type: boolean
+      required: [tickets, nextCursor, hasMore]
+      additionalProperties: false
+
+    ListTicketMessagesResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        nextCursor:
+          type: string
+          description: Opaque cursor; empty when hasMore is false.
+        hasMore:
+          type: boolean
+      required: [messages, nextCursor, hasMore]
+      additionalProperties: false
+
+    ListCategoriesResponse:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+      required: [categories]
+      additionalProperties: false
