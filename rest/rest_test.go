@@ -441,6 +441,58 @@ func TestNewStack_ProfileLookupOutagesAreInternalJSON(t *testing.T) {
 	}
 }
 
+// A datastore returning an EMPTY slice (or nil profile) with a nil error
+// violates the documented invariant (non-empty slice on nil error) — possible
+// only from a future datastore bug, never the real one, so no golden can
+// witness it. It must surface as the frozen Internal shape, not a panic or a
+// fabricated sparse 200.
+func TestNewStack_EmptyProfileSliceWithNilErrorIsInternalJSON(t *testing.T) {
+	h := rest.New(&fakeDatastore{
+		findProfilesById:       func(...uint64) ([]*proto.Profile, error) { return []*proto.Profile{}, nil },
+		findProfilesByUsername: func(string) ([]*proto.Profile, error) { return nil, nil },
+	})
+
+	for _, path := range []string{
+		"/api/v1/milpacs/profile/id/1",
+		"/api/v1/milpacs/profile/username/Jarvis.A",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusInternalServerError, rr.Code)
+			assert.JSONEq(t, `{"code":13,"message":"datastore returned no profiles","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
+func TestNewStack_NilProfileWithNilErrorIsInternalJSON(t *testing.T) {
+	h := rest.New(&fakeDatastore{
+		findProfileByDiscordID: func(string) (*proto.Profile, error) { return nil, nil },
+		findProfileByGamertag:  func(string) (*proto.Profile, error) { return nil, nil },
+		// A non-empty slice carrying a nil element hits the same guard.
+		findProfilesById: func(...uint64) ([]*proto.Profile, error) { return []*proto.Profile{nil}, nil },
+	})
+
+	for _, path := range []string{
+		"/api/v1/milpac/discord/112233445566778899",
+		"/api/v1/milpac/gamertag/CavGamer77",
+		"/api/v1/milpacs/profile/id/1",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusInternalServerError, rr.Code)
+			assert.JSONEq(t, `{"code":13,"message":"datastore returned no profile","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
 // --- Profile query-binding quirks (PRD #112, request-side leniency) --------
 //
 // Unbound message fields remain query-bindable on profile routes: the old

@@ -87,6 +87,13 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "fetch profile by user id: %v", err)
 			return
 		}
+		if len(profiles) == 0 {
+			// Datastore invariant violated (non-empty slice on nil error —
+			// see datastores.Datastore): unreachable through the real
+			// datastore, guarded so a future bug is a clean 500, not a panic.
+			writeError(w, r, codeInternal, "datastore returned no profiles")
+			return
+		}
 		writeProfile(w, r, profiles[0])
 	})
 }
@@ -188,6 +195,13 @@ func serveProfileByUsername(w http.ResponseWriter, r *http.Request, ds datastore
 		writeError(w, r, codeInternal, "fetch profile by username: %v", err)
 		return
 	}
+	if len(profiles) == 0 {
+		// Datastore invariant violated (non-empty slice on nil error — see
+		// datastores.Datastore): unreachable through the real datastore,
+		// guarded so a future bug is a clean 500, not a panic.
+		writeError(w, r, codeInternal, "datastore returned no profiles")
+		return
+	}
 	writeProfile(w, r, profiles[0])
 }
 
@@ -239,8 +253,15 @@ func queryField(r *http.Request, protoName, jsonName string) (vals []string, err
 	return vals, nil
 }
 
-// writeProfile maps one datastore profile to the wire type and writes it.
+// writeProfile maps one datastore profile to the wire type and writes it. A
+// nil profile with no error is a datastore-invariant violation (unreachable
+// through the real datastore): a clean 500, not a fabricated sparse 200 —
+// the proto getters would happily marshal a zero-value profile.
 func writeProfile(w http.ResponseWriter, r *http.Request, p *proto.Profile) {
+	if p == nil {
+		writeError(w, r, codeInternal, "datastore returned no profile")
+		return
+	}
 	writeJSON(w, r, profileFromProto(p))
 }
 
