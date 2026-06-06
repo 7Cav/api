@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/7cav/api/datastores"
+	"github.com/7cav/api/rest"
 	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -275,8 +276,8 @@ func TestBuildAPIHandler_BadAuth_401NoEvents(t *testing.T) {
 }
 
 // TestSentryMiddleware_BehindAuth_EventCarriesKeyID exercises the real chain
-// shape — authMiddleware outside, sentryMiddleware inside — and proves the
-// validated API key id reaches the event while the raw key never does.
+// shape — rest.AuthMiddleware outside, sentryMiddleware inside — and proves
+// the validated API key id reaches the event while the raw key never does.
 func TestSentryMiddleware_BehindAuth_EventCarriesKeyID(t *testing.T) {
 	transport := bindCaptureClient(t)
 	const secret = "cav7_topsecrettokenvalue"
@@ -285,7 +286,7 @@ func TestSentryMiddleware_BehindAuth_EventCarriesKeyID(t *testing.T) {
 		assert.Equal(t, secret, token)
 		return &datastores.ApiKeyResult{KeyId: 42, UserId: 7}, nil
 	}}
-	h := authMiddleware(ds, sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := rest.AuthMiddleware(ds, sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream exploded", http.StatusInternalServerError)
 	})))
 

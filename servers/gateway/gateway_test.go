@@ -13,6 +13,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fakeAuthDatastore embeds the Datastore interface so it satisfies the type
+// without implementing every method; only ValidateApiKey is exercised by the
+// auth layer (rest.AuthMiddleware — moved there at #125, tested there). Any
+// other call panics (nil method) — a loud failure if a test accidentally
+// reaches further into the datastore.
+type fakeAuthDatastore struct {
+	datastores.Datastore
+	validateApiKey func(string) (*datastores.ApiKeyResult, error)
+}
+
+func (f *fakeAuthDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
+	return f.validateApiKey(rawKey)
+}
+
 // TestBuildAPIHandler_ResponseCacheRemoved pins the Phase 2 de-cache
 // (#123/#124): the response cache is gone — middleware out of the /api chain
 // at #123, the cache package and Redis deleted outright at #124. Observable

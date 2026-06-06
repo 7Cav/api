@@ -4,23 +4,26 @@ import (
 	"context"
 
 	"github.com/7cav/api/datastores"
+	"github.com/7cav/api/rest"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// keyContextKey is the private type used to attach *ApiKeyResult to a request
-// ctx. Private so external packages can't accidentally clobber it.
-type keyContextKey struct{}
+// The key-on-context helpers moved to the rest package (the Phase 3 stack,
+// #125) — their permanent home once this package is deleted at Phase 4. The
+// delegating aliases below keep this package's API stable and, more
+// importantly, keep BOTH stacks attaching/reading the same context key, so
+// the gateway's Sentry key-id tagging works regardless of which middleware
+// authenticated the request.
 
 // ContextWithKey returns a new context carrying the given API key result.
 func ContextWithKey(ctx context.Context, key *datastores.ApiKeyResult) context.Context {
-	return context.WithValue(ctx, keyContextKey{}, key)
+	return rest.ContextWithKey(ctx, key)
 }
 
 // KeyFromContext returns the *ApiKeyResult attached to ctx, or nil if none.
 func KeyFromContext(ctx context.Context) *datastores.ApiKeyResult {
-	v, _ := ctx.Value(keyContextKey{}).(*datastores.ApiKeyResult)
-	return v
+	return rest.KeyFromContext(ctx)
 }
 
 // RequireScope returns codes.PermissionDenied if the key on ctx lacks the named
