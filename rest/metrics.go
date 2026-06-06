@@ -82,7 +82,9 @@ func newMetricsRegistry() *prometheus.Registry {
 // and from inside the host network: curl localhost:<metrics-port>/metrics
 // serves this exposition.
 func MetricsHandler() http.Handler {
-	return promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})
+	// ErrorLog: gather/encode failures must reach process logs like every
+	// other failure point (a nil ErrorLog silently swallows them).
+	return promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{ErrorLog: Error})
 }
 
 // metricLabels is the mutable label-holder the metrics middleware shares with
