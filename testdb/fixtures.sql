@@ -41,13 +41,16 @@ INSERT INTO xf_nf_rosters_position_group (position_group_id, title, display_orde
   (3, 'Alpha Company',              30),
   (4, 'Extended Leave Of Absence',  40);
 
+-- Position 50 is a '----' divider row: the milpac UI uses such rows as
+-- visual separators and FindAllPositionGroups filters them out.
 INSERT INTO xf_nf_rosters_position
   (position_id, position_title, position_group_id, display_order, extra_group_ids, possible_secondary) VALUES
   (10, 'Rifleman',         3, 10, '', 0),
   (11, 'Squad Leader',     3, 20, '', 0),
   (20, 'Military Police',  1, 30, '', 1),
   (30, 'Recruit',          2, 40, '', 0),
-  (40, 'ELOA',             4, 50, '', 0);
+  (40, 'ELOA',             4, 50, '', 0),
+  (50, '---- Staff ----',  1, 60, '', 0);
 
 -- Roster ids follow proto.RosterType: 1 combat, 2 reserve, 6 past members.
 --
