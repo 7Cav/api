@@ -36,7 +36,7 @@ func ticketsGet(t *testing.T, h http.Handler, path string) *httptest.ResponseRec
 func TestNewStack_GetTicketDatastoreOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{getTicket: func(uint32) (*proto.Ticket, error) {
 		return nil, io.ErrUnexpectedEOF
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets/42")
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -48,7 +48,7 @@ func TestNewStack_GetTicketDatastoreOutageIsInternalJSON(t *testing.T) {
 func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int) ([]*proto.Message, uint32, error) {
 		return nil, 0, io.ErrUnexpectedEOF
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets/42")
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -59,7 +59,7 @@ func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {
 func TestNewStack_ListCategoriesOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{listCategories: func() ([]*proto.Category, error) {
 		return nil, io.ErrUnexpectedEOF
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets/categories")
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -70,7 +70,7 @@ func TestNewStack_ListCategoriesOutageIsInternalJSON(t *testing.T) {
 func TestNewStack_ListTicketsOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
 		return nil, "", false, io.ErrUnexpectedEOF
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets")
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -82,7 +82,7 @@ func TestNewStack_ListTicketsOutageIsInternalJSON(t *testing.T) {
 func TestNewStack_EmptyTicketsPageIsEmptyArray(t *testing.T) {
 	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
 		return nil, "", false, nil
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets")
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -93,7 +93,7 @@ func TestNewStack_EmptyTicketsPageIsEmptyArray(t *testing.T) {
 func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32) ([]*proto.Message, string, bool, error) {
 		return nil, "", false, io.ErrUnexpectedEOF
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets/42/messages")
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -300,7 +300,7 @@ func TestNewStack_TicketsScopeGateOnEveryRoute(t *testing.T) {
 func TestNewStack_EmptyCategoriesIsEmptyArray(t *testing.T) {
 	h := rest.New(&fakeDatastore{listCategories: func() ([]*proto.Category, error) {
 		return nil, nil
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets/categories")
 	require.Equal(t, http.StatusOK, rr.Code)

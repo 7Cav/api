@@ -11,6 +11,7 @@ import (
 	"github.com/7cav/api/contract"
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
+	"github.com/7cav/api/referencecache"
 	"github.com/7cav/api/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,27 @@ type fakeDatastore struct {
 	getTicketFirstMessages func(ticketID uint32, n int) ([]*proto.Message, uint32, error)
 	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32) ([]*proto.Message, string, bool, error)
 	listCategories         func() ([]*proto.Category, error)
+
+	// lastRC records the TicketReferenceCache the handlers handed the most
+	// recent rc-consuming datastore call — the identity pin asserts it IS the
+	// cache rest.New received (no copy, no substitute).
+	lastRC datastores.TicketReferenceCache
 }
+
+// stubReferenceCache is the explicit no-op datastores.TicketReferenceCache
+// the new-stack tests mount: rest.New refuses nil (a nil cache is a
+// guaranteed panic on the first tickets request against the real datastore),
+// and the fake datastore never consults it. A fresh pointer per test keeps
+// the identity pin honest.
+type stubReferenceCache struct{}
+
+func (*stubReferenceCache) StatusName(uint32) string                       { return "" }
+func (*stubReferenceCache) PriorityName(uint32) string                     { return "" }
+func (*stubReferenceCache) PrefixName(uint32) string                       { return "" }
+func (*stubReferenceCache) Category(uint32) *referencecache.CategoryRecord { return nil }
+func (*stubReferenceCache) CategoryAncestors(uint32) []uint32              { return nil }
+func (*stubReferenceCache) CategoryTree() []*referencecache.CategoryRecord { return nil }
+func (*stubReferenceCache) ExpandSubtree(ids []uint32) []uint32            { return ids }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
 	scopes := func(names ...string) map[string]struct{} {
@@ -75,7 +96,7 @@ func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
 
 func newStack(t *testing.T) http.Handler {
 	t.Helper()
-	return rest.New(&fakeDatastore{}, nil)
+	return rest.New(&fakeDatastore{}, &stubReferenceCache{})
 }
 
 // implementedCases names the battery cases the new stack serves today. Each
@@ -275,7 +296,7 @@ func TestNewStack_401IsNeverGzipped(t *testing.T) {
 func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, io.ErrUnexpectedEOF
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
 	req.Header.Set("Authorization", "Bearer cav7_readkey")
@@ -371,7 +392,7 @@ func TestNewStack_WrongMethodWithoutCredsIs401NotAllow(t *testing.T) {
 // — a ResponseRecorder would show a body — so this test observes through a
 // live httptest.Server.
 func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&fakeDatastore{}, nil))
+	srv := httptest.NewServer(rest.New(&fakeDatastore{}, &stubReferenceCache{}))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodHead, srv.URL+"/api/v1/milpacs/ranks", nil)
@@ -388,13 +409,46 @@ func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
 	assert.Empty(t, body, "net/http suppresses the body on HEAD responses")
 }
 
+// --- Reference-cache wiring (#129 review F4) --------------------------------
+
+// rest.New must refuse a nil TicketReferenceCache loudly at construction: a
+// nil cache is a guaranteed panic on the first tickets request against the
+// real datastore, with no recovery middleware in the chain yet — failing the
+// wiring beats failing the first caller.
+func TestNewStack_NilReferenceCachePanics(t *testing.T) {
+	assert.PanicsWithValue(t,
+		"rest.New: nil TicketReferenceCache — pass the refreshed referencecache.Cache (see #134)",
+		func() { rest.New(&fakeDatastore{}, nil) })
+}
+
+// The rc handed to rest.New is the one reaching the datastore methods —
+// pointer identity, not just non-nil: a handler quietly substituting its own
+// cache would pass every other test.
+func TestNewStack_ReferenceCacheReachesDatastoreByIdentity(t *testing.T) {
+	rc := &stubReferenceCache{}
+	f := &fakeDatastore{}
+	h := rest.New(f, rc)
+
+	for _, path := range []string{
+		"/api/v1/tickets",
+		"/api/v1/tickets/42",
+		"/api/v1/tickets/ref/MF1UI9HE",
+		"/api/v1/tickets/categories",
+	} {
+		f.lastRC = nil
+		rr := ticketsGet(t, h, path)
+		require.Equal(t, http.StatusOK, rr.Code, path)
+		assert.Same(t, rc, f.lastRC, "%s: the rc reaching the datastore must be the one rest.New received", path)
+	}
+}
+
 // An empty rank catalog must serialize as {"ranks":[]} — the allocation
 // discipline (empty collections are [], never null) the goldens can only
 // witness on populated routes.
 func TestNewStack_EmptyRanksIsEmptyArray(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, nil
-	}}, nil)
+	}}, &stubReferenceCache{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
 	req.Header.Set("Authorization", "Bearer cav7_readkey")

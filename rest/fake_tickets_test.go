@@ -200,7 +200,8 @@ func decodeMessageCursor(c string) (uint32, error) {
 	return uint32(pos), nil
 }
 
-func (f *fakeDatastore) ListTickets(_ context.Context, _ datastores.TicketReferenceCache, flt *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+func (f *fakeDatastore) ListTickets(_ context.Context, rc datastores.TicketReferenceCache, flt *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	f.lastRC = rc
 	if f.listTickets != nil {
 		return f.listTickets(flt)
 	}
@@ -301,7 +302,8 @@ func containsStr(haystack []string, needle string) bool {
 	return false
 }
 
-func (f *fakeDatastore) GetTicket(_ context.Context, _ datastores.TicketReferenceCache, ticketID uint32, _ string) (*proto.Ticket, error) {
+func (f *fakeDatastore) GetTicket(_ context.Context, rc datastores.TicketReferenceCache, ticketID uint32, _ string) (*proto.Ticket, error) {
+	f.lastRC = rc
 	if f.getTicket != nil {
 		return f.getTicket(ticketID)
 	}
@@ -313,7 +315,8 @@ func (f *fakeDatastore) GetTicket(_ context.Context, _ datastores.TicketReferenc
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeDatastore) GetTicketByRef(_ context.Context, _ datastores.TicketReferenceCache, ref string, _ string) (*proto.Ticket, error) {
+func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketReferenceCache, ref string, _ string) (*proto.Ticket, error) {
+	f.lastRC = rc
 	for _, t := range seedTickets() {
 		if t.TicketRef == ref {
 			return t, nil
@@ -372,7 +375,8 @@ func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, a
 	return rows, next, hasMore, nil
 }
 
-func (f *fakeDatastore) ListCategories(_ context.Context, _ datastores.TicketReferenceCache) ([]*proto.Category, error) {
+func (f *fakeDatastore) ListCategories(_ context.Context, rc datastores.TicketReferenceCache) ([]*proto.Category, error) {
+	f.lastRC = rc
 	if f.listCategories != nil {
 		return f.listCategories()
 	}

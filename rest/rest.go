@@ -72,8 +72,16 @@ var (
 // rc is the tickets reference cache (status/priority/prefix names, the
 // category tree) the tickets datastore methods consume — at cutover (#134)
 // the caller passes the refreshed referencecache.Cache the old stack already
-// maintains (servers.Start wires it today).
+// maintains (servers.Start wires it today). It must be WARMED (Refresh run
+// and the poller keeping it fresh), not merely non-nil: a cold cache
+// degrades silently — empty categories, blank status/priority/prefix names,
+// and category filters collapsing from subtree to exact-match. New refuses
+// nil outright: with no recovery middleware in the chain, a nil cache is a
+// guaranteed panic on the first tickets request against the real datastore.
 func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
+	if rc == nil {
+		panic("rest.New: nil TicketReferenceCache — pass the refreshed referencecache.Cache (see #134)")
+	}
 	return sentryMiddleware(
 		metricsMiddleware(
 			AuthMiddleware(ds,
