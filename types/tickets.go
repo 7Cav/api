@@ -4,7 +4,9 @@ package types
 // friends), golden-pinned by contract/goldens/tickets. All integer fields on
 // this surface are 32-bit and stay JSON numbers; the emit-everything and
 // allocation disciplines from the package doc apply throughout (empty
-// collections are []/{} on the wire, never null).
+// collections are []/{} on the wire, never null). State strings
+// (ticketState, discussionState, messageState) are raw XenForo states frozen
+// as-is — deliberately NOT lifted into RosterType-style enums.
 
 // Ticket is one forum ticket thread: identity, category, workflow state,
 // people, activity timestamps, custom fields. forumUrl is populated when the
@@ -65,8 +67,11 @@ type Message struct {
 
 // GetTicketResponse is the envelope shared by GET /api/v1/tickets/{ticketId}
 // and GET /api/v1/tickets/ref/{ticketRef}: the ticket plus its first
-// messages (oldest first). The top-level TotalMessageCount duplicates
-// ticket.totalMessageCount — deprecated on the old surface, frozen here.
+// messages (oldest first). The top-level TotalMessageCount mirrors the old
+// surface's duplicate of ticket.totalMessageCount — deprecated there, frozen
+// here — but the two are computed INDEPENDENTLY (ticket.totalMessageCount is
+// replyCount+1; this one is a COUNT of visible message rows) and may diverge
+// for threads with hidden messages.
 type GetTicketResponse struct {
 	Ticket            *Ticket    `json:"ticket"`
 	FirstMessages     []*Message `json:"firstMessages"`

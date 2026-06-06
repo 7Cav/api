@@ -114,8 +114,10 @@ func getTicketByRef(ds datastores.Datastore, rc datastores.TicketReferenceCache)
 
 // writeTicketResponse assembles the shared GetTicketResponse envelope (the
 // by-id and by-ref bindings return the same shape): the ticket, its first
-// messages, and the deprecated top-level total that duplicates
-// ticket.totalMessageCount.
+// messages, and the deprecated top-level total that mirrors
+// ticket.totalMessageCount but is computed independently (visible-message
+// COUNT vs replyCount+1 — they diverge on hidden messages; see
+// types.GetTicketResponse).
 func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, ticket *proto.Ticket) {
 	if ticket == nil {
 		// A (nil, nil) datastore return is a bug, but the nil-safe proto
