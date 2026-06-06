@@ -255,3 +255,31 @@ func TestFindProfileByGamertag(t *testing.T) {
 		t.Errorf("unknown gamertag: want gorm.ErrRecordNotFound, got %v", err)
 	}
 }
+
+// OBSERVED behavior, not endorsement: the gamertag lookup feeds raw
+// input to LIKE without escaping (mysql.go), so % and _ act as
+// wildcards — the escape asymmetry with FindProfilesByPosition (which
+// escapes both) is deliberate to pin and explicitly flagged here,
+// frozen as-is pending the #137 verdict. If escaping is added, THIS
+// test should flip to expect ErrRecordNotFound.
+func TestFindProfileByGamertag_WildcardsAreInterpretedNotEscaped(t *testing.T) {
+	ds := openHarnessDatastore(t)
+
+	// "%"-wildcard prefix match: only CharlieZulu starts with "Charlie".
+	got, err := ds.FindProfileByGamertag("Charlie%")
+	if err != nil {
+		t.Fatalf("FindProfileByGamertag(Charlie%%): %v", err)
+	}
+	if got.User.UserId != 150 {
+		t.Errorf("wildcard suffix resolved to user %d, want 150 (CharlieZulu)", got.User.UserId)
+	}
+
+	// "_" wildcard: any single leading character.
+	got, err = ds.FindProfileByGamertag("_harlieZulu")
+	if err != nil {
+		t.Fatalf("FindProfileByGamertag(_harlieZulu): %v", err)
+	}
+	if got.User.UserId != 150 {
+		t.Errorf("underscore wildcard resolved to user %d, want 150 (CharlieZulu)", got.User.UserId)
+	}
+}

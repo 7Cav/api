@@ -164,7 +164,12 @@ func TestListTickets_Filters(t *testing.T) {
 		{"prefix ids", datastores.ListTicketsFilter{PrefixIDs: []uint32{1}}, []uint32{2, 7}},
 		{"assigned user", datastores.ListTicketsFilter{AssignedUserIDs: []uint32{401}}, []uint32{1, 2, 4, 7, 6}},
 		{"starter user", datastores.ListTicketsFilter{StarterUserIDs: []uint32{400}}, []uint32{1}},
+		// 1740450000 deliberately sits BETWEEN ticket 4 (1740400000) and
+		// ticket 3 (1740500000) so the filter's direction is observable.
 		{"modified since", datastores.ListTicketsFilter{ModifiedSince: 1740450000}, []uint32{1, 2, 3}},
+		// Exactly ticket 3's last_modified_date: the boundary is
+		// INCLUSIVE (tickets.go uses >=, not >) — ticket 3 stays in.
+		{"modified since boundary inclusive", datastores.ListTicketsFilter{ModifiedSince: 1740500000}, []uint32{1, 2, 3}},
 		{"conjunction", datastores.ListTicketsFilter{StatusIDs: []uint32{3}, PrefixIDs: []uint32{1}}, []uint32{7}},
 		{"no match", datastores.ListTicketsFilter{StarterUserIDs: []uint32{9999}}, []uint32{}},
 	}
@@ -278,8 +283,9 @@ func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 		t.Errorf("without FORUM_BASE_URL forum_url must be empty, got %q", tickets[0].ForumUrl)
 	}
 
+	prior := viper.GetString("FORUM_BASE_URL")
 	viper.Set("FORUM_BASE_URL", "https://forum.example.test/")
-	t.Cleanup(func() { viper.Set("FORUM_BASE_URL", "") })
+	t.Cleanup(func() { viper.Set("FORUM_BASE_URL", prior) })
 
 	tickets, _, _, err = ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{})
 	if err != nil {
@@ -308,6 +314,29 @@ func TestGetTicket_ByIdHappyPath(t *testing.T) {
 	}
 	if len(ticket.Participants) != 2 {
 		t.Errorf("participants = %v, want both seeded members", ticket.Participants)
+	}
+}
+
+// OBSERVED behavior: GetTicket/GetTicketByRef apply NO discussion_state
+// filter — the visibility filtering of ListTickets is list-only, and a
+// deleted ticket stays directly retrievable by id or ref.
+func TestGetTicket_DeletedTicketIsRetrievableDirectly(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	ticket, err := ds.GetTicket(context.Background(), rc, 5, "")
+	if err != nil {
+		t.Fatalf("GetTicket(5, deleted): %v", err)
+	}
+	if ticket.TicketId != 5 || ticket.DiscussionState != "deleted" {
+		t.Errorf("got ticket %d state %q, want 5/deleted", ticket.TicketId, ticket.DiscussionState)
+	}
+
+	byRef, err := ds.GetTicketByRef(context.Background(), rc, "TS-0005", "")
+	if err != nil {
+		t.Fatalf("GetTicketByRef(TS-0005, deleted): %v", err)
+	}
+	if byRef.TicketId != 5 || byRef.DiscussionState != "deleted" {
+		t.Errorf("got ticket %d state %q, want 5/deleted", byRef.TicketId, byRef.DiscussionState)
 	}
 }
 
@@ -423,8 +452,7 @@ func TestListTicketMessages_CursorPagination(t *testing.T) {
 	}
 }
 
-// Hidden messages are skipped without breaking the position sequence
-// the cursor follows.
+// Hidden messages are filtered out of the default listing.
 func TestListTicketMessages_HiddenFilteredByDefault(t *testing.T) {
 	ds, _ := openTicketsHarness(t)
 
@@ -437,6 +465,58 @@ func TestListTicketMessages_HiddenFilteredByDefault(t *testing.T) {
 	}
 	if len(msgs) != 2 || msgs[0].Position != 0 || msgs[1].Position != 2 {
 		t.Errorf("visible positions = %v, want [0 2]", messagePositions(msgs))
+	}
+}
+
+// A perPage=1 cursored walk crosses the hidden gap: the cursor handed
+// back after position 0 points at position 1 (the hidden note), and the
+// next visible-only page must serve position 2 — neither stalling on
+// the hidden row nor skipping past it.
+func TestListTicketMessages_CursorWalksAcrossHiddenGap(t *testing.T) {
+	ds, _ := openTicketsHarness(t)
+
+	msgs, next, more, err := ds.ListTicketMessages(context.Background(), 1, "", 1, false)
+	if err != nil {
+		t.Fatalf("ListTicketMessages(page 1, visible): %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Position != 0 {
+		t.Fatalf("page 1 positions = %v, want [0]", messagePositions(msgs))
+	}
+	if !more || next == "" {
+		t.Fatalf("expected another visible page, got hasMore=%v next=%q", more, next)
+	}
+
+	msgs, next, more, err = ds.ListTicketMessages(context.Background(), 1, next, 1, false)
+	if err != nil {
+		t.Fatalf("ListTicketMessages(page 2, visible): %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Position != 2 {
+		t.Fatalf("page 2 positions = %v, want [2] (hidden position 1 crossed, not served)", messagePositions(msgs))
+	}
+	if more || next != "" {
+		t.Errorf("exhausted visible thread: hasMore=%v next=%q, want false/empty", more, next)
+	}
+}
+
+// Message listings for a ticket that does not exist are empty results,
+// not errors — neither method probes ticket existence.
+func TestTicketMessages_NonexistentTicketIsEmptyNotError(t *testing.T) {
+	ds, _ := openTicketsHarness(t)
+
+	msgs, total, err := ds.GetTicketFirstMessages(context.Background(), 9999, 10, true)
+	if err != nil {
+		t.Fatalf("GetTicketFirstMessages(9999): %v", err)
+	}
+	if len(msgs) != 0 || total != 0 {
+		t.Errorf("nonexistent ticket: got %d messages, total %d; want 0/0", len(msgs), total)
+	}
+
+	listed, next, more, err := ds.ListTicketMessages(context.Background(), 9999, "", 10, true)
+	if err != nil {
+		t.Fatalf("ListTicketMessages(9999): %v", err)
+	}
+	if len(listed) != 0 || next != "" || more {
+		t.Errorf("nonexistent ticket: got %d messages, next %q, hasMore %v; want 0/empty/false", len(listed), next, more)
 	}
 }
 
