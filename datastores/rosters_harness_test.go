@@ -34,7 +34,10 @@ func TestFindRosterByType_CombatRosterKeyedByRelationId(t *testing.T) {
 	}
 
 	// Full shape: the relational payload comes along.
-	member := roster.Profiles[205]
+	member, ok := roster.Profiles[205]
+	if !ok {
+		t.Fatalf("combat roster must contain relation 205, got %v", profileKeys(roster.Profiles))
+	}
 	if member.User.UserId != 150 {
 		t.Errorf("relation 205 maps to forum user 150, got %d", member.User.UserId)
 	}
@@ -92,7 +95,10 @@ func TestFindLiteRosterByType_LiteShapeWithActivityDates(t *testing.T) {
 		t.Fatalf("combat lite roster: want 4 members, got %d", len(roster.Profiles))
 	}
 
-	member := roster.Profiles[205]
+	member, ok := roster.Profiles[205]
+	if !ok {
+		t.Fatalf("combat lite roster must contain relation 205, got %v", profileKeys(roster.Profiles))
+	}
 	if member.User.UserId != 150 || member.User.Username != "Trooper.C" {
 		t.Errorf("relation 205 = user %d %q, want 150 Trooper.C", member.User.UserId, member.User.Username)
 	}
@@ -151,7 +157,10 @@ func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 	// NEWER than the latest award (1686000000): if the relevant-record-type
 	// filter were dropped, the trigger would move to 1687000000 and this
 	// assertion would fail.
-	member := roster.Profiles[1]
+	member, ok := roster.Profiles[1]
+	if !ok {
+		t.Fatalf("combat uniforms roster must contain relation 1, got %v", profileKeys(roster.Profiles))
+	}
 	if member.User.Username != "Trooper.A" {
 		t.Errorf("relation 1 = %q, want Trooper.A", member.User.Username)
 	}
@@ -173,7 +182,10 @@ func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 	}
 
 	// Relation 310: no uniform yet — empty dates; recruit group maps to RTC.
-	recruit := roster.Profiles[310]
+	recruit, ok := roster.Profiles[310]
+	if !ok {
+		t.Fatalf("combat uniforms roster must contain relation 310, got %v", profileKeys(roster.Profiles))
+	}
 	if recruit.UniformDate != "" {
 		t.Errorf("member without uniform: UniformDate = %q, want empty", recruit.UniformDate)
 	}
@@ -186,8 +198,12 @@ func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindS1UniformsRosterByType(RESERVE): %v", err)
 	}
-	if got := reserve.Profiles[320].AreaOfResponsibility; got != "ELOA" {
-		t.Errorf("Extended Leave Of Absence group maps to ELOA, got %q", got)
+	reservist, ok := reserve.Profiles[320]
+	if !ok {
+		t.Fatalf("reserve uniforms roster must contain relation 320, got %v", profileKeys(reserve.Profiles))
+	}
+	if reservist.AreaOfResponsibility != "ELOA" {
+		t.Errorf("Extended Leave Of Absence group maps to ELOA, got %q", reservist.AreaOfResponsibility)
 	}
 }
 

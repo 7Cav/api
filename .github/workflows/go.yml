@@ -45,15 +45,19 @@ jobs:
       uses: actions/checkout@v6.0.2
     # The service container is up for the whole job; this step is "no
     # harness" only in the sense that TESTDB_ADDR is left unset. Mirror
-    # of the with-harness guard, inverted: the harness-backed packages
-    # must visibly SKIP here — zero skips would mean the tests dialed a
-    # database despite TESTDB_ADDR being unset.
+    # of the with-harness guard, inverted: a known harness-backed test
+    # must visibly SKIP here. An any-skip grep would be satisfiable by a
+    # single surviving skip while the rest of the gate drifted, and zero
+    # skips has more than one cause (tests dialing a database despite
+    # TESTDB_ADDR being unset, but also harness tests deleted or excluded
+    # by build tags) — so require the same sentinel test the with-harness
+    # step requires to PASS.
     - name: Test (TESTDB_ADDR unset — integration tests must skip)
       run: |
         set -euo pipefail
         go test -v ./testdb ./datastores 2>&1 | tee no-harness.log
-        if ! grep -q -- '--- SKIP' no-harness.log; then
-          echo "::error::no harness-backed test skipped with TESTDB_ADDR unset — the skip gate has drifted and plain 'go test ./...' now requires a database"
+        if ! grep -q -- '--- SKIP: TestValidateApiKey_ActiveKeyResolvesActiveScopes' no-harness.log; then
+          echo "::error::sentinel harness test TestValidateApiKey_ActiveKeyResolvesActiveScopes did not SKIP with TESTDB_ADDR unset — either the skip gate has drifted (plain 'go test ./...' may now require a database) or the harness tests silently vanished"
           exit 1
         fi
         go test ./...
@@ -72,8 +76,11 @@ jobs:
           exit 1
         fi
         # Positive sentinel: no-skips alone can't tell "ran" from
-        # "absent" (e.g. a renamed package would grep clean while running
-        # nothing). Require a known harness test to have PASSED.
+        # "absent". A renamed or missing package hard-errors `go test`
+        # under pipefail, but deleted/renamed test FUNCTIONS or
+        # build-tag-excluded files leave a package that resolves, runs
+        # nothing, and greps clean. Require a known harness test to have
+        # PASSED.
         if ! grep -q -- '--- PASS: TestValidateApiKey_ActiveKeyResolvesActiveScopes' harness.log; then
           echo "::error::sentinel harness test TestValidateApiKey_ActiveKeyResolvesActiveScopes did not run — the harness suite silently vanished from the verbose run"
           exit 1
