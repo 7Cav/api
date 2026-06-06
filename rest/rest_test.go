@@ -44,6 +44,12 @@ type fakeDatastore struct {
 	findProfileByDiscordID func(discordId string) (*proto.Profile, error)
 	findProfileByGamertag  func(gamertag string) (*proto.Profile, error)
 
+	// Positions/AWOL overrides (#128; seeded defaults live in
+	// fake_positions_test.go); a test sets one to inject an outage.
+	findAllPositionGroups  func() ([]*proto.PositionGroup, error)
+	findProfilesByPosition func(positionQuery string) (*proto.LiteRoster, error)
+	findAwol               func() ([]*proto.Awol, error)
+
 	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
 	// test sets one to inject an outage or observe the bound filter.
 	listTickets            func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
@@ -251,6 +257,7 @@ func newStack(t *testing.T) http.Handler {
 // including ones whose routes don't exist yet.
 var implementedCases = []string{
 	"milpacs/ranks",
+	"milpacs/position_groups",
 	"milpacs/profile_by_id_happy",
 	"milpacs/profile_by_id_sparse",
 	"milpacs/profile_by_id_not_found",
