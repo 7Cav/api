@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -121,34 +122,47 @@ func TestBatteryIsWellFormed(t *testing.T) {
 		assert.NotEmpty(t, c.Notes, "%s: every case documents why it exists", c.Name)
 	}
 
-	// One representative path prefix (path-parameter cases vary the suffix)
-	// per surviving route.
-	routes := map[string]string{
-		"profile by id":       "/api/v1/milpacs/profile/id/",
-		"profile by username": "/api/v1/milpacs/profile/username/",
-		"discord lookup":      "/api/v1/milpac/discord/",
-		"gamertag lookup":     "/api/v1/milpac/gamertag/",
-		"roster":              "/api/v1/roster/ROSTER_TYPE_COMBAT",
-		"lite roster":         "/api/v1/roster/ROSTER_TYPE_COMBAT/lite",
-		"s1 uniforms":         "/api/v1/s1/uniforms/",
-		"position search":     "/api/v1/milpacs/position/search/",
-		"ranks":               "/api/v1/milpacs/ranks",
-		"position groups":     "/api/v1/milpacs/position/groups",
-		"awol":                "/api/v1/milpacs/awol",
-		"tickets list":        "/api/v1/tickets",
-		"ticket by id":        "/api/v1/tickets/42",
-		"ticket by ref":       "/api/v1/tickets/ref/",
-		"ticket messages":     "/api/v1/tickets/42/messages",
-		"ticket categories":   "/api/v1/tickets/categories",
+	// One anchored pattern per surviving route, ordered most-specific first:
+	// each case path (query string stripped) is classified to the FIRST
+	// matching route, so a literal segment (categories, ref, messages) can
+	// never satisfy a path-parameter sibling. Prefix matching would let
+	// tickets/42/messages stand in for deleted ticket-by-id cases.
+	routes := []struct {
+		label   string
+		pattern *regexp.Regexp
+	}{
+		{"ticket categories", regexp.MustCompile(`^/api/v1/tickets/categories$`)},
+		{"ticket by ref", regexp.MustCompile(`^/api/v1/tickets/ref/[^/]+$`)},
+		{"ticket messages", regexp.MustCompile(`^/api/v1/tickets/[^/]+/messages$`)},
+		{"ticket by id", regexp.MustCompile(`^/api/v1/tickets/[^/]+$`)},
+		{"tickets list", regexp.MustCompile(`^/api/v1/tickets$`)},
+		{"lite roster", regexp.MustCompile(`^/api/v1/roster/[^/]+/lite$`)},
+		{"roster", regexp.MustCompile(`^/api/v1/roster/[^/]+$`)},
+		{"s1 uniforms", regexp.MustCompile(`^/api/v1/s1/uniforms/[^/]+$`)},
+		{"position groups", regexp.MustCompile(`^/api/v1/milpacs/position/groups$`)},
+		{"position search", regexp.MustCompile(`^/api/v1/milpacs/position/search(/.*)?$`)},
+		{"ranks", regexp.MustCompile(`^/api/v1/milpacs/ranks$`)},
+		{"awol", regexp.MustCompile(`^/api/v1/milpacs/awol$`)},
+		{"profile by id", regexp.MustCompile(`^/api/v1/milpacs/profile/id/[^/]+$`)},
+		{"profile by username", regexp.MustCompile(`^/api/v1/milpacs/profile/username/[^/]+$`)},
+		{"discord lookup", regexp.MustCompile(`^/api/v1/milpac/discord/[^/]+$`)},
+		{"gamertag lookup", regexp.MustCompile(`^/api/v1/milpac/gamertag/[^/]+$`)},
 	}
-	for label, prefix := range routes {
-		found := false
-		for _, c := range cases {
-			if strings.HasPrefix(c.Path, prefix) {
-				found = true
+	counts := map[string]int{}
+	for _, c := range cases {
+		path := c.Path
+		if i := strings.IndexByte(path, '?'); i >= 0 {
+			path = path[:i]
+		}
+		for _, r := range routes {
+			if r.pattern.MatchString(path) {
+				counts[r.label]++
 				break
 			}
 		}
-		assert.True(t, found, "no battery case covers route: %s (%s)", label, prefix)
+	}
+	for _, r := range routes {
+		assert.Positive(t, counts[r.label],
+			"no battery case covers route: %s (%s)", r.label, r.pattern)
 	}
 }
