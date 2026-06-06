@@ -236,7 +236,7 @@ func TestBuildAPIHandler_500BehindValidAuth_OneEventWithKeyID(t *testing.T) {
 		assert.Equal(t, "cav7_goodkey", token)
 		return &datastores.ApiKeyResult{KeyId: 42}, nil
 	}}
-	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := buildAPIHandler(ds, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream exploded", http.StatusInternalServerError)
 	}))
 
@@ -260,7 +260,7 @@ func TestBuildAPIHandler_BadAuth_401NoEvents(t *testing.T) {
 		return nil, nil // zero rows — invalid key
 	}}
 	innerCalled := false
-	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := buildAPIHandler(ds, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		innerCalled = true
 	}))
 

@@ -14,7 +14,7 @@ One file per battery case (`battery.go` → `Cases()`), named
 - the response **status code**,
 - the **contract-relevant headers** — allowlist in `golden.go`
   (`Content-Type`, `X-Content-Type-Options`, `WWW-Authenticate`); everything
-  else (`Date`, `Content-Length`, `X-Cache`, `Grpc-Metadata-*`) is
+  else (`Date`, `Content-Length`, `Grpc-Metadata-*`) is
   infrastructure of the current stack, not contract. `WWW-Authenticate` pins
   an *absence*: #106 froze the 401 tiers as challenge-free, so no golden
   records it and a stack that adds it diffs red,
@@ -73,11 +73,12 @@ needs one. The exported surface is exactly five entries:
 
 `TestMain` (`harness_test.go`) mounts the **current production stack**
 in-process: the real `gateway.Service.Server()` handler (auth middleware,
-sentry, cache, compression, `/api` routing, grpc-gateway mux) dialing a real
+sentry, compression, `/api` routing, grpc-gateway mux) dialing a real
 `grpc.Server` over TCP with the production interceptor chain, over a seeded
 deterministic fake datastore (`fake_datastore_test.go`). No MySQL, no Redis,
-no docker: the Redis client points at an always-erroring local stub, so every
-request takes the cache-miss path (the cache layer leaves at Phase 2, #123).
+no docker. (The response cache left at Phase 2 de-cache: middleware at #123,
+the cache package and Redis at #124 — the production stack has no cache
+backend at all.)
 
 Seed highlights (all referenced by path literals in the battery):
 

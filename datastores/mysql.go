@@ -711,14 +711,6 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 	return protoAwols, nil
 }
 
-func (ds Mysql) GetTableUpdates() ([]xenforo.TableInfo, error) {
-	var updates []xenforo.TableInfo
-	ds.Db.Table("information_schema.tables").
-		Select("table_name, update_time").
-		Find(&updates)
-	return updates, nil
-}
-
 func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
 	var rows []struct {
 		KeyId     uint   `gorm:"column:key_id"`

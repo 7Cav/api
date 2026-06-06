@@ -29,7 +29,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/openapi"
 	"github.com/7cav/api/proto"
@@ -40,7 +39,6 @@ import (
 
 type Service struct {
 	Address   string
-	Cache     *cache.RedisCache
 	Datastore datastores.Datastore
 }
 
@@ -131,15 +129,9 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // tagging, and outside the compression layer so it observes the final
 // response status. No SENTRY_DSN → it is a pass-through.
 //
-// Phase 2 de-cache (#123): the response-cache middleware is out of the chain
-// — with it, the X-Cache header (enumerated break). The unused c parameter is
-// deliberate: the cache package, CacheManager poller, and Redis keep running
-// through the soak (#124 deletes them), and keeping the signature makes the
-// revert a one-liner — restore the chain line to:
-//
-//	sentryMiddleware(middleware.CacheMiddleware(c, compressionMiddleware(inner)))
-//
-// (re-adding the github.com/7cav/api/middleware import).
+// Phase 2 de-cache (#123/#124): the response cache is gone — middleware out
+// of the chain at #123 (with it, the X-Cache header, the enumerated break),
+// the cache package and Redis deleted at #124. See ADR 0003 (superseded).
 //
 // Sentry-inside-auth also means auth-layer infrastructure failures (e.g. a
 // datastore outage producing mass 401s) generate no Sentry events by design —
@@ -149,8 +141,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // Package-level (not inlined in Server) so the chain order is a tested
 // contract — see the buildAPIHandler tests — rather than an untestable
 // expression inside a dialing function.
-func buildAPIHandler(ds datastores.Datastore, c *cache.RedisCache, inner http.Handler) http.Handler {
-	_ = c // kept for the one-line revert; see the doc comment above
+func buildAPIHandler(ds datastores.Datastore, inner http.Handler) http.Handler {
 	return authMiddleware(ds,
 		sentryMiddleware(compressionMiddleware(inner)))
 }
@@ -192,7 +183,7 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	handler := buildAPIHandler(service.Datastore, service.Cache, gwMux)
+	handler := buildAPIHandler(service.Datastore, gwMux)
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)

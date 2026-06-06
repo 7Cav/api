@@ -1,10 +1,23 @@
 # ADR 0003: Redis response cache invalidated by polling MySQL UPDATE_TIME
 
-> **Status: being retired** (PRD #112, Phase 2 — De-cache). The cache
-> middleware left the HTTP chain at #123 (with it, the `X-Cache` header —
-> an enumerated break); the revert is the documented one-liner in
-> `buildAPIHandler`. The cache package, the polling goroutine, and Redis
-> keep running unused through the soak; #124 deletes them.
+> **Status: Superseded** by PRD #112 ("Goodbye gRPC"), Phase 2 — De-cache.
+>
+> The cache existed to paper over missing database indexes. Phase 1 (#119,
+> applied to prod via #122) added the covering/composite indexes, and the
+> measured numbers made the cache redundant: cache-miss latency fell from
+> ~1.2–1.7s (combat roster 1.70s, AWOL 1.17s, profiles ~1.25s) to ~27–40ms
+> on profile lookups (~40×), 123ms AWOL, 145ms position search, 503ms
+> combat roster (now serialization-dominated — #127's problem). Every
+> request now takes the former "miss" path and is still an order of
+> magnitude faster than the latency the cache was built to hide.
+>
+> The cache middleware left the HTTP chain at #123 (with it, the `X-Cache`
+> header — an enumerated break); after a clean soak, #124 deleted the
+> cache package, the `CacheManager` polling goroutine, the
+> `GetTableUpdates` datastore method, and Redis itself (client dependency,
+> `REDIS_*` env, compose service). The binary starts and serves with no
+> Redis configured at all. `referencecache/` (in-memory ticket reference
+> data) is unrelated and remains.
 
 ## Context
 

@@ -5,7 +5,6 @@ import (
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
-	"github.com/7cav/api/xenforo"
 )
 
 // fakeDatastore is the shared in-process Datastore stub used by both
@@ -83,11 +82,10 @@ func (f *fakeDatastore) FindProfileByGamertag(g string) (*proto.Profile, error) 
 }
 
 // Milpacs methods this PR does not exercise — stay panicking.
-func (f *fakeDatastore) FindProfilesByPosition(string) (*proto.LiteRoster, error)         { panic("unused") }
-func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error)                     { panic("unused") }
-func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error)           { panic("unused") }
-func (f *fakeDatastore) FindAwol() ([]*proto.Awol, error)                                 { panic("unused") }
-func (f *fakeDatastore) GetTableUpdates() ([]xenforo.TableInfo, error)                    { panic("unused") }
+func (f *fakeDatastore) FindProfilesByPosition(string) (*proto.LiteRoster, error) { panic("unused") }
+func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error)             { panic("unused") }
+func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error)   { panic("unused") }
+func (f *fakeDatastore) FindAwol() ([]*proto.Awol, error)                         { panic("unused") }
 
 func (f *fakeDatastore) ValidateApiKey(token string) (*datastores.ApiKeyResult, error) {
 	return f.validateApiKey(token)

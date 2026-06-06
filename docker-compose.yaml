@@ -29,9 +29,6 @@ services:
       DB_PASSWORD:
       DB_HOST: xenforo-db
       DB_PORT: 3306
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD:
       # Optional — populates Ticket.forum_url; empty if unset.
       # FORUM_BASE_URL: https://7cav.us
       # Optional — refresh interval for the in-memory ticket reference cache; defaults to 15m.
@@ -43,17 +40,6 @@ services:
       # send failures/drops/rate limits become visible). For debugging delivery
       # problems without a rebuild; leave unset normally.
       # SENTRY_DEBUG: "true"
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:latest
-    container_name: redis
-    networks:
-      - xenforo_internal
-    restart: always
-    environment:
-      REDIS_PASSWORD:
 
 networks:
   edge:

@@ -10,7 +10,6 @@ import (
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
-	"github.com/7cav/api/xenforo"
 	"gorm.io/gorm"
 )
 
@@ -312,10 +311,6 @@ func (recordingDatastore) FindAwol() ([]*proto.Awol, error) {
 			MilpacId:  2,
 		},
 	}, nil
-}
-
-func (recordingDatastore) GetTableUpdates() ([]xenforo.TableInfo, error) {
-	panic("contract: GetTableUpdates is not a public route")
 }
 
 // --- Tickets --------------------------------------------------------------
