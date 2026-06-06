@@ -39,8 +39,9 @@ type fakeDatastore struct {
 	// test sets one to inject an outage or observe the bound filter.
 	listTickets            func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
 	getTicket              func(ticketID uint32) (*proto.Ticket, error)
-	getTicketFirstMessages func(ticketID uint32, n int) ([]*proto.Message, uint32, error)
-	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32) ([]*proto.Message, string, bool, error)
+	getTicketByRef         func(ref string) (*proto.Ticket, error)
+	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error)
+	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error)
 	listCategories         func() ([]*proto.Category, error)
 
 	// lastRC records the TicketReferenceCache the handlers handed the most

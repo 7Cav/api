@@ -59,7 +59,7 @@ func TestNewStack_NilTicketWithNilErrorIsInternalJSON(t *testing.T) {
 // An outage on the first-messages fetch (after the ticket resolved) keeps its
 // own frozen message string: "fetch ticket messages: %v".
 func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int) ([]*proto.Message, uint32, error) {
+	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int, bool) ([]*proto.Message, uint32, error) {
 		return nil, 0, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -104,7 +104,7 @@ func TestNewStack_EmptyTicketsPageIsEmptyArray(t *testing.T) {
 
 // An outage on the messages list: "list ticket messages: %v".
 func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32) ([]*proto.Message, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32, bool) ([]*proto.Message, string, bool, error) {
 		return nil, "", false, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -305,6 +305,106 @@ func TestNewStack_TicketsScopeGateOnEveryRoute(t *testing.T) {
 			assert.JSONEq(t, `{"code":7,"message":"scope required: read:tickets","details":[]}`,
 				rr.Body.String(), "%s with %s", path, key)
 		}
+	}
+}
+
+// --- Binding pins: what reaches the datastore (#129 review F7) -------------
+
+// Every ListTicketsFilter field arrives from its query key — all eleven in
+// one request, spellings mixed, the COMPLETE struct asserted. Kills silent
+// filter-key copy-paste errors the per-filter goldens cannot see
+// (PrefixIDs/AssignedUserIDs/ModifiedSince/IncludeHidden are asserted
+// nowhere else).
+func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
+	var got *datastores.ListTicketsFilter
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+		got = f
+		return []*proto.Ticket{}, "", false, nil
+	}}, &stubReferenceCache{})
+
+	query := strings.Join([]string{
+		"category_id=1", "categoryId=9", // repeated, both spellings (snake first)
+		"exclude_subcategories=true",
+		"ticket_state=open", "ticketState=closed",
+		"status_id=2", "statusId=6",
+		"prefix_id=3",
+		"assignedUserId=4",
+		"starter_user_id=5",
+		"modifiedSince=123456",
+		"include_hidden=1",
+		"per_page=25",
+		"afterCursor=CUR123",
+	}, "&")
+	rr := ticketsGet(t, h, "/api/v1/tickets?"+query)
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, got, "the filter must reach the datastore")
+	assert.Equal(t, &datastores.ListTicketsFilter{
+		CategoryIDs:          []uint32{1, 9},
+		ExcludeSubcategories: true,
+		TicketStates:         []string{"open", "closed"},
+		StatusIDs:            []uint32{2, 6},
+		PrefixIDs:            []uint32{3},
+		AssignedUserIDs:      []uint32{4},
+		StarterUserIDs:       []uint32{5},
+		ModifiedSince:        123456,
+		IncludeHidden:        true,
+		PerPage:              25,
+		AfterCursor:          "CUR123",
+	}, got)
+}
+
+// include_hidden reaches ListTicketMessages in BOTH directions — a dropped
+// or inverted flag would leak hidden messages (or hide visible ones) with
+// every golden still green.
+func TestNewStack_ListTicketMessagesIncludeHiddenReachesDatastore(t *testing.T) {
+	for _, want := range []bool{true, false} {
+		got, called := false, false
+		h := rest.New(&fakeDatastore{listTicketMessages: func(_ uint32, _ string, _ uint32, includeHidden bool) ([]*proto.Message, string, bool, error) {
+			got, called = includeHidden, true
+			return []*proto.Message{}, "", false, nil
+		}}, &stubReferenceCache{})
+
+		path := "/api/v1/tickets/42/messages"
+		if want {
+			path += "?include_hidden=true"
+		}
+		rr := ticketsGet(t, h, path)
+		require.Equal(t, http.StatusOK, rr.Code, path)
+		require.True(t, called, path)
+		assert.Equal(t, want, got, path)
+	}
+}
+
+// A by-ref datastore outage mirrors the by-id twin: same frozen "fetch
+// ticket: %v" Internal shape (both old handlers shared the string).
+func TestNewStack_GetTicketByRefDatastoreOutageIsInternalJSON(t *testing.T) {
+	h := rest.New(&fakeDatastore{getTicketByRef: func(string) (*proto.Ticket, error) {
+		return nil, io.ErrUnexpectedEOF
+	}}, &stubReferenceCache{})
+
+	rr := ticketsGet(t, h, "/api/v1/tickets/ref/MF1UI9HE")
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.JSONEq(t, `{"code":13,"message":"fetch ticket: unexpected EOF","details":[]}`, rr.Body.String())
+}
+
+// Both single-ticket routes ask the datastore for exactly
+// firstMessagesCount(10) thread-opening messages, never including hidden
+// ones — frozen from the old handlers, pinned in both directions (a drifted
+// constant or flipped flag passes every golden whose thread is short and
+// visible).
+func TestNewStack_FirstMessagesCountAndVisibilityFrozen(t *testing.T) {
+	for _, path := range []string{"/api/v1/tickets/42", "/api/v1/tickets/ref/MF1UI9HE"} {
+		gotN, gotHidden, called := 0, true, false
+		h := rest.New(&fakeDatastore{getTicketFirstMessages: func(_ uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error) {
+			gotN, gotHidden, called = n, includeHidden, true
+			return []*proto.Message{}, 0, nil
+		}}, &stubReferenceCache{})
+
+		rr := ticketsGet(t, h, path)
+		require.Equal(t, http.StatusOK, rr.Code, path)
+		require.True(t, called, path)
+		assert.Equal(t, 10, gotN, path)
+		assert.False(t, gotHidden, path)
 	}
 }
 

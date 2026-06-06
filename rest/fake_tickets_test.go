@@ -317,6 +317,9 @@ func (f *fakeDatastore) GetTicket(_ context.Context, rc datastores.TicketReferen
 
 func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketReferenceCache, ref string, _ string) (*proto.Ticket, error) {
 	f.lastRC = rc
+	if f.getTicketByRef != nil {
+		return f.getTicketByRef(ref)
+	}
 	for _, t := range seedTickets() {
 		if t.TicketRef == ref {
 			return t, nil
@@ -325,9 +328,9 @@ func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketRe
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, _ bool) ([]*proto.Message, uint32, error) {
+func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error) {
 	if f.getTicketFirstMessages != nil {
-		return f.getTicketFirstMessages(ticketID, n)
+		return f.getTicketFirstMessages(ticketID, n, includeHidden)
 	}
 	if ticketID != 42 {
 		return []*proto.Message{}, 0, nil
@@ -340,9 +343,9 @@ func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint3
 	return msgs, total, nil
 }
 
-func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, _ bool) ([]*proto.Message, string, bool, error) {
+func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error) {
 	if f.listTicketMessages != nil {
-		return f.listTicketMessages(ticketID, afterCursor, perPage)
+		return f.listTicketMessages(ticketID, afterCursor, perPage, includeHidden)
 	}
 	from, err := decodeMessageCursor(afterCursor)
 	if err != nil {
