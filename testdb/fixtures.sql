@@ -22,6 +22,8 @@ VALUES
   (205, 'Trooper.D',   'd@example.test', 1, 0, 'UTC', 2, '', 1, 'k205'),
   (300, 'Reservist.E', 'e@example.test', 1, 0, 'UTC', 2, '', 1, 'k300'),
   (301, 'Discharged.F','f@example.test', 1, 0, 'UTC', 2, '', 1, 'k301'),
+  (302, 'Silent.I',    'i@example.test', 1, 0, 'UTC', 2, '', 1, 'k302'),
+  (303, 'Retired.J',   'j@example.test', 1, 0, 'UTC', 2, '', 1, 'k303'),
   (400, 'TicketGuy.G', 'g@example.test', 1, 0, 'UTC', 2, '', 1, 'k400'),
   (401, 'Helpdesk.H',  'h@example.test', 1, 0, 'UTC', 2, '', 1, 'k401');
 
@@ -53,12 +55,21 @@ INSERT INTO xf_nf_rosters_position
   (50, '---- Staff ----',  1, 60, '', 0);
 
 -- Roster ids follow proto.RosterType: 1 combat, 2 reserve, 6 past members.
+-- roster_id=3 (ELOA) deliberately has NO members: its emptiness is
+-- load-bearing for TestFindRosterByType_EmptyRosterIsNotAnError.
 --
 -- The crossing pair is the load-bearing fixture: relation 205 belongs to
 -- forum user 150, while forum user 205 belongs to relation 310. A by-id
 -- lookup of "205" returns different members depending on which key the
 -- query uses — the frozen semantic of the by-id profile route resolves
 -- against relation_id.
+--
+-- The AWOL exclusion pair (FindAwol filters roster_id IN (1,2) AND
+-- last post older than 7 days, dropping never-posted members):
+--   * relation 340 / user 302 (Silent.I) is ON an active roster (2) but
+--     has ZERO xf_post rows — pins the never-posted exclusion,
+--   * relation 350 / user 303 (Retired.J) HAS a stale post but sits on
+--     roster 6 — pins the active-roster filter.
 INSERT INTO xf_nf_rosters_user
   (relation_id, roster_id, user_id, username, position_id, secondary_position_ids,
    rank_id, bio, uniform_date, added_date, custom_fields) VALUES
@@ -73,12 +84,23 @@ INSERT INTO xf_nf_rosters_user
   (320, 2, 300, 'Reservist.E',  40, '',  15, '', 0, 1620000000,
      '{"realName":"Echo White","joinDate":"2018-06-30","promoDate":"2021-08-19","mos":"11B","consoleGamertag":""}'),
   (330, 6, 301, 'Discharged.F', 10, '',  27, '', 0, 1550000000,
-     '{"realName":"Foxtrot Black","joinDate":"2016-01-12","promoDate":"2017-02-28","mos":"11B","consoleGamertag":""}');
+     '{"realName":"Foxtrot Black","joinDate":"2016-01-12","promoDate":"2017-02-28","mos":"11B","consoleGamertag":""}'),
+  (340, 2, 302, 'Silent.I',     40, '',  27, '', 0, 1640000000,
+     '{"realName":"India Grey","joinDate":"2021-04-10","promoDate":"","mos":"","consoleGamertag":""}'),
+  (350, 6, 303, 'Retired.J',    40, '',  27, '', 0, 1560000000,
+     '{"realName":"Juliett Gold","joinDate":"2016-08-01","promoDate":"2018-03-15","mos":"11B","consoleGamertag":""}');
 
+-- The details text is decorative flavor only; the record_type_id values
+-- are the load-bearing part (e.g. 1002's "Assigned to ..." text sits on
+-- type 2 = OPERATION, not ASSIGNMENT — deliberate, tests depend on the
+-- ids). Record 1002 (non-relevant OPERATION) is dated NEWER than every
+-- award and relevant record of relation 1 so the uniform update-trigger's
+-- relevant-record-type filter is load-bearing
+-- (TestFindS1UniformsRosterByType_UniformsShape).
 INSERT INTO xf_nf_rosters_service_record
   (record_id, relation_id, details, record_date, citation_date, record_type_id) VALUES
   (1001,   1, 'Promoted to Sergeant Major',    1683000000, 1683000000, 1),
-  (1002,   1, 'Assigned to Squad Leader',      1684000000, 1684000000, 2),
+  (1002,   1, 'Assigned to Squad Leader',      1687000000, 1687000000, 2),
   (1003, 205, 'Graduated basic training',      1582000000, 1582000000, 5),
   (1004, 205, 'Promoted to Specialist',        1710000000, 1710000000, 1),
   (1005, 310, 'Enlisted',                      1699000000, 1699000000, 5),
@@ -132,19 +154,24 @@ FROM seq_1_to_20000;
 
 -- Targeted posts for roster members outside the bulk poster pool:
 -- Trooper.C (150) and Trooper.D (205) post recently; Reservist.E (300)
--- last posted long ago (AWOL-shaped); Discharged.F (301) never posted
--- (left-join NULL case). The "recent" rows are seeded RELATIVE to the
--- wall clock because FindAwol computes its cutoff from now-7d — fixed
--- epochs would silently go stale and break the recent-vs-AWOL contrast
--- (pinned by TestFixtures_AwolContrastHoldsRelativeToNow). The ancient
--- row stays fixed: its distance from any future "now" only grows.
+-- last posted long ago (AWOL-shaped); Discharged.F (301) and Silent.I
+-- (302) never posted (left-join NULL cases — 302 sits on an ACTIVE
+-- roster so FindAwol's never-posted exclusion is observable);
+-- Retired.J (303) posted ancient history but sits on roster 6, so only
+-- FindAwol's active-roster filter excludes them. The "recent" rows are
+-- seeded RELATIVE to the wall clock because FindAwol computes its
+-- cutoff from now-7d — fixed epochs would silently go stale and break
+-- the recent-vs-AWOL contrast (pinned by
+-- TestFixtures_AwolContrastHoldsRelativeToNow). The ancient rows stay
+-- fixed: their distance from any future "now" only grows.
 INSERT INTO xf_post
   (post_id, thread_id, user_id, username, post_date, message, position,
    type_data, reaction_users, vote_score) VALUES
   (20001, 1, 150, 'Trooper.C',   UNIX_TIMESTAMP() - 7200, 'recent post', 0, '', '', 0),
   (20002, 1, 150, 'Trooper.C',   UNIX_TIMESTAMP() - 3600, 'most recent post', 1, '', '', 0),
   (20003, 1, 205, 'Trooper.D',   UNIX_TIMESTAMP() - 1800, 'recent post', 2, '', '', 0),
-  (20004, 2, 300, 'Reservist.E', 1600000000, 'ancient post', 0, '', '', 0);
+  (20004, 2, 300, 'Reservist.E', 1600000000, 'ancient post', 0, '', '', 0),
+  (20005, 2, 303, 'Retired.J',   1590000000, 'ancient post by a past member', 1, '', '', 0);
 
 -- ---------------------------------------------------------------------
 -- Tickets (NF Tickets)

@@ -47,20 +47,25 @@ func TestFindRosterByType_CombatRosterKeyedByRelationId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindRosterByType(RESERVE): %v", err)
 	}
-	if len(reserve.Profiles) != 1 || reserve.Profiles[320] == nil {
-		t.Errorf("reserve roster: want exactly relation 320, got %v", profileKeys(reserve.Profiles))
+	if len(reserve.Profiles) != 2 || reserve.Profiles[320] == nil || reserve.Profiles[340] == nil {
+		t.Errorf("reserve roster: want exactly relations 320 and 340, got %v", profileKeys(reserve.Profiles))
 	}
 
 	past, err := ds.FindRosterByType(proto.RosterType_ROSTER_TYPE_PAST_MEMBERS)
 	if err != nil {
 		t.Fatalf("FindRosterByType(PAST_MEMBERS): %v", err)
 	}
-	if len(past.Profiles) != 1 || past.Profiles[330] == nil {
-		t.Errorf("past-members roster: want exactly relation 330, got %v", profileKeys(past.Profiles))
+	if len(past.Profiles) != 2 || past.Profiles[330] == nil || past.Profiles[350] == nil {
+		t.Errorf("past-members roster: want exactly relations 330 and 350, got %v", profileKeys(past.Profiles))
 	}
 }
 
 // A roster with no members is an empty roster, not an error.
+//
+// roster_id=3 (ELOA) deliberately has NO fixture members — its emptiness
+// is load-bearing for this test (breadcrumb in testdb/fixtures.sql next
+// to the roster-member rows). Seed an ELOA member and this test loses
+// its subject.
 func TestFindRosterByType_EmptyRosterIsNotAnError(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
@@ -141,7 +146,11 @@ func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 	}
 
 	// Relation 1: has a uniform date, awards and records — the update
-	// trigger is the latest of awards and uniform-relevant records.
+	// trigger is the latest of awards and uniform-relevant records. The
+	// fixture's non-relevant OPERATION record (1687000000) is deliberately
+	// NEWER than the latest award (1686000000): if the relevant-record-type
+	// filter were dropped, the trigger would move to 1687000000 and this
+	// assertion would fail.
 	member := roster.Profiles[1]
 	if member.User.Username != "Trooper.A" {
 		t.Errorf("relation 1 = %q, want Trooper.A", member.User.Username)
@@ -153,7 +162,7 @@ func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 		t.Errorf("UniformDate = %q, want %q", member.UniformDate, dateTime(1700000000))
 	}
 	if member.UniformUpdateTriggerDate != dateTime(1686000000) {
-		t.Errorf("UniformUpdateTriggerDate = %q, want %q (latest award beats the non-relevant operation record)",
+		t.Errorf("UniformUpdateTriggerDate = %q, want %q (latest award; the NEWER non-relevant operation record must be filtered out)",
 			member.UniformUpdateTriggerDate, dateTime(1686000000))
 	}
 	if member.AreaOfResponsibility != "Alpha Company" {
@@ -235,17 +244,23 @@ func TestFindProfilesByPosition_NoMatchIsEmptyResultNotError(t *testing.T) {
 	}
 }
 
-// LIKE metacharacters in the query are escaped, not interpreted: a
-// query of "%" must not wildcard-match every position.
+// LIKE metacharacters in the query are escaped, not interpreted: "%"
+// must not wildcard-match every position, and "_" must not match every
+// single character. Either regression would return every member whose
+// primary position title is non-empty (i.e. all of them).
 func TestFindProfilesByPosition_EscapesLikeMetacharacters(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	roster, err := ds.FindProfilesByPosition("%")
-	if err != nil {
-		t.Fatalf("FindProfilesByPosition(%%): %v", err)
-	}
-	if len(roster.Profiles) != 0 {
-		t.Errorf("%% must match literally (no fixture title contains it), got %v", profileKeys(roster.Profiles))
+	for _, meta := range []string{"%", "_"} {
+		t.Run(meta, func(t *testing.T) {
+			roster, err := ds.FindProfilesByPosition(meta)
+			if err != nil {
+				t.Fatalf("FindProfilesByPosition(%q): %v", meta, err)
+			}
+			if len(roster.Profiles) != 0 {
+				t.Errorf("%q must match literally (no fixture title contains it), got %v", meta, profileKeys(roster.Profiles))
+			}
+		})
 	}
 }
 
@@ -260,6 +275,8 @@ func TestFindAwol_FlagsStalePostersOnActiveRosters(t *testing.T) {
 		t.Fatalf("FindAwol: %v", err)
 	}
 
+	// Keyed by forum USER id (Awol.UserId) — relation ids live in
+	// Awol.MilpacId and must not be used as exclusion keys here.
 	byUser := map[uint64]*proto.Awol{}
 	for _, a := range awols {
 		byUser[a.UserId] = a
@@ -275,8 +292,9 @@ func TestFindAwol_FlagsStalePostersOnActiveRosters(t *testing.T) {
 	for user, reason := range map[uint64]string{
 		150: "posted within the last day",
 		205: "posted within the last day",
-		301: "never posted (no aggregation row)",
-		330: "past member — not on an active roster",
+		302: "reservist who never posted (no aggregation row — the LEFT JOIN NULL must not be flagged)",
+		303: "past member (roster 6) with stale posts — only the roster filter excludes them",
+		301: "past member who also never posted — excluded on either count",
 	} {
 		if byUser[user] != nil {
 			t.Errorf("user %d must not be AWOL: %s", user, reason)
