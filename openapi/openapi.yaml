@@ -1,0 +1,49 @@
+# The hand-owned OpenAPI 3.1 reference spec for the 7Cav public HTTP API
+# (PRD #112, issue #121; supersedes the generated Swagger 2.0 assets).
+#
+# This document is executable: contract/spec_test.go replays every committed
+# golden in contract/goldens/ against it and asserts two-way route coverage.
+# Editing behavior here without a matching golden — or shipping behavior the
+# spec does not describe — fails CI naming the operation and field.
+#
+# Wire conventions (verified by the golden corpus, adopted as house style):
+#   - JSON field names are lowerCamelCase.
+#   - Emit-everything: every field is always present; unset nested messages
+#     are null, empty collections are []/{}; unset strings are "".
+#   - 64-bit integers serialize as JSON strings; 32-bit ones as numbers.
+#   - Enums serialize as their NAME strings; the zero value is *_UNSPECIFIED.
+openapi: 3.1.0
+info:
+  title: 7Cav API
+  description: >-
+    Read-only access to 7Cav.us milpacs (military personnel records) and forum
+    tickets. All endpoints require a bearer API key.
+  version: dev
+externalDocs:
+  description: 7Cav API Repository
+  url: https://github.com/7cav/api
+servers:
+  - url: https://api.7cav.us
+tags:
+  - name: milpacs
+    description: Milpac profiles, rosters, ranks, positions and AWOL tracking.
+  - name: tickets
+    description: Read-only forum tickets (nixfifty addon).
+
+security:
+  - bearer: []
+
+paths: {}
+
+components:
+  securitySchemes:
+    # The #91 fix, inexpressible in Swagger 2.0: http/bearer makes Swagger UI
+    # auto-prepend "Bearer " so users paste only the raw cav7_… key.
+    bearer:
+      type: http
+      scheme: bearer
+      description: >-
+        7Cav API key (cav7_…), sent as `Authorization: Bearer <key>`.
+        Requests without the Bearer scheme receive a plain-text 401 naming
+        the expected header form; unknown keys receive a generic plain-text
+        401; valid keys lacking the operation's scope receive a JSON 403.
