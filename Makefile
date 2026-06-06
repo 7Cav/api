@@ -1,6 +1,26 @@
 generate:
 	buf generate
 
+test:
+	go test ./...
+
+# Dockerized MariaDB integration harness (testdb/). Tests opt into the
+# real database via TESTDB_ADDR; without it they skip.
+# The compose project is unique per checkout and the host port ephemeral
+# (discovered via `docker compose port`), so parallel worktrees can run
+# harnesses side by side.
+TESTDB_PROJECT ?= testdb-$(notdir $(CURDIR))
+TESTDB_COMPOSE := docker compose -p $(TESTDB_PROJECT) -f testdb/compose.yaml
+
+testdb-up:
+	$(TESTDB_COMPOSE) up -d --wait
+
+testdb-down:
+	$(TESTDB_COMPOSE) down -v
+
+test-integration: testdb-up
+	TESTDB_ADDR=$$($(TESTDB_COMPOSE) port mariadb 3306) go test ./...
+
 lint:
 	buf lint
 	buf breaking --against 'https://github.com/7cav/api.git#branch=develop'

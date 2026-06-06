@@ -106,3 +106,20 @@ service. Each token carries a set of named scopes. Current scopes:
 
 Scope membership is checked per-handler; a token with `read` cannot
 read tickets, and vice versa.
+
+## SQL seam (integration-test harness)
+
+`testdb/` is the dockerized MariaDB harness — the "SQL seam" from PRD
+#112's testing decisions. `testdb.Open(t)` hands a test its own
+disposable database (forum-shaped schema + fixtures, embedded in the
+package) on a MariaDB 11.5 server; tests opt in via `TESTDB_ADDR` and
+skip without it. Run locally with `make test-integration`.
+
+Two properties of the harness are load-bearing:
+
+- The schema deliberately omits the four indexes PRD #112 proposes, so
+  "red" EXPLAIN plans stay reproducible (each test may CREATE INDEX in
+  its own database to observe the flip).
+- The fixtures include a member whose milpac `relation_id` collides
+  with another member's forum `user_id` (205), keeping the by-id
+  profile route's frozen relation-key semantic testable.

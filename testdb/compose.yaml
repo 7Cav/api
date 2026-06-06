@@ -1,0 +1,30 @@
+# Disposable MariaDB server for the integration-test harness (testdb).
+#
+#   make testdb-up     start (waits for healthy)
+#   make test-integration  start + run the full test suite against it
+#   make testdb-down   stop and discard
+#
+# Matches the forum's major version (MariaDB 11.5). Data lives on tmpfs:
+# every `up` starts empty; the testdb package creates a fresh database
+# per test and seeds it from its embedded schema/fixtures.
+# Container and network names derive from the compose project, which the
+# make/mage targets set uniquely per checkout (testdb-<dirname>), and the
+# host port is ephemeral — so parallel worktrees can each run their own
+# harness. Discover the port with:
+#   docker compose -p testdb-<dirname> -f testdb/compose.yaml port mariadb 3306
+services:
+  mariadb:
+    image: mariadb:11.5
+    environment:
+      # Throwaway credential for disposable fixture data; mirrored in
+      # testdb.go and .github/workflows/go.yml.
+      MARIADB_ROOT_PASSWORD: harness
+    ports:
+      - "127.0.0.1::3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
