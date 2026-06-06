@@ -36,6 +36,14 @@ func openHarnessDatastore(t *testing.T) datastores.Mysql {
 	if err != nil {
 		t.Fatalf("dialing harness database through gorm: %v", err)
 	}
+	// Close gorm's pool on cleanup: each test opens its own pool, and the
+	// stranded idle connections of a full run otherwise pile up against
+	// MariaDB's default max_connections (151).
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		t.Fatalf("unwrapping gorm connection pool: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
 	return datastores.Mysql{Db: gormDB}
 }
 

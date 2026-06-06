@@ -66,3 +66,24 @@ func TestValidateApiKey_UnknownKeyYieldsNil(t *testing.T) {
 		t.Errorf("unknown key must yield nil result, got %+v", result)
 	}
 }
+
+// A database failure must surface as a non-nil error, distinct from the
+// (nil, nil) "key not found" outcome — the auth boundary turns the
+// former into a 500 and the latter into a 401. Killing the underlying
+// pool is the cheapest real DB failure.
+func TestValidateApiKey_DatabaseErrorIsErrorNotUnauthenticated(t *testing.T) {
+	ds := openHarnessDatastore(t)
+
+	sqlDB, err := ds.Db.DB()
+	if err != nil {
+		t.Fatalf("unwrapping gorm connection pool: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("closing pool: %v", err)
+	}
+
+	result, err := ds.ValidateApiKey(testdb.ActiveAPIKey)
+	if err == nil {
+		t.Fatalf("ValidateApiKey over a dead pool must return an error (500 path), got (%+v, nil) — indistinguishable from an invalid key (401 path)", result)
+	}
+}
