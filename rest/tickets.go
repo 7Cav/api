@@ -175,7 +175,11 @@ func bindTicketID(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 // error below — frozen wire text. The 400 fired inside the gateway before
 // the RPC body, where RequireScope lived — so it is deliberately
 // scope-INDEPENDENT (any authenticated key sees it; registration in routes()
-// skips the scope gate).
+// skips the scope gate). That is a deliberate ASYMMETRY against the
+// scope-precedes-binding ruling (requireScope doc): this shim is an
+// exact-path parity reproduction of a gateway-level 400 that predated scope
+// in the old stack, and the auth tiers still 401 ahead of it (auth runs
+// before routing) — so its layering is 401 → frozen 400, never a 403.
 func refMessagesParity() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, codeInvalidArgument,

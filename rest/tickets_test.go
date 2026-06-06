@@ -123,7 +123,11 @@ func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
 // frozen strconv 400 — it was never a by-ref lookup of "messages". The 400
 // fired inside the gateway before the RPC body ran, and RequireScope lived
 // inside the RPC body it never reached — so any AUTHENTICATED key sees the
-// 400, scope notwithstanding.
+// 400, scope notwithstanding. This is the deliberate ASYMMETRY against the
+// scope-precedes-binding ruling (TestNewStack_ScopeGatePrecedesBindingErrors):
+// the shim reproduces a gateway-level 400 that predated scope in BOTH stacks,
+// and the auth tiers still 401 ahead of it (pinned below) — so the layering
+// stays 401 → frozen 400, no scope consulted, exactly like the old wire.
 func TestNewStack_TicketsRefMessagesIsFrozenParse400(t *testing.T) {
 	h := newStack(t)
 
@@ -136,6 +140,14 @@ func TestNewStack_TicketsRefMessagesIsFrozenParse400(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, rr.Code, key)
 		assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"ref\": invalid syntax","details":[]}`, rr.Body.String(), key)
 	}
+
+	// Scope-independent is NOT auth-independent: the auth middleware runs
+	// before routing, so an unauthenticated request 401s ahead of the shim.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets/ref/messages", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Equal(t, "Unauthorized: expected 'Authorization: Bearer <key>' header\n", rr.Body.String())
 }
 
 // /tickets/ref with no tail: the old gateway's match order reached GetTicket
@@ -294,6 +306,40 @@ func TestNewStack_TicketsScopeGateOnEveryRoute(t *testing.T) {
 		"/api/v1/tickets/ref/MF1UI9HE",
 		"/api/v1/tickets/42/messages",
 		"/api/v1/tickets/categories",
+	} {
+		for _, key := range []string{"cav7_readkey", "cav7_noscopekey"} {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer "+key)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusForbidden, rr.Code, "%s with %s", path, key)
+			assert.JSONEq(t, `{"code":7,"message":"scope required: read:tickets","details":[]}`,
+				rr.Body.String(), "%s with %s", path, key)
+		}
+	}
+}
+
+// Scope-vs-binding ordering: RULED CUTOVER BREAK (round-2 R1, 405-ruling
+// precedent — ratify in the PR body). In the old stack EVERY binding 400
+// (path type-mismatch, query parsing-field/list, ParseForm syntax) fired in
+// the gateway BEFORE RequireScope, which lived in the RPC bodies — a valid
+// key lacking read:tickets got the 400. The new stack layers uniformly:
+// 401 (auth) → 403 (scope) → route semantics — so wrong-scope + malformed
+// is 403-first, deliberately NOT the old 400. Pinned across all four
+// scope-gated tickets routes and every old gateway-400 class. The one
+// exception is /tickets/ref/messages (refMessagesParity), which stays
+// scope-independent — see TestNewStack_TicketsRefMessagesIsFrozenParse400.
+func TestNewStack_ScopeGatePrecedesBindingErrors(t *testing.T) {
+	h := newStack(t)
+
+	for _, path := range []string{
+		"/api/v1/tickets/abc",                      // path type-mismatch ({ticket_id})
+		"/api/v1/tickets/ref",                      // by-ref-no-tail (binds ticket_id="ref")
+		"/api/v1/tickets/abc/messages",             // path type-mismatch (messages)
+		"/api/v1/tickets?per_page=abc",             // binder parsing-field (list)
+		"/api/v1/tickets?per_page=%zz",             // ParseForm syntax (list)
+		"/api/v1/tickets/42/messages?per_page=abc", // binder parsing-field (messages)
 	} {
 		for _, key := range []string{"cav7_readkey", "cav7_noscopekey"} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
