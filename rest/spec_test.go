@@ -45,6 +45,19 @@ const specPath = "../openapi/openapi.yaml"
 // to stay unmatched.
 var specRoutes = map[string]string{
 	"/api/v1/milpacs/ranks": "/api/v1/milpacs/ranks",
+	// Reference lists (#128): position groups and the AWOL list.
+	"/api/v1/milpacs/position/groups": "/api/v1/milpacs/position/groups",
+	"/api/v1/milpacs/awol":            "/api/v1/milpacs/awol",
+	// Position search (#128): happy (%20-encoded title), empty result
+	// (frozen #137 behavior), multi-segment (the ** glob form an OpenAPI
+	// template cannot express — classified to the canonical template so the
+	// observed RESPONSE still validates; the contract suite carries the
+	// request-side carve-out, templateUnmatchableCases), trailing slash
+	// (empty query, the handler's 400).
+	"/api/v1/milpacs/position/search/Regimental%20Technical%20Aide": "/api/v1/milpacs/position/search/{positionQuery}",
+	"/api/v1/milpacs/position/search/squad%20leader":                "/api/v1/milpacs/position/search/{positionQuery}",
+	"/api/v1/milpacs/position/search/Platoon/Leader":                "/api/v1/milpacs/position/search/{positionQuery}",
+	"/api/v1/milpacs/position/search/":                              "/api/v1/milpacs/position/search/{positionQuery}",
 	// Tickets (#129): categories, by id (happy/not-found/parse-error), by
 	// ref (happy/not-found), messages (happy/page-two/parse-error), list —
 	// the list path also carries the 401-tier battery cases (auth runs

@@ -24,6 +24,91 @@ func getPositionGroups(ds datastores.Datastore) http.Handler {
 	})
 }
 
+// searchByPosition serves GET /api/v1/milpacs/position/search/{position_query...}:
+// lite profiles whose position titles match the query (SQL LIKE substring,
+// datastore-side). The legacy route was the gateway's multi-segment glob
+// {position_query=**}; the ServeMux "..." wildcard reproduces it — slashes
+// inside the query reach the handler (golden position/search_multi_segment),
+// and the bare trailing-slash form binds the empty query the handler rejects
+// (golden position/search_trailing_slash, message frozen from the old
+// handler, servers/grpc SearchByPosition).
+//
+// DELIBERATE BREAK (PRD #112, issue #128): the query reaches the handler
+// STANDARD-decoded (r.PathValue — net/http's per-segment unescaping), not
+// through the legacy gateway's own ** percent-decoding. The recorded forms
+// (%20 → space) decode identically; only exotic encodings diverge.
+//
+// Empty-result behavior is FROZEN AS-IS: plausible queries with no rows are
+// {"profiles":{}} with 200, never 404 (golden position/search_empty_result;
+// whether that's a bug is #137, outside this program).
+func searchByPosition(ds datastores.Datastore) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.PathValue("position_query")
+		if query == "" {
+			// The ** glob matched the empty segment and the old handler
+			// rejected the proto zero value. Message frozen.
+			writeError(w, r, codeInvalidArgument, "position query cannot be empty")
+			return
+		}
+		roster, err := ds.FindProfilesByPosition(query)
+		if err != nil {
+			writeError(w, r, codeInternal, "error searching profiles by position: %v", err)
+			return
+		}
+		if roster == nil {
+			// Datastore invariant violated (non-nil roster on nil error —
+			// datastores.Mysql always allocates): unreachable through the real
+			// datastore, guarded so a future bug is a clean 500, not a
+			// fabricated empty 200.
+			writeError(w, r, codeInternal, "datastore returned no roster")
+			return
+		}
+		writeJSON(w, r, liteRosterFromProto(roster))
+	})
+}
+
+// liteRosterFromProto maps the datastore's proto-typed lite roster to the
+// wire type. Allocation discipline: the profiles map is always allocated
+// ({} on the wire, never null); unset nested messages stay nil (null on the
+// wire). keycloakId is dropped — the wire type never had the field
+// (documented break).
+func liteRosterFromProto(in *proto.LiteRoster) *types.LiteRoster {
+	out := &types.LiteRoster{Profiles: make(map[uint64]*types.LiteProfile, len(in.GetProfiles()))}
+	for id, p := range in.GetProfiles() {
+		lp := &types.LiteProfile{
+			RealName:          p.GetRealName(),
+			UniformUrl:        p.GetUniformUrl(),
+			Roster:            types.RosterType(p.GetRoster()),
+			Secondaries:       make([]*types.Position, 0, len(p.GetSecondaries())),
+			JoinDate:          p.GetJoinDate(),
+			PromotionDate:     p.GetPromotionDate(),
+			DiscordId:         p.GetDiscordId(),
+			AwardDate:         p.GetAwardDate(),
+			RecordDate:        p.GetRecordDate(),
+			LastForumPostDate: p.GetLastForumPostDate(),
+			Mos:               p.GetMos(),
+			ConsoleGamertag:   p.GetConsoleGamertag(),
+		}
+		if u := p.GetUser(); u != nil {
+			lp.User = &types.User{UserId: u.GetUserId(), Username: u.GetUsername()}
+		}
+		if rk := p.GetRank(); rk != nil {
+			lp.Rank = &types.Rank{
+				RankShort:    rk.GetRankShort(),
+				RankFull:     rk.GetRankFull(),
+				RankImageUrl: rk.GetRankImageUrl(),
+				RankId:       rk.GetRankId(),
+			}
+		}
+		lp.Primary = positionFromProto(p.GetPrimary())
+		for _, s := range p.GetSecondaries() {
+			lp.Secondaries = append(lp.Secondaries, positionFromProto(s))
+		}
+		out.Profiles[id] = lp
+	}
+	return out
+}
+
 // positionGroupsFromProto maps the datastore's proto-typed rows to the wire
 // types. The mapping layer disappears at cutover (#134); until then each
 // handler owns its map — and the allocation discipline: empty collections are

@@ -109,6 +109,11 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
 	handle(mux, "GET /api/v1/milpacs/position/groups", "read", getPositionGroups(ds))
 	handle(mux, "GET /api/v1/milpacs/awol", "read", getAwol(ds))
+	// The "..." wildcard is the legacy gateway's {position_query=**} glob:
+	// multi-segment queries and the bare trailing-slash form (empty query,
+	// handler 400) both route here. /position/groups wins over it on
+	// specificity, never by registration order.
+	handle(mux, "GET /api/v1/milpacs/position/search/{position_query...}", "read", searchByPosition(ds))
 	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", getProfileByID(ds))
 	handle(mux, "GET /api/v1/milpacs/profile/username/{username}", "read", getProfileByUsername(ds))
 	// Historical path prefix: singular "milpac" on the connected-account
