@@ -170,10 +170,11 @@ INSERT INTO xf_phrase (language_id, title, phrase_text) VALUES
   (0, 'nf_tickets_ticket_status_no_id', 'edge: no trailing id');
 
 -- Tickets span categories 1/2/3, statuses 1/2/3, all three states, and
--- include one deleted (hidden) ticket. last_modified_date strictly
--- descends with ticket_id ascending so cursor pagination is exercised
--- against a deterministic order; tickets 6 and 7 share a
--- last_modified_date to exercise the tuple-comparison tie-break.
+-- include one deleted (hidden) ticket. last_modified_date descends
+-- (non-strictly) with ticket_id ascending so cursor pagination is
+-- exercised against a deterministic order; tickets 6 and 7 deliberately
+-- share a value to exercise the tuple-comparison tie-break (pinned by
+-- TestFixtures_TicketCursorOrderingInvariant).
 INSERT INTO xf_nf_tickets_ticket
   (ticket_id, ticket_ref, title, user_id, username, user_name, user_email, password,
    start_date, first_message_id, first_message_date, priority, status_id, ticket_state,

@@ -382,6 +382,55 @@ func TestFixtures_TicketsSpanCategoriesAndStatuses(t *testing.T) {
 	}
 }
 
+// Cursor pagination orders by (last_modified_date DESC, ticket_id) with
+// a tuple comparison for the tie-break. The fixtures promise a
+// deterministic shape for that: last_modified_date descends
+// (non-strictly) as ticket_id ascends, with exactly one deliberate tie
+// — tickets 6 and 7 — so the tie-break path is actually exercised.
+func TestFixtures_TicketCursorOrderingInvariant(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	rows, err := db.Query(
+		`SELECT ticket_id, last_modified_date FROM xf_nf_tickets_ticket ORDER BY ticket_id`,
+	)
+	if err != nil {
+		t.Fatalf("reading tickets: %v", err)
+	}
+	defer rows.Close()
+
+	type row struct{ id, modified uint64 }
+	var tickets []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.modified); err != nil {
+			t.Fatalf("scanning ticket: %v", err)
+		}
+		tickets = append(tickets, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterating tickets: %v", err)
+	}
+	if len(tickets) < 2 {
+		t.Fatalf("expected multiple seeded tickets, got %d", len(tickets))
+	}
+
+	var ties [][2]uint64
+	for i := 1; i < len(tickets); i++ {
+		prev, cur := tickets[i-1], tickets[i]
+		if cur.modified > prev.modified {
+			t.Errorf("last_modified_date must descend (non-strictly) as ticket_id ascends: ticket %d (%d) > ticket %d (%d)",
+				cur.id, cur.modified, prev.id, prev.modified)
+		}
+		if cur.modified == prev.modified {
+			ties = append(ties, [2]uint64{prev.id, cur.id})
+		}
+	}
+
+	if len(ties) != 1 || ties[0] != [2]uint64{6, 7} {
+		t.Errorf("expected exactly one last_modified_date tie, between tickets 6 and 7 (the tuple-comparison tie-break fixture), got %v", ties)
+	}
+}
+
 // Every ticket must resolve its reference-cached names: status,
 // priority and prefix phrases, plus its category row. Messages must
 // include a hidden one (message_state filter), and participants and
