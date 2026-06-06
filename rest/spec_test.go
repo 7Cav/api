@@ -5,8 +5,9 @@ package rest_test
 // response (not the committed golden — contract/spec_test.go already covers
 // those) is validated against the document. Today that means the ranks
 // operation, the four profile lookup operations (id, username, discord,
-// gamertag — #126), and all five tickets operations (#129) — the remaining
-// operations are witnessed once their routes land (#127–#128). Same
+// gamertag — #126), all five tickets operations (#129), and the three roster
+// operations (full/lite/S1 uniforms — #127) — the remaining operations are
+// witnessed once their routes land (#128). Same
 // non-vacuousness rules as the contract replay loop: the observed status
 // must be EXPLICITLY documented on the operation, a JSON response requires
 // an application/json schema to validate against, and every implemented
@@ -77,7 +78,26 @@ var specRoutes = map[string]string{
 	// Gamertag lookup: happy, not-found.
 	"/api/v1/milpac/gamertag/CavGamer77": "/api/v1/milpac/gamertag/{gamertag}",
 	"/api/v1/milpac/gamertag/GhostTag":   "/api/v1/milpac/gamertag/{gamertag}",
-	"/api/v1/does/not/exist":             "", // off-spec: unknown-path tier (mux behavior, not an operation)
+	// Full roster (#127): both enum path forms (name/number), empty roster,
+	// zero enum under both forms, bogus literal, injected outage — the
+	// unknown-query case's base path is the by-name happy path.
+	"/api/v1/roster/ROSTER_TYPE_COMBAT":      "/api/v1/roster/{roster}",
+	"/api/v1/roster/1":                       "/api/v1/roster/{roster}",
+	"/api/v1/roster/ROSTER_TYPE_RESERVE":     "/api/v1/roster/{roster}",
+	"/api/v1/roster/ROSTER_TYPE_UNSPECIFIED": "/api/v1/roster/{roster}",
+	"/api/v1/roster/0":                       "/api/v1/roster/{roster}",
+	"/api/v1/roster/IMAGINARY_ROSTER":        "/api/v1/roster/{roster}",
+	"/api/v1/roster/ROSTER_TYPE_ARLINGTON":   "/api/v1/roster/{roster}",
+	// Lite roster: name/number forms, empty roster, zero enum.
+	"/api/v1/roster/ROSTER_TYPE_COMBAT/lite":      "/api/v1/roster/{roster}/lite",
+	"/api/v1/roster/1/lite":                       "/api/v1/roster/{roster}/lite",
+	"/api/v1/roster/2/lite":                       "/api/v1/roster/{roster}/lite",
+	"/api/v1/roster/ROSTER_TYPE_UNSPECIFIED/lite": "/api/v1/roster/{roster}/lite",
+	// S1 uniforms: name/number forms, zero enum.
+	"/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT": "/api/v1/s1/uniforms/{roster}",
+	"/api/v1/s1/uniforms/1":                  "/api/v1/s1/uniforms/{roster}",
+	"/api/v1/s1/uniforms/0":                  "/api/v1/s1/uniforms/{roster}",
+	"/api/v1/does/not/exist":                 "", // off-spec: unknown-path tier (mux behavior, not an operation)
 }
 
 func loadSpecModel(t *testing.T) *v3.Document {
