@@ -97,10 +97,38 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", listCategories(ds, rc))
 	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", getTicketById(ds, rc))
 	handle(mux, "GET /api/v1/tickets/ref/{ticket_ref}", "read:tickets", getTicketByRef(ds, rc))
+	mux.Handle("GET /api/v1/tickets/{ticket_id}/{sub}", ticketSubResource(ds))
 
 	mux.HandleFunc("/", fallback(mux))
 
 	return mux
+}
+
+// ticketSubResource dispatches GET /api/v1/tickets/{ticket_id}/{sub} — the
+// registration shape for the messages route. ServeMux cannot register
+// {ticket_id}/messages directly: it conflicts with ref/{ticket_ref} (the two
+// overlap at /tickets/ref/messages and neither is more specific, a
+// registration panic). ref/{ticket_ref} IS more specific than
+// {ticket_id}/{sub}, so registering the wildcard keeps the ref route winning
+// all of /tickets/ref/* — matching the old gateway, where
+// /tickets/ref/messages is a by-ref lookup of the ref "messages". This
+// dispatcher then narrows the wildcard itself:
+//
+//   - sub == "messages" → the scope-gated messages handler (requireScope
+//     applied HERE because handle() cannot register this route — the scope
+//     gate stays explicit at the registration site);
+//   - anything else → the JSON 404, scope-INDEPENDENT, exactly like the mux
+//     fallback for paths no route pattern matches (the old stack 404s these
+//     without consulting scopes either).
+func ticketSubResource(ds datastores.Datastore) http.Handler {
+	messages := requireScope("read:tickets", listTicketMessages(ds))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("sub") != "messages" {
+			notFound(w, r)
+			return
+		}
+		messages.ServeHTTP(w, r)
+	})
 }
 
 // handle registers one public route: a method-qualified mux pattern, the

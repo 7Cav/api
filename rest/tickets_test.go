@@ -63,6 +63,47 @@ func TestNewStack_ListCategoriesOutageIsInternalJSON(t *testing.T) {
 	assert.JSONEq(t, `{"code":13,"message":"list ticket categories: unexpected EOF","details":[]}`, rr.Body.String())
 }
 
+// An outage on the messages list: "list ticket messages: %v".
+func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
+	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32) ([]*proto.Message, string, bool, error) {
+		return nil, "", false, io.ErrUnexpectedEOF
+	}}, nil)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets/42/messages")
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.JSONEq(t, `{"code":13,"message":"list ticket messages: unexpected EOF","details":[]}`, rr.Body.String())
+}
+
+// --- /tickets subtree routing edges (unpinned by goldens, frozen here) -----
+
+// /tickets/ref/messages is a by-ref lookup of the ref "messages" — the ref
+// pattern is more specific than the {ticket_id}/{sub} dispatcher and keeps
+// winning all of /tickets/ref/*, exactly like the old gateway's route order.
+func TestNewStack_TicketsRefMessagesIsByRefLookup(t *testing.T) {
+	h := newStack(t)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets/ref/messages")
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	assert.JSONEq(t, `{"code":5,"message":"ticket \"messages\" not found","details":[]}`, rr.Body.String())
+}
+
+// An unknown sub-resource under a ticket id is the JSON 404 — and it stays a
+// 404 (not a 403) for callers without read:tickets, like every other unknown
+// path: route-shape dispatch precedes the scope gate.
+func TestNewStack_UnknownTicketSubResourceIsJSON404(t *testing.T) {
+	h := newStack(t)
+
+	for _, key := range []string{"cav7_ticketskey", "cav7_readkey"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets/42/bogus", nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusNotFound, rr.Code, key)
+		assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String(), key)
+	}
+}
+
 // An empty category tree must serialize as {"categories":[]} — allocation
 // discipline the goldens only witness populated.
 func TestNewStack_EmptyCategoriesIsEmptyArray(t *testing.T) {

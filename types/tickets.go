@@ -73,6 +73,17 @@ type GetTicketResponse struct {
 	TotalMessageCount uint32     `json:"totalMessageCount"`
 }
 
+// ListTicketMessagesResponse is the GET /api/v1/tickets/{ticketId}/messages
+// envelope: one page of the thread, position ascending. NextCursor is the
+// opaque cursor meaning "next position to include" (inclusive lower bound,
+// position 0 reachable); empty when HasMore is false. Messages must be
+// allocated even when empty.
+type ListTicketMessagesResponse struct {
+	Messages   []*Message `json:"messages"`
+	NextCursor string     `json:"nextCursor"`
+	HasMore    bool       `json:"hasMore"`
+}
+
 // Category is one entry in the ticket category reference tree. Served by
 // GET /api/v1/tickets/categories; reference data for the categoryId filter
 // on the list route.

@@ -89,6 +89,44 @@ func parseTicketID(raw string) (uint32, error) {
 	return uint32(id), nil
 }
 
+// listTicketMessages serves GET /api/v1/tickets/{ticket_id}/messages: one
+// page of the thread, position ascending, golden-pinned by
+// tickets/messages_*. The cursor is opaque, meaning "next position to
+// include" (inclusive lower bound — position 0 reachable); an unknown ticket
+// id yields an empty page, not 404 (frozen). Error message strings frozen
+// from the old stack (servers/grpc ListTicketMessages).
+func listTicketMessages(ds datastores.Datastore) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ticketID, err := parseTicketID(r.PathValue("ticket_id"))
+		if err != nil {
+			writeError(w, r, codeInvalidArgument, "type mismatch, parameter: ticket_id, error: %v", err)
+			return
+		}
+		b := newQueryBinder(r.URL.Query())
+		perPage := b.uint32Field("per_page")
+		afterCursor := b.stringField("after_cursor")
+		includeHidden := b.boolField("include_hidden")
+		if b.err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", b.err)
+			return
+		}
+		msgs, next, more, err := ds.ListTicketMessages(r.Context(), ticketID, afterCursor, perPage, includeHidden)
+		if err != nil {
+			if errors.Is(err, datastores.ErrInvalidCursor) {
+				writeError(w, r, codeInvalidArgument, "invalid after_cursor")
+				return
+			}
+			writeError(w, r, codeInternal, "list ticket messages: %v", err)
+			return
+		}
+		writeJSON(w, r, types.ListTicketMessagesResponse{
+			Messages:   messagesFromProto(msgs),
+			NextCursor: next,
+			HasMore:    more,
+		})
+	})
+}
+
 // listCategories serves GET /api/v1/tickets/categories: the category
 // reference tree, golden-pinned by tickets/categories. Error message string
 // frozen from the old handler (servers/grpc ListCategories).

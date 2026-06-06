@@ -50,6 +50,9 @@ var specRoutes = map[string]string{
 	"/api/v1/tickets/abc":          "/api/v1/tickets/{ticketId}",
 	"/api/v1/tickets/ref/MF1UI9HE": "/api/v1/tickets/ref/{ticketRef}",
 	"/api/v1/tickets/ref/NOPE9999": "/api/v1/tickets/ref/{ticketRef}",
+	"/api/v1/tickets/42/messages":  "/api/v1/tickets/{ticketId}/messages",
+	"/api/v1/tickets/555/messages": "/api/v1/tickets/{ticketId}/messages",
+	"/api/v1/tickets/abc/messages": "/api/v1/tickets/{ticketId}/messages",
 	// The 401-tier battery cases replay against these two paths before their
 	// routes are implemented (auth runs before routing, so the observed 401s
 	// are route-independent); the operations document 401 explicitly.
