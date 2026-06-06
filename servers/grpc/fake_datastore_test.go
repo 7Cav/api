@@ -81,7 +81,7 @@ func (f *fakeDatastore) FindProfileByGamertag(g string) (*proto.Profile, error) 
 	return f.findProfileByGamertag(g)
 }
 
-// Milpacs methods this PR does not exercise — stay panicking.
+// Milpacs methods these tests do not exercise — stay panicking.
 func (f *fakeDatastore) FindProfilesByPosition(string) (*proto.LiteRoster, error) { panic("unused") }
 func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error)             { panic("unused") }
 func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error)   { panic("unused") }

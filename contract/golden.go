@@ -76,8 +76,8 @@ type Case struct {
 }
 
 // contractHeaders is the allowlist of headers recorded in goldens. Everything
-// else (Date, Content-Length, X-Cache, Grpc-Metadata-*, transfer encodings)
-// is infrastructure of the current stack, not contract:
+// else (Date, Content-Length, Grpc-Metadata-*, transfer encodings — and
+// historically X-Cache, gone at #123) is infrastructure, not contract:
 //
 //   - Content-Type distinguishes the JSON surface from the plain-text 401
 //     tier pinned by #106.

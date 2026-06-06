@@ -38,7 +38,8 @@ var (
 //
 // Differences from production, all behavior-neutral by construction:
 //   - the datastore is the seeded fake (no MySQL),
-//   - SENTRY_DSN is unset, so both sentry layers are pass-throughs,
+//   - SENTRY_DSN is unset (TestMain enforces it), so both sentry layers are
+//     pass-throughs,
 //   - the TicketsService reference cache is nil — the fake never touches it.
 //
 // There is no Redis anywhere: the response cache was deleted at Phase 2
@@ -46,6 +47,7 @@ var (
 // serves with no cache backend at all — exactly like production.
 func TestMain(m *testing.M) {
 	quietProductionLoggers()
+	os.Unsetenv("SENTRY_DSN") // make the pass-through claim above true by construction
 	stackHandler, stackErr = mountCurrentStack()
 	os.Exit(m.Run())
 }

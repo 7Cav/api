@@ -126,10 +126,12 @@ func (server *MicroServer) Start() {
 
 	//create TLS listener for TCP connections
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
-	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
-
 	if err != nil {
-		Error.Fatalf("Failed to listen on %s: %v", server.addr, err)
+		Error.Fatalf("Failed to listen on 0.0.0.0:10000: %v", err)
+	}
+	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
+	if err != nil {
+		Error.Fatalf("Failed to listen on 0.0.0.0:11000: %v", err)
 	}
 
 	ds := setupDatasource()

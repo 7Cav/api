@@ -21,7 +21,6 @@ package gateway
 import (
 	"compress/gzip"
 	"context"
-	"fmt"
 	"io/fs"
 	"log"
 	"mime"
@@ -102,7 +101,10 @@ func compressionMiddleware(next http.Handler) http.Handler {
 			gz := gzip.NewWriter(w)
 			defer func() {
 				if err := gz.Close(); err != nil {
-					fmt.Printf("Failed to close gzip writer: %v\n", err)
+					// A Close failure means the gzip trailer never reached the
+					// client — a corrupt body behind an already-written status,
+					// invisible to the sentry layer outside this one.
+					Error.Printf("gzip close failed for %s %s (response likely truncated): %v", r.Method, r.URL.Path, err)
 				}
 			}()
 			gzw := &gzipResponseWriter{ResponseWriter: w, Writer: gz}
@@ -130,8 +132,9 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // response status. No SENTRY_DSN → it is a pass-through.
 //
 // Phase 2 de-cache (#123/#124): the response cache is gone — middleware out
-// of the chain at #123 (with it, the X-Cache header, the enumerated break),
-// the cache package and Redis deleted at #124. See ADR 0003 (superseded).
+// of the chain at #123 (taking the X-Cache header with it — the PRD's
+// enumerated break), the cache package and Redis deleted at #124. See ADR
+// 0003 (superseded).
 //
 // Sentry-inside-auth also means auth-layer infrastructure failures (e.g. a
 // datastore outage producing mass 401s) generate no Sentry events by design —
