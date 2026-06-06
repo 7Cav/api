@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
@@ -250,6 +251,39 @@ func TestMetrics_ExoticMethodClampsToOther(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A panicking handler must not bypass metering: recording is deferred, so the
+// request still increments the counter — as status="500" when nothing was
+// written (the dashboard-honesty case: panic-per-request must not flatline
+// error rates while the service burns, #92). The panic itself must propagate
+// unchanged so net/http (and later #132's recovery layer) sees identical
+// semantics.
+func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
+	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+		panic("datastore exploded")
+	}})
+	labels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "GET",
+		"status": "500",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	panicked := func() (p any) {
+		defer func() { p = recover() }()
+		h.ServeHTTP(rr, req)
+		return nil
+	}()
+	require.Equal(t, "datastore exploded", panicked, "the panic must propagate past the metrics layer")
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, `a panicked never-written response must meter as status="500"`)
 }
 
 // The exposition carries the default Go runtime and process collectors

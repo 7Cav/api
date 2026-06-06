@@ -137,7 +137,9 @@ func fallback(mux *http.ServeMux) http.HandlerFunc {
 // sentryMiddleware is the documented extension point for #132 (full Sentry
 // wiring): panic-recovery middleware at the front of the chain, with 5xx
 // reports emitted from the writeError choke point. Pass-through until that
-// slice lands.
+// slice lands. Note for #132: metricsMiddleware already meters panics as
+// status="500" and re-raises — recovery must stay OUTSIDE metrics or panicked
+// requests vanish from the counters.
 func sentryMiddleware(next http.Handler) http.Handler {
 	return next
 }

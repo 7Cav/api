@@ -133,14 +133,31 @@ func metricsMiddleware(next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w}
 		start := time.Now()
 
+		// Recording is DEFERRED so a panicking handler still meters —
+		// otherwise panic-per-request reads as a flat error rate while the
+		// service burns (#92). A panicked request that never wrote a response
+		// has sw.code == 0, which status() reports as the implied 200; label
+		// it 500 instead (what net/http will actually answer). The panic is
+		// re-raised AFTER recording (the inner defer fires as this deferred
+		// func returns) so net/http — and #132's recovery layer once it lands
+		// outside this one — sees semantics unchanged.
+		defer func() {
+			status := sw.status()
+			if p := recover(); p != nil {
+				if sw.code == 0 {
+					status = http.StatusInternalServerError
+				}
+				defer panic(p)
+			}
+			requestsTotal.WithLabelValues(
+				labels.route, methodLabel(r.Method), strconv.Itoa(status), labels.keyID,
+			).Inc()
+			requestDuration.WithLabelValues(labels.route, methodLabel(r.Method)).
+				Observe(time.Since(start).Seconds())
+		}()
+
 		next.ServeHTTP(sw, r.WithContext(
 			context.WithValue(r.Context(), metricLabelsContextKey{}, labels)))
-
-		requestsTotal.WithLabelValues(
-			labels.route, methodLabel(r.Method), strconv.Itoa(sw.status()), labels.keyID,
-		).Inc()
-		requestDuration.WithLabelValues(labels.route, methodLabel(r.Method)).
-			Observe(time.Since(start).Seconds())
 	})
 }
 
