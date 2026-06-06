@@ -134,7 +134,8 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 //
 // Sentry-inside-auth also means auth-layer infrastructure failures (e.g. a
 // datastore outage producing mass 401s) generate no Sentry events by design —
-// accepted for Phase 0, revisit in the Phase 3 first-class wiring (#130–#132).
+// accepted for Phase 0, revisit in the Phase 3 observability slices
+// (#130–#132).
 //
 // Package-level (not inlined in Server) so the chain order is a tested
 // contract — see the buildAPIHandler tests — rather than an untestable
