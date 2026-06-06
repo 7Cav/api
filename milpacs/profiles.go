@@ -28,10 +28,10 @@ import (
 )
 
 type Profile struct {
-	RelationId           uint64 `gorm:"primaryKey"`
-	RosterId             uint64
-	UserID               uint64
-	Username             string
+	RelationId uint64 `gorm:"primaryKey"`
+	RosterId   uint64
+	UserID     uint64
+	Username   string
 	//RealName             string 	RealName is now a custom field
 	PositionID           uint64
 	SecondaryPositionIds string
@@ -59,7 +59,7 @@ func (profile *Profile) UniformUrl() string {
 }
 
 type CustomFields struct {
-	RealName		string `json:"realName"`
+	RealName        string `json:"realName"`
 	JoinDate        string `json:"joinDate"`
 	PromoDate       string `json:"promoDate"`
 	ConsoleGamertag string `json:"consoleGamertag"`
