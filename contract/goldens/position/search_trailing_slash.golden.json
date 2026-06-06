@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "position query cannot be empty"
+  },
+  "case": "position/search_trailing_slash",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Bare search path: the ** glob matches the empty segment and the handler rejects it — 'position query cannot be empty'.",
+  "path": "/api/v1/milpacs/position/search/",
+  "status": 400
+}

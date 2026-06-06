@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "cannot request null roster type"
+  },
+  "case": "roster/unspecified_by_number",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Numeric zero: same InvalidArgument.",
+  "path": "/api/v1/roster/0",
+  "status": 400
+}

@@ -1,0 +1,14 @@
+{
+  "auth": "read",
+  "body": {
+    "profiles": {}
+  },
+  "case": "roster/lite_reserve_empty",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Empty lite roster: {\"profiles\":{}}.",
+  "path": "/api/v1/roster/2/lite",
+  "status": 200
+}

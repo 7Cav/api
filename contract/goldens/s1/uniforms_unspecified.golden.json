@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "cannot request null roster type"
+  },
+  "case": "s1/uniforms_unspecified",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Zero enum on the uniforms binding.",
+  "path": "/api/v1/s1/uniforms/0",
+  "status": 400
+}

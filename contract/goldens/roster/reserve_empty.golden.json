@@ -1,0 +1,14 @@
+{
+  "auth": "read",
+  "body": {
+    "profiles": {}
+  },
+  "case": "roster/reserve_empty",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Roster with no members: {\"profiles\":{}}.",
+  "path": "/api/v1/roster/ROSTER_TYPE_RESERVE",
+  "status": 200
+}

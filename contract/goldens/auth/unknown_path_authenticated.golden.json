@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 5,
+    "details": [],
+    "message": "Not Found"
+  },
+  "case": "auth/unknown_path_authenticated",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Unknown path under the API prefix with valid auth: JSON 404 body from the gateway mux.",
+  "path": "/api/v1/does/not/exist",
+  "status": 404
+}

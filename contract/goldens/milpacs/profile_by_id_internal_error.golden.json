@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 13,
+    "details": [],
+    "message": "fetch profile by user id: simulated datastore outage"
+  },
+  "case": "milpacs/profile_by_id_internal_error",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Datastore failure: Internal JSON with the wrapped error message leaked. Frozen.",
+  "path": "/api/v1/milpacs/profile/id/777",
+  "status": 500
+}

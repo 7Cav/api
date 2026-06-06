@@ -1,0 +1,56 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": false,
+    "messages": [
+      {
+        "attachCount": 0,
+        "editCount": 0,
+        "lastEditDate": 0,
+        "message": "[B]Enlistment[/B] request — I'd like to join the 7th Cavalry & start ASAP <o7>",
+        "messageDate": 1748400000,
+        "messageId": 9001,
+        "messageState": "visible",
+        "position": 0,
+        "ticketId": 42,
+        "userId": 8,
+        "username": "John.Doe"
+      },
+      {
+        "attachCount": 1,
+        "editCount": 1,
+        "lastEditDate": 1748451000,
+        "message": "Welcome aboard — processing now.",
+        "messageDate": 1748450000,
+        "messageId": 9002,
+        "messageState": "visible",
+        "position": 1,
+        "ticketId": 42,
+        "userId": 3,
+        "username": "Jarvis.A"
+      },
+      {
+        "attachCount": 0,
+        "editCount": 0,
+        "lastEditDate": 0,
+        "message": "Thank you!",
+        "messageDate": 1748480000,
+        "messageId": 9003,
+        "messageState": "visible",
+        "position": 2,
+        "ticketId": 42,
+        "userId": 8,
+        "username": "John.Doe"
+      }
+    ],
+    "nextCursor": ""
+  },
+  "case": "tickets/messages_default",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Full thread, position ascending; BBCode and &/<> characters unescaped in JSON strings.",
+  "path": "/api/v1/tickets/42/messages",
+  "status": 200
+}

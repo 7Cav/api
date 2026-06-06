@@ -1,0 +1,13 @@
+{
+  "auth": "invalid-key",
+  "bodyText": "Unauthorized\n",
+  "case": "auth/tickets_invalid_key",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "Tickets surface, unknown key: generic 'Unauthorized'.",
+  "path": "/api/v1/tickets",
+  "status": 401
+}

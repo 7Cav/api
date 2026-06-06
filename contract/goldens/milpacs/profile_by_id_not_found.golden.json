@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 5,
+    "details": [],
+    "message": "no profile found for user ID: 999"
+  },
+  "case": "milpacs/profile_by_id_not_found",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "NotFound: handler-specific message string, verbatim.",
+  "path": "/api/v1/milpacs/profile/id/999",
+  "status": 404
+}

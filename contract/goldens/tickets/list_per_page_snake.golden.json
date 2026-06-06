@@ -1,0 +1,62 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": true,
+    "nextCursor": "MTc0ODcwMDAwMDo0NA",
+    "tickets": [
+      {
+        "assignedUserId": 3,
+        "assignedUsername": "Jarvis.A",
+        "categoryAncestorIds": [
+          1
+        ],
+        "categoryId": 5,
+        "categoryTitle": "S1 Personnel",
+        "customFields": {
+          "billet": "Rifleman",
+          "department": "S1"
+        },
+        "discussionState": "visible",
+        "forumUrl": "https://7cav.us/tickets/ZZTOP44Q/",
+        "lastMessageDate": 1748699000,
+        "lastMessageUserId": 3,
+        "lastMessageUsername": "Jarvis.A",
+        "lastModifiedDate": 1748700000,
+        "participants": [
+          {
+            "lastReadDate": 1748690000,
+            "userId": 8
+          },
+          {
+            "lastReadDate": 1748695000,
+            "userId": 3
+          }
+        ],
+        "prefixId": 3,
+        "prefixName": "Transfer",
+        "priorityId": 2,
+        "priorityName": "Normal",
+        "replyCount": 1,
+        "startDate": 1748600000,
+        "starterUserId": 8,
+        "starterUsername": "John.Doe",
+        "statusId": 2,
+        "statusName": "In Progress",
+        "ticketId": 44,
+        "ticketLocked": false,
+        "ticketRef": "ZZTOP44Q",
+        "ticketState": "open",
+        "title": "Transfer request: Bravo to Alpha",
+        "totalMessageCount": 2
+      }
+    ]
+  },
+  "case": "tickets/list_per_page_snake",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "snake_case query key; page 1 with next_cursor and has_more true.",
+  "path": "/api/v1/tickets?per_page=1",
+  "status": 200
+}

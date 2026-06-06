@@ -1,0 +1,13 @@
+{
+  "auth": "none",
+  "bodyText": "Unauthorized: expected 'Authorization: Bearer <key>' header\n",
+  "case": "auth/unknown_path_unauthenticated",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "Auth runs before routing: unknown path without auth is the 401 tier, not 404.",
+  "path": "/api/v1/does/not/exist",
+  "status": 401
+}

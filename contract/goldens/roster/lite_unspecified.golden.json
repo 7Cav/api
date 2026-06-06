@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "cannot request null roster type"
+  },
+  "case": "roster/lite_unspecified",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Zero enum on the lite binding.",
+  "path": "/api/v1/roster/ROSTER_TYPE_UNSPECIFIED/lite",
+  "status": 400
+}

@@ -1,0 +1,42 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "categories": [
+      {
+        "categoryId": 1,
+        "depth": 0,
+        "description": "Enlistment & recruiting questions",
+        "displayOrder": 10,
+        "parentCategoryId": 0,
+        "ticketCount": 120,
+        "title": "Recruiting"
+      },
+      {
+        "categoryId": 5,
+        "depth": 1,
+        "description": "",
+        "displayOrder": 20,
+        "parentCategoryId": 1,
+        "ticketCount": 34,
+        "title": "S1 Personnel"
+      },
+      {
+        "categoryId": 7,
+        "depth": 0,
+        "description": "Teamspeak, forum & game-server help",
+        "displayOrder": 30,
+        "parentCategoryId": 0,
+        "ticketCount": 78,
+        "title": "S6 Technical Support"
+      }
+    ]
+  },
+  "case": "tickets/categories",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Category reference tree; literal 'categories' segment wins over {ticket_id}.",
+  "path": "/api/v1/tickets/categories",
+  "status": 200
+}

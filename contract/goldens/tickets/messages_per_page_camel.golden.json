@@ -1,0 +1,30 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": true,
+    "messages": [
+      {
+        "attachCount": 0,
+        "editCount": 0,
+        "lastEditDate": 0,
+        "message": "[B]Enlistment[/B] request — I'd like to join the 7th Cavalry & start ASAP <o7>",
+        "messageDate": 1748400000,
+        "messageId": 9001,
+        "messageState": "visible",
+        "position": 0,
+        "ticketId": 42,
+        "userId": 8,
+        "username": "John.Doe"
+      }
+    ],
+    "nextCursor": "MQ"
+  },
+  "case": "tickets/messages_per_page_camel",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "camelCase spelling: identical payload to messages_per_page_snake.",
+  "path": "/api/v1/tickets/42/messages?perPage=1",
+  "status": 200
+}

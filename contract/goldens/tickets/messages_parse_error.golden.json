@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"abc\": invalid syntax"
+  },
+  "case": "tickets/messages_parse_error",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Non-numeric id on the messages binding: leaked parse-error text.",
+  "path": "/api/v1/tickets/abc/messages",
+  "status": 400
+}

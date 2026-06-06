@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": false,
+    "messages": [],
+    "nextCursor": ""
+  },
+  "case": "tickets/messages_unknown_ticket",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Unknown ticket id: empty page, not 404. Frozen.",
+  "path": "/api/v1/tickets/555/messages",
+  "status": 200
+}

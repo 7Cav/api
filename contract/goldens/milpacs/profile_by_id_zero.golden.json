@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "no username or user ID provided"
+  },
+  "case": "milpacs/profile_by_id_zero",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "id 0 parses but is the proto zero value: 'no username or user ID provided'.",
+  "path": "/api/v1/milpacs/profile/id/0",
+  "status": 400
+}

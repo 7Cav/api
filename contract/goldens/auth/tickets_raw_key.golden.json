@@ -1,0 +1,13 @@
+{
+  "auth": "raw-key",
+  "bodyText": "Unauthorized: expected 'Authorization: Bearer <key>' header\n",
+  "case": "auth/tickets_raw_key",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "Tickets surface, raw key: scheme-error 401.",
+  "path": "/api/v1/tickets",
+  "status": 401
+}

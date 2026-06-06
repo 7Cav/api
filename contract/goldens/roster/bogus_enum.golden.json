@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "type mismatch, parameter: roster, error: IMAGINARY_ROSTER is not valid"
+  },
+  "case": "roster/bogus_enum",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Unknown enum literal: gateway parse error leaks enum-parse text. Frozen.",
+  "path": "/api/v1/roster/IMAGINARY_ROSTER",
+  "status": 400
+}

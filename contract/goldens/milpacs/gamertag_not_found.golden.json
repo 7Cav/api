@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 5,
+    "details": [],
+    "message": "no user found for gamertag: GhostTag"
+  },
+  "case": "milpacs/gamertag_not_found",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "NotFound message names the gamertag.",
+  "path": "/api/v1/milpac/gamertag/GhostTag",
+  "status": 404
+}

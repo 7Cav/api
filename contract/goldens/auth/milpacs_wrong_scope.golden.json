@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "code": 7,
+    "details": [],
+    "message": "scope required: read"
+  },
+  "case": "auth/milpacs_wrong_scope",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Valid key lacking 'read': PermissionDenied JSON via gRPC status mapping.",
+  "path": "/api/v1/milpacs/profile/id/1",
+  "status": 403
+}

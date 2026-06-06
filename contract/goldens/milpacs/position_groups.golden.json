@@ -1,0 +1,34 @@
+{
+  "auth": "read",
+  "body": {
+    "groups": [
+      {
+        "groupDisplayOrder": 1,
+        "groupId": "9",
+        "groupTitle": "Regimental HQ",
+        "positions": [
+          {
+            "positionDisplayOrder": 3,
+            "positionId": "773",
+            "positionPossibleSecondary": false,
+            "positionTitle": "Regimental Technical Aide"
+          },
+          {
+            "positionDisplayOrder": 7,
+            "positionId": "812",
+            "positionPossibleSecondary": true,
+            "positionTitle": "S6 Web Developer"
+          }
+        ]
+      }
+    ]
+  },
+  "case": "milpacs/position_groups",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Nested groups → positions, including false booleans emitted.",
+  "path": "/api/v1/milpacs/position/groups",
+  "status": 200
+}

@@ -1,0 +1,36 @@
+{
+  "auth": "read",
+  "body": {
+    "awards": [],
+    "consoleGamertag": "CavGamer77",
+    "discordId": "",
+    "joinDate": "2026-01-15",
+    "lastForumPostDate": "",
+    "mos": "",
+    "primary": null,
+    "promotionDate": "",
+    "rank": {
+      "rankFull": "Private",
+      "rankId": "22",
+      "rankImageUrl": "https://7cav.us/data/roster_ranks/0/22.jpg",
+      "rankShort": "PVT"
+    },
+    "realName": "John Doe",
+    "records": [],
+    "roster": "ROSTER_TYPE_COMBAT",
+    "secondaries": [],
+    "uniformUrl": "https://7cav.us/data/roster_uniforms/0/2.jpg",
+    "user": {
+      "userId": "8",
+      "username": "John.Doe"
+    }
+  },
+  "case": "milpacs/profile_by_id_sparse",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Emit-everything semantics: unset nested message is null (primary), empty collections are [], unset strings are \"\", 64-bit ints are strings.",
+  "path": "/api/v1/milpacs/profile/id/2",
+  "status": 200
+}

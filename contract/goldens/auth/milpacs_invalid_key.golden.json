@@ -1,0 +1,13 @@
+{
+  "auth": "invalid-key",
+  "bodyText": "Unauthorized\n",
+  "case": "auth/milpacs_invalid_key",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "Well-formed Bearer token, unknown key: generic 'Unauthorized', leaks nothing.",
+  "path": "/api/v1/milpacs/profile/id/1",
+  "status": 401
+}

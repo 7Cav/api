@@ -1,0 +1,25 @@
+{
+  "auth": "read",
+  "body": {
+    "awols": [
+      {
+        "groupName": "Alpha Company",
+        "humanDate": "2026-05-01",
+        "milpacId": "2",
+        "postId": "445566",
+        "rankName": "Private",
+        "timestamp": "1777600000",
+        "userId": "8",
+        "username": "John.Doe"
+      }
+    ]
+  },
+  "case": "milpacs/awol",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "AWOL list; uint64 timestamp/postId/milpacId emitted as strings.",
+  "path": "/api/v1/milpacs/awol",
+  "status": 200
+}

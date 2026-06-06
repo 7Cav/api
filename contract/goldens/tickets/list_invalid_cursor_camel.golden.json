@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "invalid after_cursor"
+  },
+  "case": "tickets/list_invalid_cursor_camel",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Malformed cursor (camelCase key): InvalidArgument 'invalid after_cursor'.",
+  "path": "/api/v1/tickets?afterCursor=bogus",
+  "status": 400
+}

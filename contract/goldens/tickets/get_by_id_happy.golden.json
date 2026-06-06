@@ -1,0 +1,93 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "firstMessages": [
+      {
+        "attachCount": 0,
+        "editCount": 0,
+        "lastEditDate": 0,
+        "message": "[B]Enlistment[/B] request — I'd like to join the 7th Cavalry & start ASAP <o7>",
+        "messageDate": 1748400000,
+        "messageId": 9001,
+        "messageState": "visible",
+        "position": 0,
+        "ticketId": 42,
+        "userId": 8,
+        "username": "John.Doe"
+      },
+      {
+        "attachCount": 1,
+        "editCount": 1,
+        "lastEditDate": 1748451000,
+        "message": "Welcome aboard — processing now.",
+        "messageDate": 1748450000,
+        "messageId": 9002,
+        "messageState": "visible",
+        "position": 1,
+        "ticketId": 42,
+        "userId": 3,
+        "username": "Jarvis.A"
+      },
+      {
+        "attachCount": 0,
+        "editCount": 0,
+        "lastEditDate": 0,
+        "message": "Thank you!",
+        "messageDate": 1748480000,
+        "messageId": 9003,
+        "messageState": "visible",
+        "position": 2,
+        "ticketId": 42,
+        "userId": 8,
+        "username": "John.Doe"
+      }
+    ],
+    "ticket": {
+      "assignedUserId": 0,
+      "assignedUsername": "",
+      "categoryAncestorIds": [],
+      "categoryId": 1,
+      "categoryTitle": "Recruiting",
+      "customFields": {
+        "recruiter": "Jarvis.A"
+      },
+      "discussionState": "visible",
+      "forumUrl": "https://7cav.us/tickets/MF1UI9HE/",
+      "lastMessageDate": 1748480000,
+      "lastMessageUserId": 8,
+      "lastMessageUsername": "John.Doe",
+      "lastModifiedDate": 1748500000,
+      "participants": [
+        {
+          "lastReadDate": 1748450000,
+          "userId": 8
+        }
+      ],
+      "prefixId": 1,
+      "prefixName": "Enlistment",
+      "priorityId": 3,
+      "priorityName": "High",
+      "replyCount": 2,
+      "startDate": 1748400000,
+      "starterUserId": 8,
+      "starterUsername": "John.Doe",
+      "statusId": 1,
+      "statusName": "New",
+      "ticketId": 42,
+      "ticketLocked": false,
+      "ticketRef": "MF1UI9HE",
+      "ticketState": "open",
+      "title": "Enlistment — John.Doe",
+      "totalMessageCount": 3
+    },
+    "totalMessageCount": 3
+  },
+  "case": "tickets/get_by_id_happy",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Ticket + firstMessages + deprecated top-level totalMessageCount duplicating ticket.totalMessageCount.",
+  "path": "/api/v1/tickets/42",
+  "status": 200
+}

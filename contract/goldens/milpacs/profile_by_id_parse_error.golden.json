@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "type mismatch, parameter: user_id, error: strconv.ParseUint: parsing \"abc\": invalid syntax"
+  },
+  "case": "milpacs/profile_by_id_parse_error",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Non-numeric id: gateway type-mismatch error leaks parse-error text. Frozen.",
+  "path": "/api/v1/milpacs/profile/id/abc",
+  "status": 400
+}
