@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/testdb"
 )
 
@@ -30,8 +31,9 @@ const looseScan = "Using index for group-by"
 // hotspot. The AWOL report uses a different aggregation, pinned
 // separately below. The query stays as written: the indexed derived
 // table measured faster than a correlated rewrite on the mirror.
-// Index, don't refactor.
-const hotLastPostAggregation = `SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id`
+// Index, don't refactor. Aliases the exported const so the test
+// always EXPLAINs the exact string production executes.
+const hotLastPostAggregation = datastores.HotLastPostAggregation
 
 // groupByOptimization returns the Extra column of the EXPLAIN row for
 // the hot aggregation, which is where MariaDB reports loose index
@@ -70,7 +72,9 @@ const coveringScan = "Using index"
 // (verbatim from datastores/mysql.go FindAwol). The extra MAX(post_id)
 // disqualifies the loose index scan; instead the composite plans a
 // covering index scan — the PRD's "AWOL 4,211ms -> 198ms" keystone.
-const awolLastPostAggregation = `SELECT user_id, MAX(post_date) as date, MAX(post_id) as post_id FROM xf_post GROUP BY user_id`
+// Aliases the exported const so the test always EXPLAINs the exact
+// string production executes.
+const awolLastPostAggregation = datastores.AwolLastPostAggregation
 
 // The index script must flip the AWOL aggregation from a full table
 // scan to a covering scan of user_id_post_date. It can never plan a

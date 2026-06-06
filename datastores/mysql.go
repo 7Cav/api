@@ -563,6 +563,24 @@ func getLatestAwardDate(profile milpacs.Profile) string {
 	return time.Unix(latestTimestamp, 0).Format("2006-01-02 15:04:05")
 }
 
+// HotLastPostAggregation and AwolLastPostAggregation are the
+// derived-table bodies of the two xf_post GROUP BY hotspots (PRD #112).
+// They are exported so the EXPLAIN-plan tests in testdb/indexes_test.go
+// pin the exact strings production executes — editing a query here
+// re-points the corresponding test automatically instead of leaving it
+// green against a stale copy. The SQL is frozen per PRD #112: index,
+// don't refactor.
+const (
+	// HotLastPostAggregation feeds getLatestForumPostDates (the
+	// last-forum-post column on lite rosters and full profiles). With
+	// the user_id_post_date composite it plans a loose index scan.
+	HotLastPostAggregation = "SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id"
+	// AwolLastPostAggregation feeds FindAwol. The extra MAX(post_id)
+	// disqualifies the loose scan; the same composite instead serves a
+	// covering index scan.
+	AwolLastPostAggregation = "SELECT user_id, MAX(post_date) as date, MAX(post_id) as post_id FROM xf_post GROUP BY user_id"
+)
+
 // bear witness to my despair, as i try to optimize queries to a table with a gazillion rows
 func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]string {
 	dates := make(map[uint64]string)
@@ -574,7 +592,7 @@ func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]s
 
 	query := ds.Db.Table("xf_nf_rosters_user as milpacs").
 		Select("milpacs.user_id, posts.date").
-		Joins("LEFT JOIN (SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id) as posts ON milpacs.user_id = posts.user_id").
+		Joins("LEFT JOIN ("+HotLastPostAggregation+") as posts ON milpacs.user_id = posts.user_id").
 		Where("milpacs.user_id IN ?", getUserIDs(profiles))
 
 	if err := query.Find(&results).Error; err != nil {
@@ -663,7 +681,7 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
             posts.post_id,
             FROM_UNIXTIME(posts.date, '%Y-%m-%d') as human_date
         `).
-		Joins("LEFT JOIN (SELECT user_id, MAX(post_date) as date, MAX(post_id) as post_id FROM xf_post GROUP BY user_id) as posts ON milpacs.user_id = posts.user_id").
+		Joins("LEFT JOIN ("+AwolLastPostAggregation+") as posts ON milpacs.user_id = posts.user_id").
 		Joins("LEFT JOIN xf_user as users ON milpacs.user_id = users.user_id").
 		Joins("INNER JOIN xf_nf_rosters_rank as ranks ON milpacs.rank_id = ranks.rank_id").
 		Joins("INNER JOIN xf_nf_rosters_position position ON milpacs.position_id = position.position_id").
