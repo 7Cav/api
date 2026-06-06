@@ -4,7 +4,8 @@ import "strconv"
 
 // RosterType identifies which roster is requested. The numeric values are
 // the upstream roster_id foreign key (xf_nf_rosters_* tables) and match the
-// retired proto enum exactly; the wire form is the NAME string.
+// proto enum being retired at Phase 4 exactly; the wire form is the NAME
+// string.
 //
 // This is the worked example of the enum convention (see the package doc):
 // integer-backed named type, MarshalJSON emits the name, the zero value is
@@ -21,7 +22,7 @@ const (
 	RosterTypePastMembers RosterType = 6
 )
 
-// rosterTypeNames is the wire-name catalog. Index == enum value.
+// rosterTypeNames is the wire-name catalog, keyed by enum value.
 var rosterTypeNames = map[RosterType]string{
 	RosterTypeUnspecified: "ROSTER_TYPE_UNSPECIFIED",
 	RosterTypeCombat:      "ROSTER_TYPE_COMBAT",
