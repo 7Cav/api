@@ -23,6 +23,21 @@ func applyIndexDDL(t *testing.T, db *sql.DB) {
 // keystone (post-date aggregation 4,226ms -> 28ms on the mirror).
 const looseScan = "Using index for group-by"
 
+// hotLastPostAggregation is the derived-table body driving the
+// lite-roster last-forum-post column and the AWOL report (verbatim
+// from datastores/mysql.go) — the PRD's measured hotspot. The query
+// stays as written: the indexed derived table measured faster than a
+// correlated rewrite on the mirror. Index, don't refactor.
+const hotLastPostAggregation = `SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id`
+
+// groupByOptimization returns the Extra column of the EXPLAIN row for
+// the hot aggregation, which is where MariaDB reports loose index
+// scans.
+func groupByOptimization(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	return explainFirstRow(t, db, hotLastPostAggregation)["Extra"]
+}
+
 // The PRD #112 index script must flip the hot last-post aggregation
 // from a full scan to a loose index scan. Red half: the unindexed
 // harness schema must NOT already plan a loose scan (keeps the red
