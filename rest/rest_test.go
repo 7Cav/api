@@ -12,6 +12,7 @@ import (
 	"github.com/7cav/api/contract"
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
+	"github.com/7cav/api/referencecache"
 	"github.com/7cav/api/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,36 @@ type fakeDatastore struct {
 	findProfilesByUsername func(username string) ([]*proto.Profile, error)
 	findProfileByDiscordID func(discordId string) (*proto.Profile, error)
 	findProfileByGamertag  func(gamertag string) (*proto.Profile, error)
+
+	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
+	// test sets one to inject an outage or observe the bound filter.
+	listTickets            func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
+	getTicket              func(ticketID uint32) (*proto.Ticket, error)
+	getTicketByRef         func(ref string) (*proto.Ticket, error)
+	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error)
+	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error)
+	listCategories         func() ([]*proto.Category, error)
+
+	// lastRC records the TicketReferenceCache the handlers handed the most
+	// recent rc-consuming datastore call — the identity pin asserts it IS the
+	// cache rest.New received (no copy, no substitute).
+	lastRC datastores.TicketReferenceCache
 }
+
+// stubReferenceCache is the explicit no-op datastores.TicketReferenceCache
+// the new-stack tests mount: rest.New refuses nil (a nil cache is a
+// guaranteed panic on the first tickets request against the real datastore),
+// and the fake datastore never consults it. A fresh pointer per test keeps
+// the identity pin honest.
+type stubReferenceCache struct{}
+
+func (*stubReferenceCache) StatusName(uint32) string                       { return "" }
+func (*stubReferenceCache) PriorityName(uint32) string                     { return "" }
+func (*stubReferenceCache) PrefixName(uint32) string                       { return "" }
+func (*stubReferenceCache) Category(uint32) *referencecache.CategoryRecord { return nil }
+func (*stubReferenceCache) CategoryAncestors(uint32) []uint32              { return nil }
+func (*stubReferenceCache) CategoryTree() []*referencecache.CategoryRecord { return nil }
+func (*stubReferenceCache) ExpandSubtree(ids []uint32) []uint32            { return ids }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
 	scopes := func(names ...string) map[string]struct{} {
@@ -205,7 +235,7 @@ func (f *fakeDatastore) FindProfileByGamertag(gamertag string) (*proto.Profile, 
 
 func newStack(t *testing.T) http.Handler {
 	t.Helper()
-	return rest.New(&fakeDatastore{})
+	return rest.New(&fakeDatastore{}, &stubReferenceCache{})
 }
 
 // implementedCases names the battery cases the new stack serves today. Each
@@ -229,6 +259,30 @@ var implementedCases = []string{
 	"milpacs/discord_not_found",
 	"milpacs/gamertag_happy",
 	"milpacs/gamertag_not_found",
+	"tickets/categories",
+	"tickets/list_default",
+	"tickets/list_repeated_status_filter",
+	"tickets/list_state_filter",
+	"tickets/list_category_includes_subcategories",
+	"tickets/list_category_exclude_subcategories",
+	"tickets/list_starter_filter",
+	"tickets/list_per_page_snake",
+	"tickets/list_per_page_camel",
+	"tickets/list_page_two",
+	"tickets/list_invalid_cursor_camel",
+	"tickets/list_unknown_param_ignored",
+	"tickets/get_by_id_happy",
+	"tickets/get_by_id_not_found",
+	"tickets/get_by_id_parse_error",
+	"tickets/get_by_ref_happy",
+	"tickets/get_by_ref_not_found",
+	"tickets/messages_default",
+	"tickets/messages_per_page_snake",
+	"tickets/messages_per_page_camel",
+	"tickets/messages_page_two",
+	"tickets/messages_invalid_cursor_snake",
+	"tickets/messages_unknown_ticket",
+	"tickets/messages_parse_error",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",
@@ -237,6 +291,7 @@ var implementedCases = []string{
 	"auth/milpacs_wrong_scope",
 	"auth/milpacs_no_scopes",
 	"auth/tickets_missing_header",
+	"auth/tickets_wrong_scope",
 	"auth/tickets_raw_key",
 	"auth/tickets_invalid_key",
 	"auth/unknown_path_authenticated",
@@ -396,7 +451,7 @@ func TestNewStack_401IsNeverGzipped(t *testing.T) {
 func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, io.ErrUnexpectedEOF
-	}})
+	}}, &stubReferenceCache{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
 	req.Header.Set("Authorization", "Bearer cav7_readkey")
@@ -418,7 +473,7 @@ func TestNewStack_ProfileLookupOutagesAreInternalJSON(t *testing.T) {
 		findProfilesByUsername: func(string) ([]*proto.Profile, error) { return outage() },
 		findProfileByDiscordID: func(string) (*proto.Profile, error) { return nil, io.ErrUnexpectedEOF },
 		findProfileByGamertag:  func(string) (*proto.Profile, error) { return nil, io.ErrUnexpectedEOF },
-	})
+	}, &stubReferenceCache{})
 
 	cases := []struct {
 		path string
@@ -450,7 +505,7 @@ func TestNewStack_EmptyProfileSliceWithNilErrorIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{
 		findProfilesById:       func(...uint64) ([]*proto.Profile, error) { return []*proto.Profile{}, nil },
 		findProfilesByUsername: func(string) ([]*proto.Profile, error) { return nil, nil },
-	})
+	}, &stubReferenceCache{})
 
 	for _, path := range []string{
 		"/api/v1/milpacs/profile/id/1",
@@ -474,7 +529,7 @@ func TestNewStack_NilProfileWithNilErrorIsInternalJSON(t *testing.T) {
 		findProfileByGamertag:  func(string) (*proto.Profile, error) { return nil, nil },
 		// A non-empty slice carrying a nil element hits the same guard.
 		findProfilesById: func(...uint64) ([]*proto.Profile, error) { return []*proto.Profile{nil}, nil },
-	})
+	}, &stubReferenceCache{})
 
 	for _, path := range []string{
 		"/api/v1/milpac/discord/112233445566778899",
@@ -1038,6 +1093,39 @@ func TestNewStack_WrongMethodOnKnownRouteIs405WithAllow(t *testing.T) {
 	}
 }
 
+// The fallback's GET probe must apply the SAME narrowing the
+// {ticket_id}/{sub} dispatcher does: "messages" is the only known
+// sub-resource. Without it, POST /tickets/42/bogus would 405 ("route
+// exists") while GET on the same path 404s — the probe claiming a route the
+// GET surface denies, violating the 405 ruling's own principle.
+func TestNewStack_WrongMethodOnUnknownTicketSubResourceStays404(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/42/bogus", nil)
+	req.Header.Set("Authorization", "Bearer cav7_ticketskey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code, "GET on this path is a 404; the probe must agree")
+	assert.Empty(t, rr.Header().Get("Allow"))
+	assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String())
+}
+
+// The narrowing must not over-correct: the messages route itself is real,
+// so wrong-method there keeps the 405 + Allow.
+func TestNewStack_WrongMethodOnTicketMessagesIs405WithAllow(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/42/messages", nil)
+	req.Header.Set("Authorization", "Bearer cav7_ticketskey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	assert.Equal(t, "GET, HEAD", rr.Header().Get("Allow"))
+	assert.JSONEq(t, `{"code":12,"message":"Method Not Allowed","details":[]}`, rr.Body.String())
+}
+
 func TestNewStack_WrongMethodOnUnknownRouteStays404(t *testing.T) {
 	h := newStack(t)
 
@@ -1074,7 +1162,7 @@ func TestNewStack_WrongMethodWithoutCredsIs401NotAllow(t *testing.T) {
 // — a ResponseRecorder would show a body — so this test observes through a
 // live httptest.Server.
 func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&fakeDatastore{}))
+	srv := httptest.NewServer(rest.New(&fakeDatastore{}, &stubReferenceCache{}))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodHead, srv.URL+"/api/v1/milpacs/ranks", nil)
@@ -1091,13 +1179,46 @@ func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
 	assert.Empty(t, body, "net/http suppresses the body on HEAD responses")
 }
 
+// --- Reference-cache wiring (#129 review F4) --------------------------------
+
+// rest.New must refuse a nil TicketReferenceCache loudly at construction: a
+// nil cache is a guaranteed panic on the first tickets request against the
+// real datastore, with no recovery middleware in the chain yet — failing the
+// wiring beats failing the first caller.
+func TestNewStack_NilReferenceCachePanics(t *testing.T) {
+	assert.PanicsWithValue(t,
+		"rest.New: nil TicketReferenceCache — pass the refreshed referencecache.Cache (see #134)",
+		func() { rest.New(&fakeDatastore{}, nil) })
+}
+
+// The rc handed to rest.New is the one reaching the datastore methods —
+// pointer identity, not just non-nil: a handler quietly substituting its own
+// cache would pass every other test.
+func TestNewStack_ReferenceCacheReachesDatastoreByIdentity(t *testing.T) {
+	rc := &stubReferenceCache{}
+	f := &fakeDatastore{}
+	h := rest.New(f, rc)
+
+	for _, path := range []string{
+		"/api/v1/tickets",
+		"/api/v1/tickets/42",
+		"/api/v1/tickets/ref/MF1UI9HE",
+		"/api/v1/tickets/categories",
+	} {
+		f.lastRC = nil
+		rr := ticketsGet(t, h, path)
+		require.Equal(t, http.StatusOK, rr.Code, path)
+		assert.Same(t, rc, f.lastRC, "%s: the rc reaching the datastore must be the one rest.New received", path)
+	}
+}
+
 // An empty rank catalog must serialize as {"ranks":[]} — the allocation
 // discipline (empty collections are [], never null) the goldens can only
 // witness on populated routes.
 func TestNewStack_EmptyRanksIsEmptyArray(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, nil
-	}})
+	}}, &stubReferenceCache{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
 	req.Header.Set("Authorization", "Bearer cav7_readkey")

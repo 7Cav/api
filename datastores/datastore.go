@@ -106,3 +106,8 @@ type TicketReferenceCache interface {
 	CategoryTree() []*referencecache.CategoryRecord
 	ExpandSubtree(ids []uint32) []uint32
 }
+
+// Conformance pin: the production cache satisfies the slice. Lives HERE (not
+// next to the grpc server that also consumes the cache) so the check
+// survives Phase 4's deletion of the grpc stack.
+var _ TicketReferenceCache = (*referencecache.Cache)(nil)

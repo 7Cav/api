@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -229,14 +228,9 @@ func checkQuerySyntax(r *http.Request) error {
 	return err
 }
 
-// bracketKeyRegexp is the old gateway's bracket-key rewrite, mirrored exactly
-// (grpc-gateway v2.29.0 runtime/query.go valuesKeyRegexp): a query key
-// matching ^(.*)\[(.*)\]$ folds into its base key (match 1) with the bracket
-// CONTENT (match 2) PREPENDED as an extra value — ?user_id[0]=1 is key
-// "user_id", values ["0","1"]. The content is a VALUE, never an index, so a
-// matching bracket key on these singular fields is always the too-many-values
-// 400. Greedy: a[b][c] folds to base "a[b]" — matching no field, ignored.
-var bracketKeyRegexp = regexp.MustCompile(`^(.*)\[(.*)\]$`)
+// bracketKeyRegexp (the gateway's valuesKeyRegexp rewrite) is declared with
+// the query binder in query.go — both this file's queryField and the binder
+// fold bracket keys through the same expression. Semantics doc lives there.
 
 // queryField reads a singular query-bindable message field, accepting both
 // the proto (snake_case) and JSON (camelCase) key spellings — the gateway's
