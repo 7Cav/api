@@ -216,6 +216,42 @@ func TestMetrics_UnknownPathCountsUnderCatchAllPattern(t *testing.T) {
 	assert.Equal(t, before+1, after, "404s must meter under the catch-all pattern, not the raw path")
 }
 
+// Metrics sit OUTSIDE auth, so unauthenticated clients reach the metering
+// layer — and any RFC 7230 token is a syntactically valid method that arrives
+// at handlers verbatim. The method label must clamp to the standard RFC 9110
+// set: an exotic method meters as "OTHER" and must NOT mint a raw-token
+// counter or histogram child (unbounded, attacker-controlled cardinality).
+func TestMetrics_ExoticMethodClampsToOther(t *testing.T) {
+	h := newStack(t)
+	const junk = "ZZZ9X7Q4JUNKMETHOD"
+	labels := map[string]string{
+		"route":  "",
+		"method": "OTHER",
+		"status": "401",
+		"key_id": "",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, junk, "/api/v1/milpacs/ranks", "") // unauthenticated: auth answers 401
+	require.Equal(t, http.StatusUnauthorized, rr.Code)
+
+	families := scrapeMetrics(t)
+	after := counterValue(t, families, "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, `exotic methods must meter under method="OTHER"`)
+
+	for _, name := range []string{"api_http_requests_total", "api_http_request_duration_seconds"} {
+		mf, ok := families[name]
+		require.True(t, ok)
+		for _, m := range mf.GetMetric() {
+			for _, lp := range m.GetLabel() {
+				assert.NotEqual(t, junk, lp.GetValue(),
+					"%s minted a raw-token method child — unbounded cardinality", name)
+			}
+		}
+	}
+}
+
 // The exposition carries the default Go runtime and process collectors
 // alongside the request metrics.
 func TestMetrics_RuntimeCollectorsServed(t *testing.T) {

@@ -19,7 +19,8 @@ import (
 // the key population, so the histogram deliberately carries no key_id label
 // (cardinality discipline, PRD #112).
 //
-// Label values are key-IDs and mux patterns — bounded sets. Bearer material
+// Label values are key-IDs, mux patterns, and methods clamped to the standard
+// RFC 9110 set via methodLabel — bounded sets. Bearer material
 // must NEVER appear in metric names or labels; the only key-derived value is
 // the numeric key id the datastore validated (same rule as the Sentry key_id
 // tag).
@@ -136,11 +137,28 @@ func metricsMiddleware(next http.Handler) http.Handler {
 			context.WithValue(r.Context(), metricLabelsContextKey{}, labels)))
 
 		requestsTotal.WithLabelValues(
-			labels.route, r.Method, strconv.Itoa(sw.status()), labels.keyID,
+			labels.route, methodLabel(r.Method), strconv.Itoa(sw.status()), labels.keyID,
 		).Inc()
-		requestDuration.WithLabelValues(labels.route, r.Method).
+		requestDuration.WithLabelValues(labels.route, methodLabel(r.Method)).
 			Observe(time.Since(start).Seconds())
 	})
+}
+
+// methodLabel clamps the method label to the standard RFC 9110 method set.
+// Any RFC 7230 token is a syntactically valid method that reaches handlers
+// verbatim, and metrics sit OUTSIDE auth — without the clamp an
+// unauthenticated client mints unbounded counter children (and a full bucket
+// set of histogram children) per junk method. Everything non-standard meters
+// as "OTHER".
+func methodLabel(m string) string {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodOptions,
+		http.MethodConnect, http.MethodTrace:
+		return m
+	default:
+		return "OTHER"
+	}
 }
 
 // statusWriter captures the response status for the counter's status label.
