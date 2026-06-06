@@ -11,6 +11,7 @@ import (
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
+	"github.com/7cav/api/rest"
 	"github.com/7cav/api/servers/gateway"
 	grpcServices "github.com/7cav/api/servers/grpc"
 	"google.golang.org/grpc"
@@ -139,6 +140,7 @@ func quietProductionLoggers() {
 		gateway.Info, gateway.Warn,
 		grpcServices.Info, grpcServices.Warn,
 		datastores.Info, datastores.Warn,
+		rest.Info, rest.Warn, // the gateway delegates auth/gzip to rest (#125)
 	} {
 		l.SetOutput(io.Discard)
 	}

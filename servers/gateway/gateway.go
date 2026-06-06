@@ -19,7 +19,6 @@
 package gateway
 
 import (
-	"compress/gzip"
 	"context"
 	"io/fs"
 	"log"
@@ -31,7 +30,7 @@ import (
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/openapi"
 	"github.com/7cav/api/proto"
-	grpcServices "github.com/7cav/api/servers/grpc"
+	"github.com/7cav/api/rest"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 )
@@ -59,77 +58,19 @@ func getOpenAPIHandler() http.Handler {
 	return http.FileServer(http.FS(sub))
 }
 
-// maxTokenLen is the maximum length of a raw API key we'll accept.
-// cav7_ prefix (5) + 64 hex chars = 69; 128 gives generous headroom.
-const maxTokenLen = 128
-
-// errBearerScheme is the 401 body returned when the Authorization header is
-// missing or doesn't carry a usable Bearer token (no/empty/oversized token).
-// It names the expected format so callers who paste a raw key without the
-// "Bearer " prefix get a self-explanatory error. The key-validation-failure
-// branch stays the generic "Unauthorized" so it leaks nothing about whether a
-// key exists, is expired, or lacks scopes.
-const errBearerScheme = "Unauthorized: expected 'Authorization: Bearer <key>' header"
-
-func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := datastores.ParseBearerToken(r.Header.Get("Authorization"), maxTokenLen)
-		if token == "" {
-			Warn.Printf("Unauthorized HTTP access attempt (bad bearer scheme) from %s", r.RemoteAddr)
-			http.Error(w, errBearerScheme, http.StatusUnauthorized)
-			return
-		}
-
-		key, err := ds.ValidateApiKey(token)
-		if err != nil || key == nil {
-			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Attach the validated key to the request ctx (mirrors the gRPC auth
-		// interceptor) so downstream consumers — e.g. Sentry key-id tagging —
-		// can identify the caller without ever seeing the bearer token.
-		next.ServeHTTP(w, r.WithContext(grpcServices.ContextWithKey(r.Context(), key)))
-	})
-}
-
-func compressionMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-			w.Header().Set("Content-Encoding", "gzip")
-			gz := gzip.NewWriter(w)
-			defer func() {
-				if err := gz.Close(); err != nil {
-					// A Close failure means the gzip trailer never reached the
-					// client — a corrupt body behind an already-written status,
-					// invisible to the sentry layer outside this one.
-					Error.Printf("gzip close failed for %s %s (response likely truncated): %v", r.Method, r.URL.Path, err)
-				}
-			}()
-			gzw := &gzipResponseWriter{ResponseWriter: w, Writer: gz}
-			next.ServeHTTP(gzw, r)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-type gzipResponseWriter struct {
-	http.ResponseWriter
-	Writer *gzip.Writer
-}
-
-func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	w.Header().Del("Content-Length") // This is necessary as otherwise it will have the uncompressed length
-	return w.Writer.Write(b)
-}
-
 // buildAPIHandler assembles the /api middleware chain:
 // auth(sentry(compression(inner))). Sentry sits inside auth so it only
 // sees authenticated requests, with the API key already on ctx for key-id
 // tagging, and outside the compression layer so it observes the final
 // response status. No SENTRY_DSN → it is a pass-through.
+//
+// The auth and compression layers are the rest package's middleware (the
+// Phase 3 stack, #125): they moved there verbatim — single source, so the
+// two stacks cannot diverge while both are in-tree — and this gateway
+// delegates until cutover deletes it. rest.AuthMiddleware attaches the
+// validated key with rest.ContextWithKey; grpcServices.KeyFromContext
+// delegates to the same context key, so the Sentry key-id tagging below
+// keeps seeing it.
 //
 // Phase 2 de-cache (#123/#124): the response cache is gone — middleware out
 // of the chain at #123 (taking the X-Cache header with it — the PRD's
@@ -145,8 +86,8 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // contract — see the buildAPIHandler tests — rather than an untestable
 // expression inside a dialing function.
 func buildAPIHandler(ds datastores.Datastore, inner http.Handler) http.Handler {
-	return authMiddleware(ds,
-		sentryMiddleware(compressionMiddleware(inner)))
+	return rest.AuthMiddleware(ds,
+		sentryMiddleware(rest.GzipMiddleware(inner)))
 }
 
 func (service *Service) Server() *http.Server {
