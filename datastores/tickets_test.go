@@ -12,7 +12,23 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
+
+// newMockDS survives only until the remaining sqlmock ticket tests are
+// replaced by the harness behavior tests (issue #120, in progress).
+func newMockDS(t *testing.T) (Mysql, sqlmock.Sqlmock, func()) {
+	t.Helper()
+	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	require.NoError(t, err)
+	gormDB, err := gorm.Open(mysql.New(mysql.Config{
+		Conn:                      sqlDB,
+		SkipInitializeWithVersion: true,
+	}), &gorm.Config{})
+	require.NoError(t, err)
+	return Mysql{Db: gormDB}, mock, func() { sqlDB.Close() }
+}
 
 type fakeRefCache struct {
 	statuses   map[uint32]string
