@@ -1,0 +1,86 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": false,
+    "nextCursor": "",
+    "tickets": [
+      {
+        "assignedUserId": 0,
+        "assignedUsername": "",
+        "categoryAncestorIds": [],
+        "categoryId": 7,
+        "categoryTitle": "S6 Technical Support",
+        "customFields": {},
+        "discussionState": "visible",
+        "forumUrl": "https://7cav.us/tickets/QQWW43RR/",
+        "lastMessageDate": 1748590000,
+        "lastMessageUserId": 3,
+        "lastMessageUsername": "Jarvis.A",
+        "lastModifiedDate": 1748600000,
+        "participants": [],
+        "prefixId": 0,
+        "prefixName": "",
+        "priorityId": 1,
+        "priorityName": "Low",
+        "replyCount": 0,
+        "startDate": 1748500000,
+        "starterUserId": 3,
+        "starterUsername": "Jarvis.A",
+        "statusId": 5,
+        "statusName": "Resolved",
+        "ticketId": 43,
+        "ticketLocked": false,
+        "ticketRef": "QQWW43RR",
+        "ticketState": "resolved",
+        "title": "TeamSpeak <connection> issues & errors",
+        "totalMessageCount": 1
+      },
+      {
+        "assignedUserId": 0,
+        "assignedUsername": "",
+        "categoryAncestorIds": [],
+        "categoryId": 1,
+        "categoryTitle": "Recruiting",
+        "customFields": {
+          "recruiter": "Jarvis.A"
+        },
+        "discussionState": "visible",
+        "forumUrl": "https://7cav.us/tickets/MF1UI9HE/",
+        "lastMessageDate": 1748480000,
+        "lastMessageUserId": 8,
+        "lastMessageUsername": "John.Doe",
+        "lastModifiedDate": 1748500000,
+        "participants": [
+          {
+            "lastReadDate": 1748450000,
+            "userId": 8
+          }
+        ],
+        "prefixId": 1,
+        "prefixName": "Enlistment",
+        "priorityId": 3,
+        "priorityName": "High",
+        "replyCount": 2,
+        "startDate": 1748400000,
+        "starterUserId": 8,
+        "starterUsername": "John.Doe",
+        "statusId": 1,
+        "statusName": "New",
+        "ticketId": 42,
+        "ticketLocked": false,
+        "ticketRef": "MF1UI9HE",
+        "ticketState": "open",
+        "title": "Enlistment — John.Doe",
+        "totalMessageCount": 3
+      }
+    ]
+  },
+  "case": "tickets/list_repeated_status_filter",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Repeated query params build a repeated field: tickets 43 and 42 only.",
+  "path": "/api/v1/tickets?status_id=1&status_id=5",
+  "status": 200
+}

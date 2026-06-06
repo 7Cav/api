@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 5,
+    "details": [],
+    "message": "no user found for discordid: 999000999"
+  },
+  "case": "milpacs/discord_not_found",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "NotFound message names the discord id.",
+  "path": "/api/v1/milpac/discord/999000999",
+  "status": 404
+}

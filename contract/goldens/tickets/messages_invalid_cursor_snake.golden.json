@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "invalid after_cursor"
+  },
+  "case": "tickets/messages_invalid_cursor_snake",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Malformed message cursor: InvalidArgument 'invalid after_cursor'.",
+  "path": "/api/v1/tickets/42/messages?after_cursor=bogus",
+  "status": 400
+}

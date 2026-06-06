@@ -1,0 +1,16 @@
+{
+  "auth": "no-scopes",
+  "body": {
+    "code": 7,
+    "details": [],
+    "message": "scope required: read"
+  },
+  "case": "auth/milpacs_no_scopes",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Valid key with empty scope set: same PermissionDenied surface.",
+  "path": "/api/v1/milpacs/profile/id/1",
+  "status": 403
+}

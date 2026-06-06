@@ -1,0 +1,48 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": true,
+    "nextCursor": "MTc0ODYwMDAwMDo0Mw",
+    "tickets": [
+      {
+        "assignedUserId": 0,
+        "assignedUsername": "",
+        "categoryAncestorIds": [],
+        "categoryId": 7,
+        "categoryTitle": "S6 Technical Support",
+        "customFields": {},
+        "discussionState": "visible",
+        "forumUrl": "https://7cav.us/tickets/QQWW43RR/",
+        "lastMessageDate": 1748590000,
+        "lastMessageUserId": 3,
+        "lastMessageUsername": "Jarvis.A",
+        "lastModifiedDate": 1748600000,
+        "participants": [],
+        "prefixId": 0,
+        "prefixName": "",
+        "priorityId": 1,
+        "priorityName": "Low",
+        "replyCount": 0,
+        "startDate": 1748500000,
+        "starterUserId": 3,
+        "starterUsername": "Jarvis.A",
+        "statusId": 5,
+        "statusName": "Resolved",
+        "ticketId": 43,
+        "ticketLocked": false,
+        "ticketRef": "QQWW43RR",
+        "ticketState": "resolved",
+        "title": "TeamSpeak <connection> issues & errors",
+        "totalMessageCount": 1
+      }
+    ]
+  },
+  "case": "tickets/list_page_two",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Round-tripped cursor: page 2 holds ticket 43 and a further cursor.",
+  "path": "/api/v1/tickets?per_page=1&after_cursor=MTc0ODcwMDAwMDo0NA",
+  "status": 200
+}

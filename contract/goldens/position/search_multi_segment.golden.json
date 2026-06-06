@@ -1,0 +1,14 @@
+{
+  "auth": "read",
+  "body": {
+    "profiles": {}
+  },
+  "case": "position/search_multi_segment",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "{position_query=**} swallows slashes: multi-segment query routes, returns empty.",
+  "path": "/api/v1/milpacs/position/search/Platoon/Leader",
+  "status": 200
+}

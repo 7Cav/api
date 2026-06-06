@@ -1,0 +1,30 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": true,
+    "messages": [
+      {
+        "attachCount": 1,
+        "editCount": 1,
+        "lastEditDate": 1748451000,
+        "message": "Welcome aboard — processing now.",
+        "messageDate": 1748450000,
+        "messageId": 9002,
+        "messageState": "visible",
+        "position": 1,
+        "ticketId": 42,
+        "userId": 3,
+        "username": "Jarvis.A"
+      }
+    ],
+    "nextCursor": "Mg"
+  },
+  "case": "tickets/messages_page_two",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Round-tripped message cursor: second message only.",
+  "path": "/api/v1/tickets/42/messages?per_page=1&after_cursor=MQ",
+  "status": 200
+}

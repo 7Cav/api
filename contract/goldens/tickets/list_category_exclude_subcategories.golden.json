@@ -1,0 +1,55 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "hasMore": false,
+    "nextCursor": "",
+    "tickets": [
+      {
+        "assignedUserId": 0,
+        "assignedUsername": "",
+        "categoryAncestorIds": [],
+        "categoryId": 1,
+        "categoryTitle": "Recruiting",
+        "customFields": {
+          "recruiter": "Jarvis.A"
+        },
+        "discussionState": "visible",
+        "forumUrl": "https://7cav.us/tickets/MF1UI9HE/",
+        "lastMessageDate": 1748480000,
+        "lastMessageUserId": 8,
+        "lastMessageUsername": "John.Doe",
+        "lastModifiedDate": 1748500000,
+        "participants": [
+          {
+            "lastReadDate": 1748450000,
+            "userId": 8
+          }
+        ],
+        "prefixId": 1,
+        "prefixName": "Enlistment",
+        "priorityId": 3,
+        "priorityName": "High",
+        "replyCount": 2,
+        "startDate": 1748400000,
+        "starterUserId": 8,
+        "starterUsername": "John.Doe",
+        "statusId": 1,
+        "statusName": "New",
+        "ticketId": 42,
+        "ticketLocked": false,
+        "ticketRef": "MF1UI9HE",
+        "ticketState": "open",
+        "title": "Enlistment — John.Doe",
+        "totalMessageCount": 3
+      }
+    ]
+  },
+  "case": "tickets/list_category_exclude_subcategories",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "exclude_subcategories=true matches the exact category only.",
+  "path": "/api/v1/tickets?category_id=1&exclude_subcategories=true",
+  "status": 200
+}

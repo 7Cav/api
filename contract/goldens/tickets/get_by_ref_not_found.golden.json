@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "code": 5,
+    "details": [],
+    "message": "ticket \"NOPE9999\" not found"
+  },
+  "case": "tickets/get_by_ref_not_found",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "NotFound quotes the ref.",
+  "path": "/api/v1/tickets/ref/NOPE9999",
+  "status": 404
+}

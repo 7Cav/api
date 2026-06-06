@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 7,
+    "details": [],
+    "message": "scope required: read:tickets"
+  },
+  "case": "auth/tickets_wrong_scope",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "'read' does not imply 'read:tickets': PermissionDenied JSON.",
+  "path": "/api/v1/tickets",
+  "status": 403
+}

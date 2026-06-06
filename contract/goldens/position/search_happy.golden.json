@@ -1,0 +1,48 @@
+{
+  "auth": "read",
+  "body": {
+    "profiles": {
+      "1": {
+        "awardDate": "2021-03-01",
+        "consoleGamertag": "",
+        "discordId": "112233445566778899",
+        "joinDate": "2014-02-08",
+        "lastForumPostDate": "2026-05-30",
+        "mos": "11B",
+        "primary": {
+          "positionId": "773",
+          "positionTitle": "Regimental Technical Aide"
+        },
+        "promotionDate": "2020-10-17",
+        "rank": {
+          "rankFull": "Major General",
+          "rankId": "4",
+          "rankImageUrl": "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618",
+          "rankShort": "MG"
+        },
+        "realName": "Adam Jarvis",
+        "recordDate": "2020-10-17",
+        "roster": "ROSTER_TYPE_COMBAT",
+        "secondaries": [
+          {
+            "positionId": "812",
+            "positionTitle": "S6 Web Developer"
+          }
+        ],
+        "uniformUrl": "https://7cav.us/data/roster_uniforms/0/1.jpg",
+        "user": {
+          "userId": "3",
+          "username": "Jarvis.A"
+        }
+      }
+    }
+  },
+  "case": "position/search_happy",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "URL-encoded spaces decode before reaching the handler; exact title hits.",
+  "path": "/api/v1/milpacs/position/search/Regimental%20Technical%20Aide",
+  "status": 200
+}

@@ -1,0 +1,14 @@
+{
+  "auth": "read",
+  "body": {
+    "profiles": {}
+  },
+  "case": "position/search_empty_result",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Plausible query, no rows: {\"profiles\":{}} with 200 — frozen as-is, see #137.",
+  "path": "/api/v1/milpacs/position/search/squad%20leader",
+  "status": 200
+}

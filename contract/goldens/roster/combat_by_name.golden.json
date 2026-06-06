@@ -1,0 +1,94 @@
+{
+  "auth": "read",
+  "body": {
+    "profiles": {
+      "1": {
+        "awards": [
+          {
+            "awardDate": "2021-03-01",
+            "awardDetails": "For technical excellence & dedication <est. 2014>",
+            "awardImageUrl": "https://7cav.us/data/awards/ccm.jpg",
+            "awardName": "Commendation Medal",
+            "awardUid": "901"
+          }
+        ],
+        "consoleGamertag": "",
+        "discordId": "112233445566778899",
+        "joinDate": "2014-02-08",
+        "lastForumPostDate": "2026-05-30",
+        "mos": "11B",
+        "primary": {
+          "positionId": "773",
+          "positionTitle": "Regimental Technical Aide"
+        },
+        "promotionDate": "2020-10-17",
+        "rank": {
+          "rankFull": "Major General",
+          "rankId": "4",
+          "rankImageUrl": "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618",
+          "rankShort": "MG"
+        },
+        "realName": "Adam Jarvis",
+        "records": [
+          {
+            "recordDate": "2020-10-17",
+            "recordDetails": "Promoted to Major General (O-8)",
+            "recordType": "RECORD_TYPE_PROMOTION",
+            "recordUid": "46"
+          },
+          {
+            "recordDate": "2020-09-27",
+            "recordDetails": "Completed 18th Combat Mission (Operation Pride of Charlie, Fall 2020)",
+            "recordType": "RECORD_TYPE_OPERATION",
+            "recordUid": "13863"
+          }
+        ],
+        "roster": "ROSTER_TYPE_COMBAT",
+        "secondaries": [
+          {
+            "positionId": "812",
+            "positionTitle": "S6 Web Developer"
+          }
+        ],
+        "uniformUrl": "https://7cav.us/data/roster_uniforms/0/1.jpg",
+        "user": {
+          "userId": "3",
+          "username": "Jarvis.A"
+        }
+      },
+      "2": {
+        "awards": [],
+        "consoleGamertag": "CavGamer77",
+        "discordId": "",
+        "joinDate": "2026-01-15",
+        "lastForumPostDate": "",
+        "mos": "",
+        "primary": null,
+        "promotionDate": "",
+        "rank": {
+          "rankFull": "Private",
+          "rankId": "22",
+          "rankImageUrl": "https://7cav.us/data/roster_ranks/0/22.jpg",
+          "rankShort": "PVT"
+        },
+        "realName": "John Doe",
+        "records": [],
+        "roster": "ROSTER_TYPE_COMBAT",
+        "secondaries": [],
+        "uniformUrl": "https://7cav.us/data/roster_uniforms/0/2.jpg",
+        "user": {
+          "userId": "8",
+          "username": "John.Doe"
+        }
+      }
+    }
+  },
+  "case": "roster/combat_by_name",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Enum NAME path form. Map keyed by relation id (string keys in JSON).",
+  "path": "/api/v1/roster/ROSTER_TYPE_COMBAT",
+  "status": 200
+}

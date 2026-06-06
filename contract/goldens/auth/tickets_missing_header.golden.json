@@ -1,0 +1,13 @@
+{
+  "auth": "none",
+  "bodyText": "Unauthorized: expected 'Authorization: Bearer <key>' header\n",
+  "case": "auth/tickets_missing_header",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "Tickets surface, no Authorization header: plain-text scheme-error 401.",
+  "path": "/api/v1/tickets",
+  "status": 401
+}

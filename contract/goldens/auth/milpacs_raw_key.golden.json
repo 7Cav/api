@@ -1,0 +1,13 @@
+{
+  "auth": "raw-key",
+  "bodyText": "Unauthorized: expected 'Authorization: Bearer <key>' header\n",
+  "case": "auth/milpacs_raw_key",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "Raw key without 'Bearer ' prefix: same scheme-error 401 tier.",
+  "path": "/api/v1/milpacs/profile/id/1",
+  "status": 401
+}

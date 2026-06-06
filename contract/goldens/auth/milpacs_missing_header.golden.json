@@ -1,0 +1,13 @@
+{
+  "auth": "none",
+  "bodyText": "Unauthorized: expected 'Authorization: Bearer <key>' header\n",
+  "case": "auth/milpacs_missing_header",
+  "header": {
+    "Content-Type": "text/plain; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  },
+  "method": "GET",
+  "notes": "No Authorization header: plain-text 401 naming the Bearer scheme.",
+  "path": "/api/v1/milpacs/profile/id/1",
+  "status": 401
+}

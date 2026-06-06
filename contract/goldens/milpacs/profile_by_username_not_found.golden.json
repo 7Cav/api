@@ -1,0 +1,16 @@
+{
+  "auth": "read",
+  "body": {
+    "code": 5,
+    "details": [],
+    "message": "no profile found for username: Ghost.User"
+  },
+  "case": "milpacs/profile_by_username_not_found",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "NotFound message names the username.",
+  "path": "/api/v1/milpacs/profile/username/Ghost.User",
+  "status": 404
+}
