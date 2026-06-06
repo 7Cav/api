@@ -123,3 +123,25 @@ Two properties of the harness are load-bearing:
 - The fixtures include a member whose milpac `relation_id` collides
   with another member's forum `user_id` (205), keeping the by-id
   profile route's frozen relation-key semantic testable.
+
+## Index script (PRD #112 Phase 1)
+
+`testdb/indexes.sql` is the in-repo source of truth for the four
+indexes backing the hot read paths (composite `user_id_post_date` on
+`xf_post` serving two distinct aggregations — a loose index scan for
+the last-post aggregation and a covering index scan for the AWOL
+report's variant, whose extra `MAX(post_id)` disqualifies the loose
+scan; relation-id and user-id indexes on the rosters tables for the
+profile preloads). The EXPLAIN-plan tests in `testdb/indexes_test.go`
+pin each flip red→green: the unindexed schema must full-scan, the
+script must produce the loose scan, the covering scan, and
+index-backed preloads — a query or schema change that silently
+reintroduces a full scan fails a test, not a production latency
+budget.
+
+The API never executes DDL. The script is applied manually by the DB
+admin (`mysql xenforo < testdb/indexes.sql`, human-gated in #122) and
+re-applied with the same one command after any forum add-on upgrade
+that rebuilds the tables (idempotent: `ADD INDEX IF NOT EXISTS`). The
+long-term home for re-application is the ApiKeyManager add-on's schema
+step (per PRD #112) — documented intent only, not implemented.

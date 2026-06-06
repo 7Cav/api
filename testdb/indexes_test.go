@@ -1,0 +1,193 @@
+package testdb_test
+
+import (
+	"database/sql"
+	"strings"
+	"testing"
+
+	"github.com/7cav/api/datastores"
+	"github.com/7cav/api/testdb"
+)
+
+// applyIndexDDL runs the in-repo index script against a disposable
+// harness database, exactly as the DB admin runs it against production
+// (mysql xenforo < testdb/indexes.sql).
+func applyIndexDDL(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(testdb.IndexDDL); err != nil {
+		t.Fatalf("applying index script: %v", err)
+	}
+}
+
+// looseScan is what MariaDB's EXPLAIN Extra column reports when the
+// GROUP BY aggregation runs as a loose index scan — the PRD #112
+// keystone (post-date aggregation 4,226ms -> 28ms on the mirror).
+const looseScan = "Using index for group-by"
+
+// hotLastPostAggregation is the derived-table body of
+// getLatestForumPostDates (verbatim from datastores/mysql.go), driving
+// the last-forum-post column on lite rosters AND full profiles
+// (processProfiles calls it too, mysql.go) — the PRD's measured
+// hotspot. The AWOL report uses a different aggregation, pinned
+// separately below. The query stays as written: the indexed derived
+// table measured faster than a correlated rewrite on the mirror.
+// Index, don't refactor. Aliases the exported const so the test
+// always EXPLAINs the exact string production executes.
+const hotLastPostAggregation = datastores.HotLastPostAggregation
+
+// groupByOptimization returns the Extra column of the EXPLAIN row for
+// the hot aggregation, which is where MariaDB reports loose index
+// scans.
+func groupByOptimization(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	return explainFirstRow(t, db, hotLastPostAggregation)["Extra"]
+}
+
+// The PRD #112 index script must flip the hot last-post aggregation
+// from a full scan to a loose index scan. Red half: the unindexed
+// harness schema must NOT already plan a loose scan (keeps the red
+// plan reproducible). Green half: after applying the in-repo script,
+// the very same query must plan one — a future query or schema change
+// that silently reintroduces the full scan fails here instead of a
+// production latency budget.
+func TestIndexDDL_HotAggregationFlipsToLooseIndexScan(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	if extra := groupByOptimization(t, db); strings.Contains(extra, looseScan) {
+		t.Fatalf("red plan not reproducible: unindexed schema already plans a loose index scan (Extra=%q)", extra)
+	}
+
+	applyIndexDDL(t, db)
+
+	if extra := groupByOptimization(t, db); !strings.Contains(extra, looseScan) {
+		t.Errorf("after the index script the hot aggregation must plan a loose index scan, got Extra=%q", extra)
+	}
+}
+
+// coveringScan is the EXPLAIN Extra marker for a covering index scan:
+// the aggregation is answered from the index alone, no row lookups.
+const coveringScan = "Using index"
+
+// awolLastPostAggregation is the derived-table body of the AWOL report
+// (verbatim from datastores/mysql.go FindAwol). The extra MAX(post_id)
+// disqualifies the loose index scan; instead the composite plans a
+// covering index scan — the PRD's "AWOL 4,211ms -> 198ms" keystone.
+// Aliases the exported const so the test always EXPLAINs the exact
+// string production executes.
+const awolLastPostAggregation = datastores.AwolLastPostAggregation
+
+// The index script must flip the AWOL aggregation from a full table
+// scan to a covering scan of user_id_post_date. It can never plan a
+// loose index scan (MAX(post_id) is not part of the composite), so the
+// hot-aggregation test above does not cover it — without this test a
+// regression of the AWOL keystone fails nothing.
+func TestIndexDDL_AwolAggregationFlipsToCoveringIndexScan(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	if row := explainFirstRow(t, db, awolLastPostAggregation); row["type"] != "ALL" {
+		t.Fatalf("red plan not reproducible: unindexed schema should full-scan the AWOL aggregation, got type=%q key=%q", row["type"], row["key"])
+	}
+
+	applyIndexDDL(t, db)
+
+	row := explainFirstRow(t, db, awolLastPostAggregation)
+	if row["key"] != "user_id_post_date" || !strings.Contains(row["Extra"], coveringScan) {
+		t.Errorf("after the index script the AWOL aggregation must covering-scan user_id_post_date, got type=%q key=%q Extra=%q", row["type"], row["key"], row["Extra"])
+	}
+}
+
+// preloadLookups are the relation-shaped lookups the datastore issues
+// when hydrating profiles: gorm preloads service records and awards by
+// relation_id, and resolves roster members by forum user_id (e.g. the
+// last-post-date map). Each must go index-backed once the script runs.
+var preloadLookups = []struct{ label, query, index string }{
+	{"service records", `SELECT * FROM xf_nf_rosters_service_record WHERE relation_id IN (201, 205)`, "idx_relation_id"},
+	{"awards", `SELECT * FROM xf_nf_rosters_user_award WHERE relation_id IN (201, 205)`, "idx_relation_id"},
+	{"roster members by user id", `SELECT * FROM xf_nf_rosters_user WHERE user_id IN (100, 150)`, "idx_user_id"},
+}
+
+// The relation-id preloads must flip from full table scans (type=ALL,
+// no usable key) to index-backed lookups on the script's indexes.
+func TestIndexDDL_RelationPreloadsGoIndexBacked(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	for _, l := range preloadLookups {
+		row := explainFirstRow(t, db, l.query)
+		if row["type"] != "ALL" {
+			t.Errorf("red plan not reproducible: %s lookup should full-scan on the unindexed schema, got type=%q key=%q", l.label, row["type"], row["key"])
+		}
+	}
+
+	applyIndexDDL(t, db)
+
+	for _, l := range preloadLookups {
+		row := explainFirstRow(t, db, l.query)
+		if row["key"] != l.index {
+			t.Errorf("after the index script the %s lookup must use %s, got type=%q key=%q", l.label, l.index, row["type"], row["key"])
+		}
+	}
+}
+
+// The re-apply procedure is "run the same one command again" — e.g.
+// after a forum add-on upgrade rebuilt a table and dropped the
+// indexes. The script must therefore be idempotent: applying it to a
+// database that already carries the indexes succeeds and leaves
+// exactly one of each.
+func TestIndexDDL_IsIdempotent(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	applyIndexDDL(t, db)
+	applyIndexDDL(t, db)
+
+	for _, idx := range []struct{ table, index string }{
+		{"xf_post", "user_id_post_date"},
+		{"xf_nf_rosters_service_record", "idx_relation_id"},
+		{"xf_nf_rosters_user_award", "idx_relation_id"},
+		{"xf_nf_rosters_user", "idx_user_id"},
+	} {
+		var n int
+		err := db.QueryRow(
+			`SELECT COUNT(DISTINCT index_name) FROM information_schema.statistics
+			 WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+			idx.table, idx.index,
+		).Scan(&n)
+		if err != nil {
+			t.Fatalf("checking index %s.%s: %v", idx.table, idx.index, err)
+		}
+		if n != 1 {
+			t.Errorf("expected exactly one index %s on %s after double apply, got %d", idx.index, idx.table, n)
+		}
+	}
+}
+
+// explainFirstRow returns the first EXPLAIN row of the query as a
+// column-name -> value map (NULLs become empty strings).
+func explainFirstRow(t *testing.T, db *sql.DB, query string) map[string]string {
+	t.Helper()
+	rows, err := db.Query(`EXPLAIN ` + query)
+	if err != nil {
+		t.Fatalf("explaining %q: %v", query, err)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("reading EXPLAIN columns: %v", err)
+	}
+	if !rows.Next() {
+		t.Fatalf("EXPLAIN returned no rows for %q", query)
+	}
+	vals := make([]sql.NullString, len(cols))
+	scan := make([]any, len(cols))
+	for i := range vals {
+		scan[i] = &vals[i]
+	}
+	if err := rows.Scan(scan...); err != nil {
+		t.Fatalf("scanning EXPLAIN row: %v", err)
+	}
+	row := make(map[string]string, len(cols))
+	for i, c := range cols {
+		row[c] = vals[i].String
+	}
+	return row
+}
