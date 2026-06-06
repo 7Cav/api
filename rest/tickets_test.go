@@ -190,6 +190,60 @@ func TestNewStack_InvalidQueryValuesReturn400(t *testing.T) {
 	}
 }
 
+// Same key repeated on a scalar query field: the old gateway's deterministic
+// too-many-values 400 (parity, frozen text) — and a bad value alongside the
+// other spelling is the parsing-field 400 even though the camel value alone
+// would bind (every value parses; old behavior, deterministic either map
+// order).
+func TestNewStack_ScalarQueryRepetitionAndDualSpellingErrors(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/api/v1/tickets?per_page=1&per_page=2",
+			`too many values for field "per_page": 1, 2`},
+		{"/api/v1/tickets/42/messages?after_cursor=a&after_cursor=b",
+			`too many values for field "after_cursor": a, b`},
+		{"/api/v1/tickets?per_page=abc&perPage=5",
+			`parsing field "per_page": strconv.ParseUint: parsing "abc": invalid syntax`},
+	}
+	for _, tc := range cases {
+		rr := ticketsGet(t, h, tc.path)
+		require.Equal(t, http.StatusBadRequest, rr.Code, tc.path)
+		body, err := json.Marshal(map[string]any{"code": 3, "message": tc.want, "details": []any{}})
+		require.NoError(t, err)
+		assert.JSONEq(t, string(body), rr.Body.String(), tc.path)
+	}
+}
+
+// Malformed query SYNTAX on the two list routes: the old generated handlers
+// called req.ParseForm() (verified in proto/tickets.pb.gw.go) and 400'd with
+// the parse error verbatim — never the silent drop r.URL.Query() performs.
+// Get/GetByRef/Categories never called ParseForm, so only these two routes
+// carry the strict tier.
+func TestNewStack_MalformedQuerySyntaxOnListRoutesIs400(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/api/v1/tickets?per_page=%zz", `invalid URL escape "%zz"`},
+		{"/api/v1/tickets?a=1;b=2", `invalid semicolon separator in query`},
+		{"/api/v1/tickets/42/messages?per_page=%zz", `invalid URL escape "%zz"`},
+		{"/api/v1/tickets/42/messages?a=1;b=2", `invalid semicolon separator in query`},
+	}
+	for _, tc := range cases {
+		rr := ticketsGet(t, h, tc.path)
+		require.Equal(t, http.StatusBadRequest, rr.Code, tc.path)
+		body, err := json.Marshal(map[string]any{"code": 3, "message": tc.want, "details": []any{}})
+		require.NoError(t, err)
+		assert.JSONEq(t, string(body), rr.Body.String(), tc.path)
+	}
+}
+
 // The Grpc-Metadata-* response headers the old gateway leaks on tickets
 // routes are NOT reproduced (breaks list: "Gateway artifacts dropped").
 func TestNewStack_NoGrpcMetadataHeadersOnTicketsRoutes(t *testing.T) {

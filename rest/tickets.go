@@ -3,6 +3,7 @@ package rest
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/7cav/api/datastores"
@@ -22,7 +23,10 @@ const firstMessagesCount = 10
 // Error message strings frozen from the old stack (servers/grpc ListTickets).
 func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b := newQueryBinder(r.URL.Query())
+		b, ok := bindListQuery(w, r)
+		if !ok {
+			return
+		}
 		filter := &datastores.ListTicketsFilter{
 			CategoryIDs:          b.uint32SliceField("category_id"),
 			ExcludeSubcategories: b.boolField("exclude_subcategories"),
@@ -122,6 +126,21 @@ func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.D
 	})
 }
 
+// bindListQuery parses the query string STRICTLY for the two list routes and
+// returns their binder. The old generated handlers for ListTickets and
+// ListTicketMessages called req.ParseForm() (proto/tickets.pb.gw.go) and
+// 400'd malformed query syntax with the parse error verbatim ("%v", frozen)
+// — r.URL.Query()'s silent drop would diverge. The other tickets routes
+// never called ParseForm, so they deliberately stay lenient.
+func bindListQuery(w http.ResponseWriter, r *http.Request) (*queryBinder, bool) {
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		writeError(w, r, codeInvalidArgument, "%v", err)
+		return nil, false
+	}
+	return newQueryBinder(q), true
+}
+
 // bindTicketID binds the {ticket_id} path value for the two bindings that
 // carry it (by-id, messages). On failure it writes the frozen wire error —
 // the old gateway's leaked strconv text, golden-pinned by
@@ -165,7 +184,10 @@ func listTicketMessages(ds datastores.Datastore) http.Handler {
 		if !ok {
 			return
 		}
-		b := newQueryBinder(r.URL.Query())
+		b, ok := bindListQuery(w, r)
+		if !ok {
+			return
+		}
 		perPage := b.uint32Field("per_page")
 		afterCursor := b.stringField("after_cursor")
 		includeHidden := b.boolField("include_hidden")

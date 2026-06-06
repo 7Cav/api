@@ -53,10 +53,52 @@ func TestQueryBinder_RepeatedAcrossBothSpellings(t *testing.T) {
 	require.NoError(t, b.err)
 }
 
-func TestQueryBinder_ScalarLastValueWins(t *testing.T) {
-	b := newQueryBinder(mustQuery(t, "per_page=1&perPage=2"))
-	assert.Equal(t, uint32(2), b.uint32Field("per_page"))
-	require.NoError(t, b.err)
+// Same key repeated on a scalar field is the old gateway's deterministic
+// too-many-values 400 (runtime checks len(values) > 1 per form key BEFORE
+// parsing) — never a silent last-wins bind. The error quotes the offending
+// key's values, comma-joined.
+func TestQueryBinder_RepeatedScalarKeyIsTooManyValues(t *testing.T) {
+	b := newQueryBinder(mustQuery(t, "per_page=1&per_page=2"))
+	assert.Zero(t, b.uint32Field("per_page"))
+	require.Error(t, b.err)
+	assert.Equal(t, `too many values for field "per_page": 1, 2`, b.err.Error())
+
+	b = newQueryBinder(mustQuery(t, "after_cursor=a&after_cursor=b"))
+	assert.Empty(t, b.stringField("after_cursor"))
+	require.Error(t, b.err)
+	assert.Equal(t, `too many values for field "after_cursor": a, b`, b.err.Error())
+}
+
+// Both spellings present on a scalar: EVERY value parses (the old gateway
+// processed each form key; the bad key always errored — a deterministic 400
+// whichever map order it iterated in).
+func TestQueryBinder_DualSpellingParsesEveryValue(t *testing.T) {
+	for _, raw := range []string{"per_page=abc&perPage=5", "perPage=5&per_page=abc"} {
+		b := newQueryBinder(mustQuery(t, raw))
+		assert.Zero(t, b.uint32Field("per_page"), raw)
+		require.Error(t, b.err, raw)
+		assert.Equal(t,
+			`parsing field "per_page": strconv.ParseUint: parsing "abc": invalid syntax`,
+			b.err.Error(), raw)
+	}
+}
+
+// Both spellings valid on a scalar: the camel value wins, in EITHER URL
+// order — a documented RULING (cross-branch, converged with #126) standing
+// in for the old gateway's map-order nondeterminism (the winner genuinely
+// flip-flopped run to run), NOT parity. The reversed-order case is what
+// distinguishes camel-wins from URL-order-last-wins.
+func TestQueryBinder_ScalarCamelSpellingWinsBothOrders(t *testing.T) {
+	for _, raw := range []string{"per_page=1&perPage=2", "perPage=2&per_page=1"} {
+		b := newQueryBinder(mustQuery(t, raw))
+		assert.Equal(t, uint32(2), b.uint32Field("per_page"), raw)
+		require.NoError(t, b.err, raw)
+	}
+	for _, raw := range []string{"include_hidden=1&includeHidden=0", "includeHidden=0&include_hidden=1"} {
+		b := newQueryBinder(mustQuery(t, raw))
+		assert.False(t, b.boolField("include_hidden"), raw)
+		require.NoError(t, b.err, raw)
+	}
 }
 
 func TestQueryBinder_LenientBools(t *testing.T) {

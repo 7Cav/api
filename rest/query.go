@@ -26,9 +26,21 @@ package rest
 // enum-typed query parameter.) First failure wins; later reads still return
 // zero values so handlers can bind every field then check Err once.
 //
-// Where both spellings appear at once (no golden pins it — the old gateway's
-// map iteration made it nondeterministic): repeated fields see snake values
-// before camel ones; scalars take the last value.
+// Scalar fields mirror the old gateway's per-form-key protocol exactly
+// (runtime.populateFieldValueFromPath), plus one ruling:
+//
+//   - the same key repeated (?per_page=1&per_page=2) is the deterministic
+//     too-many-values 400, quoting that key's values (parity — the check ran
+//     per form key BEFORE parsing);
+//   - both spellings at once: EVERY value parses; any failure is the
+//     parsing-field 400 (parity — the bad key always errored, deterministic
+//     either map order); all valid → the camel value wins. Camel-wins is a
+//     documented RULING (cross-branch, converged with #126) standing in for
+//     the old gateway's genuine map-order nondeterminism, NOT parity.
+//
+// Repeated fields see snake values before camel ones (same ruling tier — no
+// golden pins cross-spelling order); same-key repetition binding by
+// repetition is golden-pinned parity.
 
 import (
 	"fmt"
@@ -47,13 +59,43 @@ func newQueryBinder(values url.Values) *queryBinder {
 }
 
 // raw returns the values bound to the field across both spellings, snake
-// first, nil when absent.
+// first, nil when absent. Always a fresh slice: appending camel values onto
+// b.values[snake] directly would write into the url.Values backing array
+// when it has spare capacity (and stringSliceField hands the result to
+// callers).
 func (b *queryBinder) raw(snake string) []string {
 	vals := b.values[snake]
 	if camel := snakeToCamel(snake); camel != snake {
-		vals = append(vals, b.values[camel]...)
+		if camelVals := b.values[camel]; len(camelVals) > 0 {
+			return append(append([]string(nil), vals...), camelVals...)
+		}
 	}
 	return vals
+}
+
+// scalar returns a scalar field's values in binding order (snake first,
+// camel last — the camel value wins) after enforcing the old gateway's
+// too-many-values check: either spelling carrying more than one value fails
+// with that spelling's values quoted, before any parsing (parity). nil after
+// a failure.
+func (b *queryBinder) scalar(snake string) []string {
+	snakeVals := b.values[snake]
+	var camelVals []string
+	if camel := snakeToCamel(snake); camel != snake {
+		camelVals = b.values[camel]
+	}
+	for _, vals := range [][]string{snakeVals, camelVals} {
+		if len(vals) > 1 {
+			if b.err == nil {
+				b.err = fmt.Errorf("too many values for field %q: %s", snake, strings.Join(vals, ", "))
+			}
+			return nil
+		}
+	}
+	if len(camelVals) == 0 {
+		return snakeVals
+	}
+	return append(append([]string(nil), snakeVals...), camelVals...)
 }
 
 // failField records the first binding failure in the gateway's scalar
@@ -73,11 +115,11 @@ func (b *queryBinder) failList(snake string, err error) {
 }
 
 func (b *queryBinder) stringField(snake string) string {
-	vals := b.raw(snake)
+	vals := b.scalar(snake)
 	if len(vals) == 0 {
 		return ""
 	}
-	return vals[len(vals)-1]
+	return vals[len(vals)-1] // camel wins (ruling, see package comment)
 }
 
 func (b *queryBinder) stringSliceField(snake string) []string {
@@ -85,16 +127,16 @@ func (b *queryBinder) stringSliceField(snake string) []string {
 }
 
 func (b *queryBinder) uint32Field(snake string) uint32 {
-	vals := b.raw(snake)
-	if len(vals) == 0 {
-		return 0
+	var out uint32
+	for _, raw := range b.scalar(snake) {
+		v, err := strconv.ParseUint(raw, 10, 32)
+		if err != nil {
+			b.failField(snake, err)
+			return 0
+		}
+		out = uint32(v) // every value parses; camel (last) wins
 	}
-	v, err := strconv.ParseUint(vals[len(vals)-1], 10, 32)
-	if err != nil {
-		b.failField(snake, err)
-		return 0
-	}
-	return uint32(v)
+	return out
 }
 
 func (b *queryBinder) uint32SliceField(snake string) []uint32 {
@@ -112,16 +154,16 @@ func (b *queryBinder) uint32SliceField(snake string) []uint32 {
 }
 
 func (b *queryBinder) boolField(snake string) bool {
-	vals := b.raw(snake)
-	if len(vals) == 0 {
-		return false
+	var out bool
+	for _, raw := range b.scalar(snake) {
+		v, err := strconv.ParseBool(raw)
+		if err != nil {
+			b.failField(snake, err)
+			return false
+		}
+		out = v // every value parses; camel (last) wins
 	}
-	v, err := strconv.ParseBool(vals[len(vals)-1])
-	if err != nil {
-		b.failField(snake, err)
-		return false
-	}
-	return v
+	return out
 }
 
 // snakeToCamel derives the lowerCamelCase spelling of a snake_case query key
