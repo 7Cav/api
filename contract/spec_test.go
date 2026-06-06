@@ -117,6 +117,11 @@ func TestSpec_KeycloakSurfaceAbsent(t *testing.T) {
 // parameters and response content. $ref uses are skipped — the referenced
 // schema is visited where it is defined. Recursion covers properties, items,
 // additionalProperties, oneOf, anyOf, allOf and not.
+//
+// This walk is EXHAUSTIVE for the document by construction:
+// TestSpec_DocumentStaysInWalkedDialect bans every schema-carrying construct
+// the walk does not visit. Extend the dialect only by extending both
+// together.
 func forEachDocumentSchema(t *testing.T, model *v3.Document, visit func(path string, s *base.Schema)) {
 	t.Helper()
 	var walk func(path string, sp *base.SchemaProxy)
@@ -219,6 +224,66 @@ func TestSpec_WireConventions(t *testing.T) {
 			assert.True(t, strings.HasSuffix(first, "_UNSPECIFIED"),
 				"%s: enum must lead with its _UNSPECIFIED zero name, got %q", path, first)
 		}
+	})
+}
+
+// TestSpec_DocumentStaysInWalkedDialect pins the document to the exact
+// OpenAPI dialect the structural nets walk. forEachDocumentSchema covers
+// components.schemas/parameters/responses and operation-level parameters and
+// response content — and deliberately NOTHING more.
+//
+// Orchestrator decision — BAN, do not extend the walker: a walker can never
+// durably outrun the OpenAPI grammar (every libopenapi upgrade can grow new
+// schema carriers), so chasing it turns the structural nets' coverage claim
+// into best-effort. A pinned dialect makes that claim EXACT: every construct
+// that can carry a schema in this document is one the nets walk, and any new
+// construct fails loudly here at introduction time, naming what to extend.
+// Banned because unwalked:
+//   - path-item-level parameters: (operation-level only)
+//   - parameter content: (every parameter carries schema:)
+//   - requestBody on any operation (GET-only surface, pinned by the battery)
+//   - components.headers / components.requestBodies
+//   - patternProperties / propertyNames inside any walked schema
+func TestSpec_DocumentStaysInWalkedDialect(t *testing.T) {
+	_, model := loadSpec(t)
+	const remedy = "is outside the walked dialect — extending the dialect requires extending forEachDocumentSchema AND this test together"
+
+	checkParam := func(where string, p *v3.Parameter) {
+		assert.NotNil(t, p.Schema,
+			"construct parameter-without-schema (%s, parameter %q) %s", where, p.Name, remedy)
+		assert.Zero(t, orderedmap.Len(p.Content),
+			"construct parameter-content (%s, parameter %q) %s", where, p.Name, remedy)
+	}
+
+	if model.Components != nil {
+		assert.Zero(t, orderedmap.Len(model.Components.Headers),
+			"construct components.headers %s", remedy)
+		assert.Zero(t, orderedmap.Len(model.Components.RequestBodies),
+			"construct components.requestBodies %s", remedy)
+		for pair := orderedmap.First(model.Components.Parameters); pair != nil; pair = pair.Next() {
+			checkParam("components.parameters."+pair.Key(), pair.Value())
+		}
+	}
+
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		route := pair.Key()
+		assert.Empty(t, pair.Value().Parameters,
+			"construct path-item-level parameters (on %s) %s", route, remedy)
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			opPath := strings.ToUpper(method) + " " + route
+			assert.Nil(t, op.RequestBody,
+				"construct requestBody (on %s) %s", opPath, remedy)
+			for _, p := range op.Parameters {
+				checkParam(opPath, p)
+			}
+		}
+	}
+
+	forEachDocumentSchema(t, model, func(path string, s *base.Schema) {
+		assert.Zero(t, orderedmap.Len(s.PatternProperties),
+			"construct patternProperties (at %s) %s", path, remedy)
+		assert.Nil(t, s.PropertyNames,
+			"construct propertyNames (at %s) %s", path, remedy)
 	})
 }
 

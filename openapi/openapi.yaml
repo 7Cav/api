@@ -969,14 +969,16 @@ components:
         - consoleGamertag
       additionalProperties: false
 
+    # Map shapes: profiles is an explicit map — additionalProperties is the
+    # value schema. The key format (decimal relation-id strings) is documented
+    # in the description only: propertyNames is outside the walked dialect
+    # (see TestSpec_DocumentStaysInWalkedDialect in contract/spec_test.go).
     Roster:
       type: object
       properties:
         profiles:
           type: object
           description: Profiles keyed by milpac relation id (uint64 keys as strings).
-          propertyNames:
-            pattern: '^[0-9]+$'
           additionalProperties:
             $ref: '#/components/schemas/Profile'
       required: [profiles]
@@ -988,8 +990,6 @@ components:
         profiles:
           type: object
           description: Lite profiles keyed by milpac relation id (uint64 keys as strings).
-          propertyNames:
-            pattern: '^[0-9]+$'
           additionalProperties:
             $ref: '#/components/schemas/LiteProfile'
       required: [profiles]
@@ -1065,8 +1065,6 @@ components:
         profiles:
           type: object
           description: S1 uniforms profiles keyed by milpac relation id (uint64 keys as strings).
-          propertyNames:
-            pattern: '^[0-9]+$'
           additionalProperties:
             $ref: '#/components/schemas/S1UniformsProfile'
       required: [profiles]
