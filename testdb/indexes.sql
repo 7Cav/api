@@ -1,4 +1,7 @@
 -- PRD #112 ("Goodbye gRPC") Phase 1 index script — SOURCE OF TRUTH.
+-- Requires MariaDB: ADD INDEX IF NOT EXISTS is MariaDB-only syntax,
+-- Oracle MySQL rejects it. The forum runs MariaDB 11.5; verifying the
+-- production engine is part of the human-gated apply (issue #122).
 --
 -- Four indexes backing the API's hot read paths (mirror-measured):
 --   - xf_post user_id_post_date: flips the last-post aggregation

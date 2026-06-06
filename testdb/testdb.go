@@ -120,10 +120,10 @@ func Open(t *testing.T) (*sql.DB, string) {
 }
 
 // dsn builds a go-sql-driver DSN for the harness server. multiStatements
-// lets the embedded schema and fixture scripts run as single Exec calls.
-// The timeouts keep a black-holed TESTDB_ADDR from hanging until the go
-// test panic dump: the connection errors promptly instead, so Open's
-// well-worded t.Fatalf messages fire.
+// lets the embedded schema, fixture, and index scripts run as single
+// Exec calls. The timeouts keep a black-holed TESTDB_ADDR from hanging
+// until the go test panic dump: the connection errors promptly instead,
+// so Open's well-worded t.Fatalf messages fire.
 func dsn(addr, database string) string {
 	cfg := mysql.NewConfig()
 	cfg.User = "root"
