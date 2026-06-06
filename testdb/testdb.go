@@ -49,6 +49,17 @@ const (
 //go:embed schema.sql
 var schemaSQL string
 
+// IndexDDL is the PRD #112 Phase 1 index script (testdb/indexes.sql),
+// embedded verbatim. The file is the in-repo source of truth that the
+// DB admin applies manually to production (issue #122); tests apply it
+// to their own disposable databases to assert the green EXPLAIN plans.
+// It is idempotent (ADD INDEX IF NOT EXISTS) and deliberately separate
+// from the schema: the harness stays unindexed so red plans stay
+// reproducible. The API binary never executes it.
+//
+//go:embed indexes.sql
+var IndexDDL string
+
 //go:embed fixtures.sql
 var fixturesSQL string
 
