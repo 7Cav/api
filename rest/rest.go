@@ -85,6 +85,7 @@ func routes(ds datastores.Datastore) *http.ServeMux {
 
 	// --- milpacs (scope: read) -------------------------------------------
 	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
+	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", getProfileByID(ds))
 
 	mux.HandleFunc("/", fallback(mux))
 

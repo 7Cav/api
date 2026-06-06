@@ -44,12 +44,20 @@ const specPath = "../openapi/openapi.yaml"
 // to stay unmatched.
 var specRoutes = map[string]string{
 	"/api/v1/milpacs/ranks": "/api/v1/milpacs/ranks",
-	// The 401-tier battery cases replay against these two paths before their
-	// routes are implemented (auth runs before routing, so the observed 401s
-	// are route-independent); the operations document 401 explicitly.
-	"/api/v1/milpacs/profile/id/1": "/api/v1/milpacs/profile/id/{userId}",
-	"/api/v1/tickets":              "/api/v1/tickets",
-	"/api/v1/does/not/exist":       "", // off-spec: unknown-path tier (mux behavior, not an operation)
+	// Profile by id: happy (1), sparse (2), not-found (999), zero (0),
+	// parse-error (abc), injected outage (777) — plus the 401-tier battery
+	// cases that replay against /id/1.
+	"/api/v1/milpacs/profile/id/1":   "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/2":   "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/999": "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/0":   "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/abc": "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/milpacs/profile/id/777": "/api/v1/milpacs/profile/id/{userId}",
+	// The tickets 401-tier battery cases replay against this path before the
+	// route is implemented (auth runs before routing, so the observed 401s
+	// are route-independent); the operation documents 401 explicitly.
+	"/api/v1/tickets":        "/api/v1/tickets",
+	"/api/v1/does/not/exist": "", // off-spec: unknown-path tier (mux behavior, not an operation)
 }
 
 func loadSpecModel(t *testing.T) *v3.Document {

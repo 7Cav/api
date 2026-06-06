@@ -2,6 +2,7 @@ package rest_test
 
 import (
 	"compress/gzip"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/7cav/api/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 const goldensDir = "../contract/goldens"
@@ -27,12 +29,15 @@ func init() {
 
 // fakeDatastore seeds the new stack for golden replay. It must agree with
 // the recording seed (contract/fake_datastore_test.go) for everything the
-// implemented routes serve: the battery's bearer tokens and the two-rank
-// catalog. Unimplemented methods panic via the embedded nil interface — a
-// loud failure if a test reaches further than the routes it mounts.
+// implemented routes serve: the battery's bearer tokens, the two-rank
+// catalog, and the two seed profiles (relation 1 ↔ user 3 Jarvis.A, relation
+// 2 ↔ user 8 John.Doe — the divergence keeps the relation-key semantic
+// observable). Unimplemented methods panic via the embedded nil interface —
+// a loud failure if a test reaches further than the routes it mounts.
 type fakeDatastore struct {
 	datastores.Datastore
-	findAllRanks func() ([]*proto.RankExpanded, error)
+	findAllRanks     func() ([]*proto.RankExpanded, error)
+	findProfilesById func(userIds ...uint64) ([]*proto.Profile, error)
 }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
@@ -65,6 +70,102 @@ func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
 	}, nil
 }
 
+// errOutage is the injected failure for the Internal-error goldens: the
+// message leaks into the response body via the handlers' error wrapping —
+// that leak is frozen behavior (mirrors the recording seed's errOutage).
+var errOutage = errors.New("simulated datastore outage")
+
+// seedJarvis mirrors the recording seed's rich profile: every collection
+// populated, relation 1 ↔ user 3. KeycloakId is deliberately set — the
+// corpus transform stripped it from the goldens, so the mapper dropping it
+// is observable in the replay.
+func seedJarvis() *proto.Profile {
+	return &proto.Profile{
+		User: &proto.User{UserId: 3, Username: "Jarvis.A"},
+		Rank: &proto.Rank{
+			RankShort:    "MG",
+			RankFull:     "Major General",
+			RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618",
+			RankId:       4,
+		},
+		RealName:   "Adam Jarvis",
+		UniformUrl: "https://7cav.us/data/roster_uniforms/0/1.jpg",
+		Roster:     proto.RosterType_ROSTER_TYPE_COMBAT,
+		Primary:    &proto.Position{PositionTitle: "Regimental Technical Aide", PositionId: 773},
+		Secondaries: []*proto.Position{
+			{PositionTitle: "S6 Web Developer", PositionId: 812},
+		},
+		Records: []*proto.Record{
+			{
+				RecordDetails: "Promoted to Major General (O-8)",
+				RecordType:    proto.RecordType_RECORD_TYPE_PROMOTION,
+				RecordDate:    "2020-10-17",
+				RecordUid:     46,
+			},
+			{
+				RecordDetails: "Completed 18th Combat Mission (Operation Pride of Charlie, Fall 2020)",
+				RecordType:    proto.RecordType_RECORD_TYPE_OPERATION,
+				RecordDate:    "2020-09-27",
+				RecordUid:     13863,
+			},
+		},
+		Awards: []*proto.Award{
+			{
+				AwardDetails:  "For technical excellence & dedication <est. 2014>",
+				AwardName:     "Commendation Medal",
+				AwardDate:     "2021-03-01",
+				AwardImageUrl: "https://7cav.us/data/awards/ccm.jpg",
+				AwardUid:      901,
+			},
+		},
+		JoinDate:          "2014-02-08",
+		PromotionDate:     "2020-10-17",
+		KeycloakId:        "3f8e2a10-dead-beef-cafe-0123456789ab",
+		DiscordId:         "112233445566778899",
+		LastForumPostDate: "2026-05-30",
+		Mos:               "11B",
+		ConsoleGamertag:   "",
+	}
+}
+
+// seedDoe mirrors the recording seed's sparse profile: unset nested messages
+// nil (null on the wire), collections empty ([]), strings "". Relation 2 ↔
+// user 8.
+func seedDoe() *proto.Profile {
+	return &proto.Profile{
+		User:            &proto.User{UserId: 8, Username: "John.Doe"},
+		Rank:            &proto.Rank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22},
+		RealName:        "John Doe",
+		UniformUrl:      "https://7cav.us/data/roster_uniforms/0/2.jpg",
+		Roster:          proto.RosterType_ROSTER_TYPE_COMBAT,
+		Primary:         nil, // → "primary": null
+		Secondaries:     []*proto.Position{},
+		Records:         []*proto.Record{},
+		Awards:          []*proto.Award{},
+		JoinDate:        "2026-01-15",
+		ConsoleGamertag: "CavGamer77",
+	}
+}
+
+// FindProfilesById keys on the MILPAC RELATION ID, mirroring the recording
+// seed (and datastores.Mysql: gorm First keys on the milpacs.Profile primary
+// key = relation_id). 777 is the injected-outage id for the 500 golden.
+func (f *fakeDatastore) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
+	if f.findProfilesById != nil {
+		return f.findProfilesById(userIds...)
+	}
+	switch userIds[0] {
+	case 1:
+		return []*proto.Profile{seedJarvis()}, nil
+	case 2:
+		return []*proto.Profile{seedDoe()}, nil
+	case 777:
+		return nil, errOutage
+	default:
+		return nil, gorm.ErrRecordNotFound
+	}
+}
+
 func newStack(t *testing.T) http.Handler {
 	t.Helper()
 	return rest.New(&fakeDatastore{})
@@ -79,9 +180,19 @@ func newStack(t *testing.T) http.Handler {
 // including ones whose routes don't exist yet.
 var implementedCases = []string{
 	"milpacs/ranks",
+	"milpacs/profile_by_id_happy",
+	"milpacs/profile_by_id_sparse",
+	"milpacs/profile_by_id_not_found",
+	"milpacs/profile_by_id_zero",
+	"milpacs/profile_by_id_parse_error",
+	"milpacs/profile_by_id_internal_error",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",
+	// The 403 scope tier needs a real route to reach (requireScope is
+	// per-route, inside the mux) — reachable since the profile-by-id slice.
+	"auth/milpacs_wrong_scope",
+	"auth/milpacs_no_scopes",
 	"auth/tickets_missing_header",
 	"auth/tickets_raw_key",
 	"auth/tickets_invalid_key",
