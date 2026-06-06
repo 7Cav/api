@@ -138,6 +138,28 @@ func TestFixtures_ApiKeysResolveScopes(t *testing.T) {
 	}
 }
 
+// testdb.RevokedAPIKey and the seeded inactive key row are duplicated
+// raw strings (constant in testdb.go, literal in fixtures.sql). If they
+// drift, downstream negative-path tests pass for the wrong reason: the
+// key fails validation because it's unknown, not because it's revoked.
+// Pin them together: the exported constant must hash to exactly one
+// seeded INACTIVE row.
+func TestFixtures_RevokedAPIKeyResolvesToInactiveRow(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	var n int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM xf_cav7_api_key
+		 WHERE key_hash = UNHEX(SHA2(?, 256)) AND is_active = 0`,
+		testdb.RevokedAPIKey,
+	).Scan(&n); err != nil {
+		t.Fatalf("resolving revoked key: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("testdb.RevokedAPIKey must hash to exactly one inactive seeded row, got %d (constant and fixtures.sql drifted?)", n)
+	}
+}
+
 // Each Open call must yield its own database so tests can run DDL
 // (e.g. CREATE INDEX for green-plan comparisons) without leaking into
 // sibling tests.
