@@ -79,7 +79,12 @@ func Open(t *testing.T) (*sql.DB, string) {
 		t.Fatalf("testdb: creating database %s on %s: %v", name, addr, err)
 	}
 	t.Cleanup(func() {
-		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name)
+		// A swallowed failure here leaks the database into the
+		// long-lived harness server's tmpfs until unrelated tests
+		// start failing; make the leak loud and attributable.
+		if _, err := admin.Exec("DROP DATABASE IF EXISTS " + name); err != nil {
+			t.Errorf("testdb: dropping database %s on %s (leaked into the harness server): %v", name, addr, err)
+		}
 		admin.Close()
 	})
 
