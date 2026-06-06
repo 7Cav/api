@@ -196,6 +196,30 @@ func TestNewStack_GzipRoundTrip(t *testing.T) {
 	assert.Contains(t, string(decoded), `"rankFull":"Major General"`)
 }
 
+// Gzip sits OUTSIDE the mux (PRD order): ERROR responses compress too, not
+// just handler 200s — the 403 scope tier is written inside the mux (per-route
+// requireScope → writeError), so a gzipped 403 that decompresses back to the
+// frozen JSON pins the gzip-outside-mux half of the chain-order criterion.
+func TestNewStack_GzipErrorResponseRoundTrip(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	req.Header.Set("Authorization", "Bearer cav7_ticketskey") // read:tickets ≠ read
+	req.Header.Set("Accept-Encoding", "gzip")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+	require.Equal(t, "gzip", rr.Result().Header.Get("Content-Encoding"))
+
+	zr, err := gzip.NewReader(rr.Body)
+	require.NoError(t, err, "body must be a valid gzip stream")
+	decoded, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
+	assert.JSONEq(t, `{"code":7,"message":"scope required: read","details":[]}`, string(decoded))
+}
+
 // Auth sits OUTSIDE gzip in the chain (PRD order): a 401 must come back
 // uncompressed even when the client advertises gzip — exactly as the old
 // stack behaves and as the plain-text golden tier implies.
