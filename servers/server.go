@@ -137,8 +137,12 @@ func (server *MicroServer) Start() {
 	Info.Println("Starting 7Cav API version:", version)
 
 	// Phase 0 observability (PRD #112): errors-only Sentry capture, gated on
-	// SENTRY_DSN. Disabled (local/dev) this is a complete no-op — no signal
-	// handler either, so shutdown behaves exactly as before.
+	// SENTRY_DSN. Disabled (local/dev) nothing is initialised — one Info line,
+	// no client, no signal handler, so shutdown behaves exactly as before.
+	// Enabled, this BLOCKS boot before any listener opens: the dial pre-check
+	// (≤3s on an unreachable host) plus the startup-probe flush window (≤5s)
+	// — a worst-case ~8s delay on a degraded network, by design, so a broken
+	// pipeline is visible before traffic flows.
 	if setupSentry() {
 		flushSentryOnShutdown()
 	}
@@ -164,18 +168,7 @@ func (server *MicroServer) Start() {
 	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.
 	// 		 If this needed to change in the future, then we will need to refactor this method
 	opts := []grpc.ServerOption{
-		// Intercept request to check the token; Sentry sits inside auth so
-		// it only sees authenticated requests, with the API key already on
-		// ctx for key-id tagging. No SENTRY_DSN → the inner interceptor is
-		// a pass-through. Sentry-inside-auth also means auth-layer
-		// infrastructure failures (e.g. a datastore outage producing mass
-		// Unauthenticated rejections) generate no Sentry events by design —
-		// accepted for Phase 0, revisit in the Phase 3 first-class wiring
-		// (#130–#132).
-		grpc.ChainUnaryInterceptor(
-			grpcServices.NewAuthInterceptor(ds),
-			grpcServices.NewSentryInterceptor(),
-		),
+		grpc.ChainUnaryInterceptor(apiUnaryInterceptors(ds)...),
 		//grpc.Creds(creds),
 	}
 
@@ -184,6 +177,25 @@ func (server *MicroServer) Start() {
 	go servHTTP(server, httpL, ds)
 	Info.Println("Starting GRPC listener")
 	servGRPC(server, grpcL, opts, ds)
+}
+
+// apiUnaryInterceptors is the gRPC unary interceptor chain, in the
+// outermost-first order consumed by grpc.ChainUnaryInterceptor: auth outer,
+// sentry inner. Sentry sits inside auth so it only sees authenticated
+// requests, with the API key already on ctx for key-id tagging. No SENTRY_DSN
+// → the inner interceptor is a pass-through. Sentry-inside-auth also means
+// auth-layer infrastructure failures (e.g. a datastore outage producing mass
+// Unauthenticated rejections) generate no Sentry events by design — accepted
+// for Phase 0, revisit in the Phase 3 observability slices (#130–#132).
+//
+// Package-level (not inlined in Start) so the chain order is a tested
+// contract — see TestAPIUnaryInterceptors_AuthOuterSentryInner_KeyIDReachesEvent
+// — mirroring buildAPIHandler on the HTTP side.
+func apiUnaryInterceptors(ds datastores.Datastore) []grpc.UnaryServerInterceptor {
+	return []grpc.UnaryServerInterceptor{
+		grpcServices.NewAuthInterceptor(ds),
+		grpcServices.NewSentryInterceptor(),
+	}
 }
 
 func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOption, ds datastores.Datastore) {
