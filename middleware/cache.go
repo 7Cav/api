@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"compress/gzip"
-	"github.com/7cav/api/cache"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +16,20 @@ var (
 	Error = log.New(os.Stdout, "ERROR: ", log.LstdFlags)
 )
 
-func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
+// responseCache is the subset of cache.RedisCache's method set the middleware
+// actually uses. *cache.RedisCache satisfies it implicitly, so callers are
+// unchanged; tests substitute an in-memory fake.
+//
+// Get returns a non-nil error when the key is absent or the cache is
+// unreachable; the middleware treats any error as a miss. A nil error
+// guarantees the returned bytes are a complete cached response.
+type responseCache interface {
+	Get(key string) ([]byte, error)
+	Set(key string, response []byte) error
+	GenerateCacheKey(path string) string
+}
+
+func CacheMiddleware(cache responseCache, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/tickets" || strings.HasPrefix(r.URL.Path, "/api/v1/tickets/") {
 			next.ServeHTTP(w, r)
@@ -28,7 +40,14 @@ func CacheMiddleware(cache *cache.RedisCache, next http.Handler) http.Handler {
 		r.Header.Del("Accept-Encoding")
 		endodeGzip := strings.Contains(acceptEncoding, "gzip")
 		defer func() {
-			Info.Printf("[CACHE] Request completed in %v", time.Since(start))
+			// Phase 0 measuring stick (#112/#114): duration= duplicates the
+			// human-readable elapsed value as a parseable field, appended so
+			// existing ad-hoc analytics keep matching the line. Fires on every
+			// request past the tickets bypass (hit, miss, and non-GET alike).
+			// Temporary; this middleware leaves the chain at Phase 2 de-cache
+			// (#123); deletion follows post-soak (#124).
+			elapsed := time.Since(start)
+			Info.Printf("[CACHE] Request completed in %v duration=%v", elapsed, elapsed)
 		}()
 
 		if r.Method != http.MethodGet {

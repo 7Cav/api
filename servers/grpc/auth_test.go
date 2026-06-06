@@ -17,7 +17,8 @@ import (
 )
 
 // captureInfo redirects the package Info logger to a buffer for the duration
-// of the test and restores it on cleanup.
+// of the test and restores it on cleanup. Not parallel-safe: swaps a shared
+// package-level logger; do not add t.Parallel() to this package.
 func captureInfo(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
