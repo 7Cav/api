@@ -122,11 +122,11 @@ func RunCase(h http.Handler, c Case) (*Golden, []byte, error) {
 
 	raw := rr.Body.Bytes()
 	if isJSONContentType(rr.Header().Get("Content-Type")) {
-		v, err := Canonicalize(raw)
+		v, err := canonicalize(raw)
 		if err != nil {
 			return nil, raw, fmt.Errorf("case %s: response declared JSON but does not parse: %w", c.Name, err)
 		}
-		g.Body = MarshalCanonical(StripKeycloakID(v))
+		g.Body = marshalCanonical(stripKeycloakID(v))
 	} else {
 		s := string(raw)
 		g.BodyText = &s
@@ -153,13 +153,13 @@ func CompareGolden(want, got *Golden) []string {
 	}
 	switch {
 	case want.Body != nil && got.Body != nil:
-		wv, werr := Canonicalize(want.Body)
-		gv, gerr := Canonicalize(got.Body)
+		wv, werr := canonicalize(want.Body)
+		gv, gerr := canonicalize(got.Body)
 		if werr != nil || gerr != nil {
 			diffs = append(diffs, fmt.Sprintf("body: unparseable golden (want err %v, got err %v)", werr, gerr))
 			break
 		}
-		diffs = append(diffs, Diff(wv, gv)...)
+		diffs = append(diffs, diff(wv, gv)...)
 	case want.BodyText != nil && got.BodyText != nil:
 		if *want.BodyText != *got.BodyText {
 			diffs = append(diffs, fmt.Sprintf("bodyText: want %q, got %q", *want.BodyText, *got.BodyText))
@@ -190,11 +190,11 @@ func SaveGolden(dir string, g *Golden) error {
 	// Indent the embedded canonical body consistently: re-render through the
 	// canonical encoder (number-literal preserving) so committed goldens are
 	// deterministic and pleasant to review.
-	pretty, err := Canonicalize(out)
+	pretty, err := canonicalize(out)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(MarshalCanonical(pretty), '\n'), 0o644)
+	return os.WriteFile(path, append(marshalCanonical(pretty), '\n'), 0o644)
 }
 
 // LoadGolden reads the committed golden for a case name.

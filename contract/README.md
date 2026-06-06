@@ -22,8 +22,8 @@ One file per battery case (`battery.go` → `Cases()`), named
 ## Comparison is semantic, never byte-based
 
 `protojson` randomizes whitespace per build, so today's API is already not
-byte-stable. Replay therefore parses both sides, canonicalizes
-(`Canonicalize`), and diffs structurally (`Diff` / `CompareGolden`):
+byte-stable. Replay therefore parses both sides, canonicalizes, and diffs
+structurally (`CompareGolden`; the canonicalizer and differ are internal):
 
 - object key order never matters;
 - array order and length matter;
@@ -33,11 +33,11 @@ byte-stable. Replay therefore parses both sides, canonicalizes
   (emit-everything semantics are part of the contract);
 - byte-level output is informational only (printed on failure for debugging).
 
-## The single transform: `StripKeycloakID`
+## The single transform: `stripKeycloakID`
 
 Exactly one transform sits between the wire and the goldens: every object key
-named `keycloakId`, at any depth, is removed (`StripKeycloakID` in
-`canon.go`). The field — like the keycloak lookup route — is deleted at
+named `keycloakId`, at any depth, is removed (`stripKeycloakID` in
+`canon.go`, applied automatically inside `RunCase`). The field — like the keycloak lookup route — is deleted at
 cutover; goldens record the truth the new stack must reproduce, and the
 transform documents the break. It is applied symmetrically: to responses at
 record time and at replay time, so the corpus stays green against the old
@@ -48,6 +48,23 @@ deliberately **not** recorded — it dies at cutover, so there is no golden to
 hold it to. That leaves the 16 surviving public routes, all covered
 (enumerated on `Cases()` in `battery.go`; coverage enforced by
 `TestBatteryIsWellFormed`).
+
+## Public surface
+
+The package is a deep module: a small frozen API for the Phase 3 replay
+consumers (#125–#129), with the canonicalizer and differ kept internal
+(`canonicalize`, `marshalCanonical`, `stripKeycloakID`, `diff` in `canon.go`).
+Re-exporting any of them later is a non-breaking change if a consumer ever
+needs one. The exported surface is exactly five entries:
+
+1. `Cases() []Case` / `Case` — the recorded request battery.
+2. `Auth` and its constants (`AuthNone`, `AuthRawKey`, `AuthInvalidKey`,
+   `AuthRead`, `AuthReadTickets`, `AuthNoScopes`) — credential tiers.
+3. `Golden` — the recorded contract for one case.
+4. `RunCase(http.Handler, Case)` — drive one case through a mounted stack,
+   returning the observed `Golden` (canonicalized, transform applied).
+5. `CompareGolden(want, got)` / `SaveGolden` / `LoadGolden` — semantic
+   comparison and golden persistence.
 
 ## How the corpus was recorded
 

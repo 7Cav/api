@@ -67,9 +67,9 @@ func TestContractCorpus(t *testing.T) {
 // the informational byte comparison isn't tripped by file formatting.
 func normalizeRaw(t *testing.T, raw []byte) []byte {
 	t.Helper()
-	v, err := Canonicalize(raw)
+	v, err := canonicalize(raw)
 	require.NoError(t, err)
-	return MarshalCanonical(v)
+	return marshalCanonical(v)
 }
 
 func truncateForLog(b []byte) string {
