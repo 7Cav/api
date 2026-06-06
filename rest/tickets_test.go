@@ -6,11 +6,14 @@ package rest_test
 // battery cases, because the corpus replays against the old stack too.
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
 	"github.com/stretchr/testify/assert"
@@ -63,6 +66,29 @@ func TestNewStack_ListCategoriesOutageIsInternalJSON(t *testing.T) {
 	assert.JSONEq(t, `{"code":13,"message":"list ticket categories: unexpected EOF","details":[]}`, rr.Body.String())
 }
 
+// An outage on the tickets list: "list tickets: %v".
+func TestNewStack_ListTicketsOutageIsInternalJSON(t *testing.T) {
+	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+		return nil, "", false, io.ErrUnexpectedEOF
+	}}, nil)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets")
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.JSONEq(t, `{"code":13,"message":"list tickets: unexpected EOF","details":[]}`, rr.Body.String())
+}
+
+// An empty tickets page must serialize with the collections allocated:
+// {"tickets":[],...} — never null.
+func TestNewStack_EmptyTicketsPageIsEmptyArray(t *testing.T) {
+	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+		return nil, "", false, nil
+	}}, nil)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets")
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.JSONEq(t, `{"tickets":[],"nextCursor":"","hasMore":false}`, rr.Body.String())
+}
+
 // An outage on the messages list: "list ticket messages: %v".
 func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32) ([]*proto.Message, string, bool, error) {
@@ -101,6 +127,96 @@ func TestNewStack_UnknownTicketSubResourceIsJSON404(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, rr.Code, key)
 		assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String(), key)
+	}
+}
+
+// --- Enumerated cutover breaks (PRD #112 breaks list, new-stack-only) ------
+//
+// These are deliberately plain tests, NOT battery cases: the golden corpus
+// replays against the old stack too, and the old stack behaves differently
+// here by design (the breaks ship at cutover).
+
+// Invalid values for typed query parameters return 400 instead of the old
+// gateway's silent drop (breaks list: "Invalid enum values in queries return
+// 400 instead of being silently dropped"). The tickets surface has no
+// enum-typed query parameter — the closest kin are its uint32 and bool
+// filters, which carry the same break: a value the type cannot parse is a
+// type-mismatch 400, never ignored.
+func TestNewStack_InvalidQueryValuesReturn400(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/api/v1/tickets?status_id=abc",
+			`type mismatch, parameter: status_id, error: strconv.ParseUint: parsing "abc": invalid syntax`},
+		{"/api/v1/tickets?excludeSubcategories=bogus",
+			`type mismatch, parameter: exclude_subcategories, error: strconv.ParseBool: parsing "bogus": invalid syntax`},
+		{"/api/v1/tickets?perPage=-1",
+			`type mismatch, parameter: per_page, error: strconv.ParseUint: parsing "-1": invalid syntax`},
+		{"/api/v1/tickets/42/messages?per_page=abc",
+			`type mismatch, parameter: per_page, error: strconv.ParseUint: parsing "abc": invalid syntax`},
+		{"/api/v1/tickets/42/messages?include_hidden=banana",
+			`type mismatch, parameter: include_hidden, error: strconv.ParseBool: parsing "banana": invalid syntax`},
+	}
+	for _, tc := range cases {
+		rr := ticketsGet(t, h, tc.path)
+		require.Equal(t, http.StatusBadRequest, rr.Code, tc.path)
+		body, err := json.Marshal(map[string]any{"code": 3, "message": tc.want, "details": []any{}})
+		require.NoError(t, err)
+		assert.JSONEq(t, string(body), rr.Body.String(), tc.path)
+	}
+}
+
+// The Grpc-Metadata-* response headers the old gateway leaks on tickets
+// routes are NOT reproduced (breaks list: "Gateway artifacts dropped").
+func TestNewStack_NoGrpcMetadataHeadersOnTicketsRoutes(t *testing.T) {
+	h := newStack(t)
+
+	for _, path := range []string{
+		"/api/v1/tickets",
+		"/api/v1/tickets/42",
+		"/api/v1/tickets/ref/MF1UI9HE",
+		"/api/v1/tickets/42/messages",
+		"/api/v1/tickets/categories",
+	} {
+		rr := ticketsGet(t, h, path)
+		require.Equal(t, http.StatusOK, rr.Code, path)
+		for name := range rr.Result().Header {
+			assert.NotContains(t, strings.ToLower(name), "grpc-metadata", path)
+		}
+	}
+}
+
+// --- Scope separation (read vs read:tickets) -------------------------------
+
+// The battery pins both wrong-scope directions with goldens
+// (auth/tickets_wrong_scope: `read` on /api/v1/tickets;
+// auth/milpacs_wrong_scope: `read:tickets` on a milpacs route, replayed in
+// TestNewStack_AuthTiersOnRanksRoute). This covers the tier the battery
+// lacks on the tickets surface — a valid key with NO scopes — and pins the
+// per-handler scope name in the 403 body on every tickets route.
+func TestNewStack_TicketsScopeGateOnEveryRoute(t *testing.T) {
+	h := newStack(t)
+
+	for _, path := range []string{
+		"/api/v1/tickets",
+		"/api/v1/tickets/42",
+		"/api/v1/tickets/ref/MF1UI9HE",
+		"/api/v1/tickets/42/messages",
+		"/api/v1/tickets/categories",
+	} {
+		for _, key := range []string{"cav7_readkey", "cav7_noscopekey"} {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer "+key)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusForbidden, rr.Code, "%s with %s", path, key)
+			assert.JSONEq(t, `{"code":7,"message":"scope required: read:tickets","details":[]}`,
+				rr.Body.String(), "%s with %s", path, key)
+		}
 	}
 }
 

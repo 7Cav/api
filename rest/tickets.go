@@ -15,6 +15,52 @@ import (
 // single-ticket responses — frozen from the old handler.
 const firstMessagesCount = 10
 
+// listTickets serves GET /api/v1/tickets: cursor-paginated tickets with the
+// conjunctive filter set, golden-pinned by tickets/list_*. All the
+// request-side leniency lives in the query binder; the filter field names
+// here are the binder's snake_case declarations (camel spellings derived).
+// Error message strings frozen from the old stack (servers/grpc ListTickets).
+func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := newQueryBinder(r.URL.Query())
+		filter := &datastores.ListTicketsFilter{
+			CategoryIDs:          b.uint32SliceField("category_id"),
+			ExcludeSubcategories: b.boolField("exclude_subcategories"),
+			TicketStates:         b.stringSliceField("ticket_state"),
+			StatusIDs:            b.uint32SliceField("status_id"),
+			PrefixIDs:            b.uint32SliceField("prefix_id"),
+			AssignedUserIDs:      b.uint32SliceField("assigned_user_id"),
+			StarterUserIDs:       b.uint32SliceField("starter_user_id"),
+			ModifiedSince:        b.uint32Field("modified_since"),
+			IncludeHidden:        b.boolField("include_hidden"),
+			PerPage:              b.uint32Field("per_page"),
+			AfterCursor:          b.stringField("after_cursor"),
+		}
+		if b.err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", b.err)
+			return
+		}
+		tickets, next, more, err := ds.ListTickets(r.Context(), rc, filter)
+		if err != nil {
+			if errors.Is(err, datastores.ErrInvalidCursor) {
+				writeError(w, r, codeInvalidArgument, "invalid after_cursor")
+				return
+			}
+			writeError(w, r, codeInternal, "list tickets: %v", err)
+			return
+		}
+		out := make([]*types.Ticket, 0, len(tickets))
+		for _, t := range tickets {
+			out = append(out, ticketFromProto(t))
+		}
+		writeJSON(w, r, types.ListTicketsResponse{
+			Tickets:    out,
+			NextCursor: next,
+			HasMore:    more,
+		})
+	})
+}
+
 // getTicketById serves GET /api/v1/tickets/{ticket_id}: one ticket plus its
 // first messages, golden-pinned by tickets/get_by_id_*. Error message strings
 // frozen from the old stack (servers/grpc GetTicket; the parse-error text is

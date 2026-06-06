@@ -73,6 +73,16 @@ type GetTicketResponse struct {
 	TotalMessageCount uint32     `json:"totalMessageCount"`
 }
 
+// ListTicketsResponse is the GET /api/v1/tickets envelope: one page of
+// tickets, last_modified DESC (ticket id DESC tiebreak). NextCursor is
+// opaque and empty when HasMore is false. Tickets must be allocated even
+// when empty.
+type ListTicketsResponse struct {
+	Tickets    []*Ticket `json:"tickets"`
+	NextCursor string    `json:"nextCursor"`
+	HasMore    bool      `json:"hasMore"`
+}
+
 // ListTicketMessagesResponse is the GET /api/v1/tickets/{ticketId}/messages
 // envelope: one page of the thread, position ascending. NextCursor is the
 // opaque cursor meaning "next position to include" (inclusive lower bound,
