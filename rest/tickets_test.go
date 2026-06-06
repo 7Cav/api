@@ -43,6 +43,19 @@ func TestNewStack_GetTicketDatastoreOutageIsInternalJSON(t *testing.T) {
 	assert.JSONEq(t, `{"code":13,"message":"fetch ticket: unexpected EOF","details":[]}`, rr.Body.String())
 }
 
+// A (nil, nil) return from the ticket fetch — datastore bug, not an outage —
+// must be the frozen Internal shape, never a zeroed-garbage 200 via the
+// nil-safe proto getters.
+func TestNewStack_NilTicketWithNilErrorIsInternalJSON(t *testing.T) {
+	h := rest.New(&fakeDatastore{getTicket: func(uint32) (*proto.Ticket, error) {
+		return nil, nil
+	}}, &stubReferenceCache{})
+
+	rr := ticketsGet(t, h, "/api/v1/tickets/42")
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	assert.JSONEq(t, `{"code":13,"message":"fetch ticket: nil ticket","details":[]}`, rr.Body.String())
+}
+
 // An outage on the first-messages fetch (after the ticket resolved) keeps its
 // own frozen message string: "fetch ticket messages: %v".
 func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {

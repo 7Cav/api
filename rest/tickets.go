@@ -40,13 +40,16 @@ func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) ht
 			PerPage:              b.uint32Field("per_page"),
 			AfterCursor:          b.stringField("after_cursor"),
 		}
-		if b.err != nil {
-			writeError(w, r, codeInvalidArgument, "%v", b.err)
+		if err := b.Err(); err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
 		tickets, next, more, err := ds.ListTickets(r.Context(), rc, filter)
 		if err != nil {
 			if errors.Is(err, datastores.ErrInvalidCursor) {
+				// Frozen wire text stays opaque; keep the wrapped decode
+				// detail server-side as a debug trail.
+				Info.Printf("%s %s: %v", r.Method, r.URL.Path, err)
 				writeError(w, r, codeInvalidArgument, "invalid after_cursor")
 				return
 			}
@@ -114,6 +117,12 @@ func getTicketByRef(ds datastores.Datastore, rc datastores.TicketReferenceCache)
 // messages, and the deprecated top-level total that duplicates
 // ticket.totalMessageCount.
 func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, ticket *proto.Ticket) {
+	if ticket == nil {
+		// A (nil, nil) datastore return is a bug, but the nil-safe proto
+		// getters would dress it up as a zeroed-garbage 200 — fail loudly.
+		writeError(w, r, codeInternal, "fetch ticket: nil ticket")
+		return
+	}
 	msgs, total, err := ds.GetTicketFirstMessages(r.Context(), ticket.GetTicketId(), firstMessagesCount, false)
 	if err != nil {
 		writeError(w, r, codeInternal, "fetch ticket messages: %v", err)
@@ -191,13 +200,16 @@ func listTicketMessages(ds datastores.Datastore) http.Handler {
 		perPage := b.uint32Field("per_page")
 		afterCursor := b.stringField("after_cursor")
 		includeHidden := b.boolField("include_hidden")
-		if b.err != nil {
-			writeError(w, r, codeInvalidArgument, "%v", b.err)
+		if err := b.Err(); err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
 		msgs, next, more, err := ds.ListTicketMessages(r.Context(), ticketID, afterCursor, perPage, includeHidden)
 		if err != nil {
 			if errors.Is(err, datastores.ErrInvalidCursor) {
+				// Frozen wire text stays opaque; keep the wrapped decode
+				// detail server-side as a debug trail.
+				Info.Printf("%s %s: %v", r.Method, r.URL.Path, err)
 				writeError(w, r, codeInvalidArgument, "invalid after_cursor")
 				return
 			}

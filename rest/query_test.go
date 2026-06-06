@@ -24,7 +24,7 @@ func TestQueryBinder_Uint32BothSpellings(t *testing.T) {
 	for _, raw := range []string{"per_page=7", "perPage=7"} {
 		b := newQueryBinder(mustQuery(t, raw))
 		got := b.uint32Field("per_page")
-		require.NoError(t, b.err)
+		require.NoError(t, b.Err())
 		assert.Equal(t, uint32(7), got, raw)
 	}
 }
@@ -36,13 +36,13 @@ func TestQueryBinder_AbsentKeysBindZeroValues(t *testing.T) {
 	assert.False(t, b.boolField("include_hidden"))
 	assert.Empty(t, b.uint32SliceField("status_id"))
 	assert.Empty(t, b.stringSliceField("ticket_state"))
-	assert.NoError(t, b.err)
+	assert.NoError(t, b.Err())
 }
 
 func TestQueryBinder_RepeatedByKeyRepetition(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "status_id=1&status_id=5"))
 	assert.Equal(t, []uint32{1, 5}, b.uint32SliceField("status_id"))
-	require.NoError(t, b.err)
+	require.NoError(t, b.Err())
 }
 
 func TestQueryBinder_RepeatedAcrossBothSpellings(t *testing.T) {
@@ -50,7 +50,7 @@ func TestQueryBinder_RepeatedAcrossBothSpellings(t *testing.T) {
 	// binder orders snake values before camel ones, deterministically.
 	b := newQueryBinder(mustQuery(t, "status_id=1&statusId=5"))
 	assert.Equal(t, []uint32{1, 5}, b.uint32SliceField("status_id"))
-	require.NoError(t, b.err)
+	require.NoError(t, b.Err())
 }
 
 // Same key repeated on a scalar field is the old gateway's deterministic
@@ -60,13 +60,13 @@ func TestQueryBinder_RepeatedAcrossBothSpellings(t *testing.T) {
 func TestQueryBinder_RepeatedScalarKeyIsTooManyValues(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "per_page=1&per_page=2"))
 	assert.Zero(t, b.uint32Field("per_page"))
-	require.Error(t, b.err)
-	assert.Equal(t, `too many values for field "per_page": 1, 2`, b.err.Error())
+	require.Error(t, b.Err())
+	assert.Equal(t, `too many values for field "per_page": 1, 2`, b.Err().Error())
 
 	b = newQueryBinder(mustQuery(t, "after_cursor=a&after_cursor=b"))
 	assert.Empty(t, b.stringField("after_cursor"))
-	require.Error(t, b.err)
-	assert.Equal(t, `too many values for field "after_cursor": a, b`, b.err.Error())
+	require.Error(t, b.Err())
+	assert.Equal(t, `too many values for field "after_cursor": a, b`, b.Err().Error())
 }
 
 // Both spellings present on a scalar: EVERY value parses (the old gateway
@@ -76,10 +76,10 @@ func TestQueryBinder_DualSpellingParsesEveryValue(t *testing.T) {
 	for _, raw := range []string{"per_page=abc&perPage=5", "perPage=5&per_page=abc"} {
 		b := newQueryBinder(mustQuery(t, raw))
 		assert.Zero(t, b.uint32Field("per_page"), raw)
-		require.Error(t, b.err, raw)
+		require.Error(t, b.Err(), raw)
 		assert.Equal(t,
 			`parsing field "per_page": strconv.ParseUint: parsing "abc": invalid syntax`,
-			b.err.Error(), raw)
+			b.Err().Error(), raw)
 	}
 }
 
@@ -92,12 +92,12 @@ func TestQueryBinder_ScalarCamelSpellingWinsBothOrders(t *testing.T) {
 	for _, raw := range []string{"per_page=1&perPage=2", "perPage=2&per_page=1"} {
 		b := newQueryBinder(mustQuery(t, raw))
 		assert.Equal(t, uint32(2), b.uint32Field("per_page"), raw)
-		require.NoError(t, b.err, raw)
+		require.NoError(t, b.Err(), raw)
 	}
 	for _, raw := range []string{"include_hidden=1&includeHidden=0", "includeHidden=0&include_hidden=1"} {
 		b := newQueryBinder(mustQuery(t, raw))
 		assert.False(t, b.boolField("include_hidden"), raw)
-		require.NoError(t, b.err, raw)
+		require.NoError(t, b.Err(), raw)
 	}
 }
 
@@ -113,7 +113,7 @@ func TestQueryBinder_LenientBools(t *testing.T) {
 	} {
 		b := newQueryBinder(mustQuery(t, raw))
 		assert.Equal(t, want, b.boolField("include_hidden"), raw)
-		assert.NoError(t, b.err, raw)
+		assert.NoError(t, b.Err(), raw)
 	}
 }
 
@@ -123,10 +123,10 @@ func TestQueryBinder_LenientBools(t *testing.T) {
 func TestQueryBinder_InvalidUint32InListIsParsingList(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "status_id=abc"))
 	b.uint32SliceField("status_id")
-	require.Error(t, b.err)
+	require.Error(t, b.Err())
 	assert.Equal(t,
 		`parsing list "status_id": strconv.ParseUint: parsing "abc": invalid syntax`,
-		b.err.Error())
+		b.Err().Error())
 }
 
 // Scalar fields wrap parse failures in the gateway's "parsing field" tier;
@@ -134,18 +134,18 @@ func TestQueryBinder_InvalidUint32InListIsParsingList(t *testing.T) {
 func TestQueryBinder_InvalidBoolIsParsingField(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "excludeSubcategories=bogus"))
 	b.boolField("exclude_subcategories")
-	require.Error(t, b.err)
+	require.Error(t, b.Err())
 	assert.Equal(t,
 		`parsing field "exclude_subcategories": strconv.ParseBool: parsing "bogus": invalid syntax`,
-		b.err.Error())
+		b.Err().Error())
 }
 
 func TestQueryBinder_FirstErrorWins(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "per_page=abc&include_hidden=bogus"))
 	b.uint32Field("per_page")
 	b.boolField("include_hidden")
-	require.Error(t, b.err)
-	assert.Contains(t, b.err.Error(), `parsing field "per_page"`)
+	require.Error(t, b.Err())
+	assert.Contains(t, b.Err().Error(), `parsing field "per_page"`)
 }
 
 func TestSnakeToCamel(t *testing.T) {

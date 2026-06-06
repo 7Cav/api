@@ -58,6 +58,13 @@ func newQueryBinder(values url.Values) *queryBinder {
 	return &queryBinder{values: values}
 }
 
+// Err returns the first binding failure in the gateway's frozen wire text,
+// nil when every field read so far parsed. The handler protocol (recipe step
+// 3 in the rest package doc): bind every field, then check Err EXACTLY ONCE
+// and 400 its text verbatim — handlers never read the underlying field
+// directly, so a forgotten check stays greppable.
+func (b *queryBinder) Err() error { return b.err }
+
 // raw returns the values bound to the field across both spellings, snake
 // first, nil when absent. Always a fresh slice: appending camel values onto
 // b.values[snake] directly would write into the url.Values backing array

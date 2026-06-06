@@ -35,7 +35,12 @@
 //  1. Wire types in types/ (follow the conventions in the package doc).
 //  2. Handler in this package: map the datastore result to the wire types
 //     (allocate empty collections!), writeJSON on success, writeError with
-//     the frozen message string on failure.
+//     the frozen message string on failure. Query parameters go through
+//     newQueryBinder: bind EVERY field first, then check b.Err() exactly
+//     once and 400 its text verbatim — a forgotten Err() check silently
+//     drops a frozen 400. Routes whose old generated handler called
+//     req.ParseForm() parse strictly via bindListQuery instead of
+//     r.URL.Query().
 //  3. Register in routes(): handle(mux, "GET /api/v1/...", "<scope>",
 //     handler) — the scope gate is a required argument, not a wrapping
 //     convention. Path parameters via r.PathValue. Wrong-method and unknown
