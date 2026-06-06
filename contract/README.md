@@ -120,25 +120,36 @@ authoritative value reference) and accept the battery's bearer tokens
 The hand-owned OpenAPI 3.1 reference spec (`openapi/openapi.yaml`, issue
 #121) is executable: `spec_test.go` replays every committed golden against
 the document with pb33f/libopenapi-validator (test-only dependency; chosen
-for real 3.1 support — kin-openapi remains 3.0-only) and asserts route
-coverage in both directions:
+for real 3.1 support — kin-openapi was 3.0-only at time of choice, 2026-06)
+and asserts route coverage in both directions:
 
-- **every spec operation has at least one golden** (the document cannot
-  describe surface the corpus does not witness), and
+- **every spec operation has at least one golden, including at least one
+  2xx golden** (the document cannot describe surface the corpus does not
+  witness, and error-only coverage does not witness the success shape), and
 - **every golden route resolves to a spec operation** (the API cannot serve
   surface the document does not describe).
 
-Per golden: response validation (status code, content type, body schema)
-always runs; request validation runs where the request is expressible, and
-is asserted to *fail* for the goldens that deliberately violate the request
-contract (missing/raw-key auth, non-numeric ids, bogus enum literals) —
-proving the spec's constraints describe the same gate the API enforces.
-Failures name the operation and the field. Documented carve-outs live in
-`spec_test.go`: the two unknown-path goldens (non-operation surface,
-asserted to stay off-spec) and the two glob-only position-search forms an
-OpenAPI path template cannot match (validated against the named operation
-instead). The shared route table backing both this corpus and the spec
-coverage is `publicRoutes` in `routes_test.go`.
+Per golden that resolves to an operation: response validation runs and is
+non-vacuous — the golden's status must be *explicitly* documented on the
+operation (`default` resolution does not count), a JSON golden requires an
+`application/json` schema, and the body is schema-validated. Request
+validation runs where the request is expressible, and is asserted to *fail
+for its pinned reason* for the goldens that deliberately violate the
+request contract (missing/raw-key auth, non-numeric ids, bogus enum
+literals, the empty trailing-slash search) — proving the spec's constraints
+describe the same gate the API enforces. Failures name the operation and
+the field. Documented carve-outs live in `spec_test.go`, each asserting its
+own justification and pinned by `TestSpec_CarveOutMapsAreLive`: the two
+unknown-path goldens (non-operation surface, asserted to stay off-spec) and
+the one multi-segment position-search form no OpenAPI path template can
+match (`paths.FindPath` is asserted to fail; response validation runs
+against the named operation instead). `TestSpec_MutationCanary` keeps the
+loop honest by replaying goldens against deliberately broken in-memory spec
+copies and demanding loud failures, and `TestSpec_SchemasAreEmitEverything`
+pins the emit-everything strictness (all properties required,
+`additionalProperties: false`) structurally. The shared route table backing
+both this corpus and the spec coverage is `publicRoutes` in
+`routes_test.go`.
 
 ## Re-recording
 
