@@ -185,3 +185,93 @@ func TestFixtures_HotAggregationRedPlanReproducible(t *testing.T) {
 		t.Errorf("with the PRD composite the hot aggregation should plan a loose index scan, got Extra=%q", extra)
 	}
 }
+
+// Ticket fixtures must span categories, statuses and states so the
+// tickets datastore tests (#120) can exercise every filter knob:
+// multiple categories (with a parent/child pair for subtree expansion),
+// multiple status_ids, all three ticket_states, and at least one
+// non-visible ticket for the include_hidden switch.
+func TestFixtures_TicketsSpanCategoriesAndStatuses(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	counts := map[string]string{
+		"distinct ticket categories":   `SELECT COUNT(DISTINCT ticket_category_id) FROM xf_nf_tickets_ticket`,
+		"distinct status ids":          `SELECT COUNT(DISTINCT status_id) FROM xf_nf_tickets_ticket`,
+		"distinct ticket states":       `SELECT COUNT(DISTINCT ticket_state) FROM xf_nf_tickets_ticket`,
+		"child categories (depth > 0)": `SELECT COUNT(*) FROM xf_nf_tickets_category WHERE parent_category_id > 0`,
+	}
+	for label, q := range counts {
+		var n int
+		if err := db.QueryRow(q).Scan(&n); err != nil {
+			t.Fatalf("counting %s: %v", label, err)
+		}
+		if n < 2 && label != "child categories (depth > 0)" {
+			t.Errorf("expected at least 2 %s, got %d", label, n)
+		}
+		if n < 1 {
+			t.Errorf("expected at least 1 of %s, got %d", label, n)
+		}
+	}
+
+	var hidden int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM xf_nf_tickets_ticket WHERE discussion_state <> 'visible'`,
+	).Scan(&hidden); err != nil {
+		t.Fatalf("counting hidden tickets: %v", err)
+	}
+	if hidden == 0 {
+		t.Error("expected at least one non-visible ticket for the include_hidden switch")
+	}
+
+	// Nested-set integrity: every child sits inside its parent's lft/rgt
+	// span — the reference cache's subtree expansion depends on it.
+	var broken int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM xf_nf_tickets_category c
+		 JOIN xf_nf_tickets_category p ON p.ticket_category_id = c.parent_category_id
+		 WHERE c.lft <= p.lft OR c.rgt >= p.rgt`,
+	).Scan(&broken); err != nil {
+		t.Fatalf("checking nested-set integrity: %v", err)
+	}
+	if broken != 0 {
+		t.Errorf("%d categories violate nested-set containment", broken)
+	}
+}
+
+// Every ticket must resolve its reference-cached names: status,
+// priority and prefix phrases, plus its category row. Messages must
+// include a hidden one (message_state filter), and participants and
+// field values must be present.
+func TestFixtures_TicketRelationsResolve(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	for _, q := range []struct{ label, sql string }{
+		{"status phrase", `SELECT COUNT(*) FROM xf_nf_tickets_ticket tk LEFT JOIN xf_phrase ph ON ph.title = CONCAT('nf_tickets_ticket_status.', tk.status_id) WHERE ph.phrase_id IS NULL`},
+		{"category row", `SELECT COUNT(*) FROM xf_nf_tickets_ticket tk LEFT JOIN xf_nf_tickets_category c ON c.ticket_category_id = tk.ticket_category_id WHERE c.ticket_category_id IS NULL`},
+	} {
+		var n int
+		if err := db.QueryRow(q.sql).Scan(&n); err != nil {
+			t.Fatalf("checking %s linkage: %v", q.label, err)
+		}
+		if n != 0 {
+			t.Errorf("%d tickets with unresolvable %s", n, q.label)
+		}
+	}
+
+	for _, q := range []struct{ label, sql string }{
+		{"visible messages", `SELECT COUNT(*) FROM xf_nf_tickets_message WHERE message_state = 'visible'`},
+		{"hidden messages", `SELECT COUNT(*) FROM xf_nf_tickets_message WHERE message_state <> 'visible'`},
+		{"participants", `SELECT COUNT(*) FROM xf_nf_tickets_ticket_participant`},
+		{"ticket field values", `SELECT COUNT(*) FROM xf_nf_tickets_ticket_field_value`},
+		{"priority phrases", `SELECT COUNT(*) FROM xf_phrase WHERE title LIKE 'nf_tickets_ticket_priority.%'`},
+		{"prefix phrases", `SELECT COUNT(*) FROM xf_phrase WHERE title LIKE 'nf_tickets_ticket_prefix.%'`},
+	} {
+		var n int
+		if err := db.QueryRow(q.sql).Scan(&n); err != nil {
+			t.Fatalf("counting %s: %v", q.label, err)
+		}
+		if n == 0 {
+			t.Errorf("expected seeded %s, got none", q.label)
+		}
+	}
+}

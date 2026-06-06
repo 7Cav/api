@@ -138,3 +138,106 @@ INSERT INTO xf_post
   (20002, 1, 150, 'Trooper.C',   1750000600, 'most recent post', 1, '', '', 0),
   (20003, 1, 205, 'Trooper.D',   1750001200, 'recent post', 2, '', '', 0),
   (20004, 2, 300, 'Reservist.E', 1600000000, 'ancient post', 0, '', '', 0);
+
+-- ---------------------------------------------------------------------
+-- Tickets (NF Tickets)
+-- ---------------------------------------------------------------------
+
+-- Nested-set category tree: Admin Office (1) contains Recruiting (2);
+-- Tech Support (3) is a sibling root. Subtree expansion of [1] must
+-- yield [1, 2].
+INSERT INTO xf_nf_tickets_category
+  (ticket_category_id, title, description, parent_category_id, depth, lft, rgt,
+   display_order, ticket_count, last_ticket_title, breadcrumb_data, field_cache,
+   category_emails, prefix_cache, notify_emails) VALUES
+  (1, 'Admin Office',  'General admin requests', 0, 0, 1, 4, 10, 3, '', '', '', '', '', ''),
+  (2, 'Recruiting',    'Enlistment paperwork',   1, 1, 2, 3, 10, 2, '', '', '', '', '', ''),
+  (3, 'Tech Support',  'TeamSpeak and game tech',0, 0, 5, 6, 20, 2, '', '', '', '', '', '');
+
+-- Phrases backing the reference cache: status / priority / prefix names.
+INSERT INTO xf_phrase (language_id, title, phrase_text) VALUES
+  (0, 'nf_tickets_ticket_status.1',   'Awaiting Support'),
+  (0, 'nf_tickets_ticket_status.2',   'In Progress'),
+  (0, 'nf_tickets_ticket_status.3',   'Closed'),
+  (0, 'nf_tickets_ticket_priority.1', 'Low'),
+  (0, 'nf_tickets_ticket_priority.2', 'Normal'),
+  (0, 'nf_tickets_ticket_priority.3', 'High'),
+  (0, 'nf_tickets_ticket_prefix.1',   'Urgent'),
+  (0, 'nf_tickets_ticket_status_no_id', 'edge: no trailing id');
+
+-- Tickets span categories 1/2/3, statuses 1/2/3, all three states, and
+-- include one deleted (hidden) ticket. last_modified_date strictly
+-- descends with ticket_id ascending so cursor pagination is exercised
+-- against a deterministic order; tickets 6 and 7 share a
+-- last_modified_date to exercise the tuple-comparison tie-break.
+INSERT INTO xf_nf_tickets_ticket
+  (ticket_id, ticket_ref, title, user_id, username, user_name, user_email, password,
+   start_date, first_message_id, first_message_date, priority, status_id, ticket_state,
+   discussion_state, assigned_user_id, assigned_username, ticket_category_id,
+   last_message_id, last_message_date, last_message_user_id, last_message_username,
+   last_modified_date, reply_count, prefix_id, custom_fields,
+   starter_user_id, starter_username) VALUES
+  (1, 'AA-0001', 'Cannot access milpacs',  400, 'TicketGuy.G', '', '', '',
+   1740000000, 3001, 1740000000, 2, 1, 'open',
+   'visible', 401, 'Helpdesk.H', 1,
+   3003, 1740001200, 401, 'Helpdesk.H',
+   1740700000, 2, 0, '', 400, 'TicketGuy.G'),
+  (2, 'RE-0002', 'Enlistment paperwork',   100, 'Trooper.A', '', '', '',
+   1740100000, 3004, 1740100000, 1, 2, 'pending',
+   'visible', 401, 'Helpdesk.H', 2,
+   3004, 1740100000, 100, 'Trooper.A',
+   1740600000, 0, 1, '', 100, 'Trooper.A'),
+  (3, 'TS-0003', 'TeamSpeak unreachable',  150, 'Trooper.C', '', '', '',
+   1740200000, 3005, 1740200000, 3, 1, 'open',
+   'visible', 0, '', 3,
+   3005, 1740200000, 150, 'Trooper.C',
+   1740500000, 0, 0, '', 150, 'Trooper.C'),
+  (4, 'AA-0004', 'Discharge request',      300, 'Reservist.E', '', '', '',
+   1740300000, 3006, 1740300000, 2, 3, 'resolved',
+   'visible', 401, 'Helpdesk.H', 1,
+   3007, 1740310000, 401, 'Helpdesk.H',
+   1740400000, 1, 0, '', 300, 'Reservist.E'),
+  (5, 'TS-0005', 'Spam ticket',            205, 'Trooper.D', '', '', '',
+   1740350000, 3008, 1740350000, 1, 1, 'open',
+   'deleted', 0, '', 3,
+   3008, 1740350000, 205, 'Trooper.D',
+   1740300000, 0, 0, '', 205, 'Trooper.D'),
+  (6, 'RE-0006', 'Transfer request',       105, 'Trooper.B', '', '', '',
+   1740360000, 3009, 1740360000, 2, 2, 'pending',
+   'visible', 401, 'Helpdesk.H', 2,
+   3009, 1740360000, 105, 'Trooper.B',
+   1740200000, 0, 0, '', 105, 'Trooper.B'),
+  (7, 'AA-0007', 'Award citation query',   301, 'Discharged.F', '', '', '',
+   1740370000, 3010, 1740370000, 1, 3, 'resolved',
+   'visible', 401, 'Helpdesk.H', 1,
+   3010, 1740370000, 301, 'Discharged.F',
+   1740200000, 0, 1, '', 301, 'Discharged.F');
+
+-- Messages for ticket 1 include a hidden reply between two visible ones
+-- (positions stay dense and unique per ticket); single openers for the
+-- other conversational fixtures.
+INSERT INTO xf_nf_tickets_message
+  (message_id, ticket_id, user_id, username, user_name, user_email,
+   message_date, message, message_state, position, reaction_users) VALUES
+  (3001, 1, 400, 'TicketGuy.G', '', '', 1740000000, 'I cannot see my milpacs page.',  'visible', 0, ''),
+  (3002, 1, 401, 'Helpdesk.H',  '', '', 1740000600, '(internal note: checking logs)', 'hidden',  1, ''),
+  (3003, 1, 401, 'Helpdesk.H',  '', '', 1740001200, 'Fixed, please retry.',           'visible', 2, ''),
+  (3004, 2, 100, 'Trooper.A',   '', '', 1740100000, 'Enlistment forms attached.',     'visible', 0, ''),
+  (3005, 3, 150, 'Trooper.C',   '', '', 1740200000, 'TS3 timing out since patch.',    'visible', 0, ''),
+  (3006, 4, 300, 'Reservist.E', '', '', 1740300000, 'Requesting discharge.',          'visible', 0, ''),
+  (3007, 4, 401, 'Helpdesk.H',  '', '', 1740310000, 'Processed. o7',                  'visible', 1, ''),
+  (3008, 5, 205, 'Trooper.D',   '', '', 1740350000, 'buy gold now',                   'visible', 0, ''),
+  (3009, 6, 105, 'Trooper.B',   '', '', 1740360000, 'Requesting transfer to Bravo.',  'visible', 0, ''),
+  (3010, 7, 301, 'Discharged.F','', '', 1740370000, 'Where is my citation?',          'visible', 0, '');
+
+INSERT INTO xf_nf_tickets_ticket_participant (ticket_id, user_id, last_read_date) VALUES
+  (1, 400, 1740001200),
+  (1, 401, 1740001200),
+  (2, 100, 1740100000),
+  (4, 300, 1740310000),
+  (4, 401, 1740310000);
+
+INSERT INTO xf_nf_tickets_ticket_field_value (ticket_id, field_id, field_value) VALUES
+  (1, 'discordId', '111111111111111111'),
+  (2, 'milpacId',  '1'),
+  (3, 'gameServer', 'arma3-tac1');
