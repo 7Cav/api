@@ -68,23 +68,33 @@ var (
 // chain (sentry → metrics → auth → gzip → mux). The returned handler serves
 // the /api surface; non-API paths (the docs UI) are the cutover slice's
 // concern (#134) and 404 here until then.
-func New(ds datastores.Datastore) http.Handler {
+//
+// rc is the tickets reference cache (status/priority/prefix names, the
+// category tree) the tickets datastore methods consume — at cutover (#134)
+// the caller passes the refreshed referencecache.Cache the old stack already
+// maintains (servers.Start wires it today).
+func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
 	return sentryMiddleware(
 		metricsMiddleware(
 			AuthMiddleware(ds,
 				GzipMiddleware(
-					routes(ds)))))
+					routes(ds, rc)))))
 }
 
 // routes builds the pattern-routing mux: one handle call per public route,
 // each gated on its scope. Everything no route pattern matches falls through
 // to fallback (the JSON 404, or the 405+Allow for a known path under an
 // unsupported method).
-func routes(ds datastores.Datastore) *http.ServeMux {
+func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// --- milpacs (scope: read) -------------------------------------------
 	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
+
+	// --- tickets (scope: read:tickets) -----------------------------------
+	// The literal /categories segment wins over {ticket_id} (mux precedence,
+	// golden-pinned by tickets/categories).
+	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", listCategories(ds, rc))
 
 	mux.HandleFunc("/", fallback(mux))
 

@@ -33,6 +33,14 @@ func init() {
 type fakeDatastore struct {
 	datastores.Datastore
 	findAllRanks func() ([]*proto.RankExpanded, error)
+
+	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
+	// test sets one to inject an outage or observe the bound filter.
+	listTickets            func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
+	getTicket              func(ticketID uint32) (*proto.Ticket, error)
+	getTicketFirstMessages func(ticketID uint32, n int) ([]*proto.Message, uint32, error)
+	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32) ([]*proto.Message, string, bool, error)
+	listCategories         func() ([]*proto.Category, error)
 }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
@@ -67,7 +75,7 @@ func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
 
 func newStack(t *testing.T) http.Handler {
 	t.Helper()
-	return rest.New(&fakeDatastore{})
+	return rest.New(&fakeDatastore{}, nil)
 }
 
 // implementedCases names the battery cases the new stack serves today. Each
@@ -79,6 +87,7 @@ func newStack(t *testing.T) http.Handler {
 // including ones whose routes don't exist yet.
 var implementedCases = []string{
 	"milpacs/ranks",
+	"tickets/categories",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",
@@ -242,7 +251,7 @@ func TestNewStack_401IsNeverGzipped(t *testing.T) {
 func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, io.ErrUnexpectedEOF
-	}})
+	}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
 	req.Header.Set("Authorization", "Bearer cav7_readkey")
@@ -338,7 +347,7 @@ func TestNewStack_WrongMethodWithoutCredsIs401NotAllow(t *testing.T) {
 // — a ResponseRecorder would show a body — so this test observes through a
 // live httptest.Server.
 func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&fakeDatastore{}))
+	srv := httptest.NewServer(rest.New(&fakeDatastore{}, nil))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodHead, srv.URL+"/api/v1/milpacs/ranks", nil)
@@ -361,7 +370,7 @@ func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
 func TestNewStack_EmptyRanksIsEmptyArray(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		return nil, nil
-	}})
+	}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
 	req.Header.Set("Authorization", "Bearer cav7_readkey")

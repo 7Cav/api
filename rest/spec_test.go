@@ -43,7 +43,8 @@ const specPath = "../openapi/openapi.yaml"
 // silently. "" marks the deliberately off-spec unknown-path surface, asserted
 // to stay unmatched.
 var specRoutes = map[string]string{
-	"/api/v1/milpacs/ranks": "/api/v1/milpacs/ranks",
+	"/api/v1/milpacs/ranks":      "/api/v1/milpacs/ranks",
+	"/api/v1/tickets/categories": "/api/v1/tickets/categories",
 	// The 401-tier battery cases replay against these two paths before their
 	// routes are implemented (auth runs before routing, so the observed 401s
 	// are route-independent); the operations document 401 explicitly.
