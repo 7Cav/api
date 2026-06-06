@@ -104,3 +104,37 @@ INSERT INTO xf_user_connected_account (user_id, provider, provider_key, extra_da
 INSERT INTO xf_nf_rosters_field_value (relation_id, field_id, field_value) VALUES
   (  1, 'consoleGamertag', 'AlphaGamer'),
   (205, 'consoleGamertag', 'CharlieZulu');
+
+-- ---------------------------------------------------------------------
+-- Forum posts
+-- ---------------------------------------------------------------------
+-- Bulk volume for the hot last-post aggregation
+-- (SELECT user_id, MAX(post_date) FROM xf_post GROUP BY user_id):
+-- 20k posts over 40 distinct posters makes the loose-index-scan vs
+-- full-scan distinction observable in EXPLAIN. Generated through
+-- MariaDB's sequence engine, deterministic by seq.
+INSERT INTO xf_post
+  (post_id, thread_id, user_id, username, post_date, message, position,
+   type_data, reaction_users, vote_score)
+SELECT
+  seq,
+  1 + (seq MOD 200),
+  100 + (seq MOD 40),
+  CONCAT('poster.', 100 + (seq MOD 40)),
+  1500000000 + seq * 60,
+  CONCAT('post body ', seq),
+  seq MOD 50,
+  '', '', 0
+FROM seq_1_to_20000;
+
+-- Targeted posts for roster members outside the bulk poster pool:
+-- Trooper.C (150) and Trooper.D (205) post recently; Reservist.E (300)
+-- last posted long ago (AWOL-shaped); Discharged.F (301) never posted
+-- (left-join NULL case).
+INSERT INTO xf_post
+  (post_id, thread_id, user_id, username, post_date, message, position,
+   type_data, reaction_users, vote_score) VALUES
+  (20001, 1, 150, 'Trooper.C',   1750000000, 'recent post', 0, '', '', 0),
+  (20002, 1, 150, 'Trooper.C',   1750000600, 'most recent post', 1, '', '', 0),
+  (20003, 1, 205, 'Trooper.D',   1750001200, 'recent post', 2, '', '', 0),
+  (20004, 2, 300, 'Reservist.E', 1600000000, 'ancient post', 0, '', '', 0);

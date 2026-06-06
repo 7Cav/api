@@ -95,6 +95,41 @@ CREATE TABLE `xf_user` (
   KEY `siropu_donation_date` (`siropu_donation_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- NOTE: stock XenForo indexes only. Production carries no
+-- (user_id, post_date) composite — PRD #112 proposes one
+-- (user_id_post_date) to unlock the loose index scan on the hot
+-- last-post aggregation. Do not add it here.
+CREATE TABLE `xf_post` (
+  `post_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `thread_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `post_date` int(10) unsigned NOT NULL,
+  `message` mediumtext NOT NULL,
+  `ip_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `message_state` enum('visible','moderated','deleted') NOT NULL DEFAULT 'visible',
+  `attach_count` smallint(5) unsigned NOT NULL DEFAULT 0,
+  `position` int(10) unsigned NOT NULL,
+  `type_data` mediumblob NOT NULL,
+  `reaction_score` int(11) NOT NULL DEFAULT 0,
+  `reactions` blob DEFAULT NULL,
+  `reaction_users` blob NOT NULL,
+  `vote_score` int(11) NOT NULL,
+  `vote_count` int(10) unsigned NOT NULL DEFAULT 0,
+  `warning_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `warning_message` varchar(255) NOT NULL DEFAULT '',
+  `last_edit_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `last_edit_user_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `edit_count` int(10) unsigned NOT NULL DEFAULT 0,
+  `embed_metadata` blob DEFAULT NULL,
+  PRIMARY KEY (`post_id`),
+  KEY `thread_id_post_date` (`thread_id`,`post_date`),
+  KEY `thread_id_position` (`thread_id`,`position`),
+  KEY `thread_id_score_date` (`thread_id`,`vote_score`,`post_date`),
+  KEY `user_id` (`user_id`),
+  KEY `post_date` (`post_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE `xf_user_connected_account` (
   `user_id` int(10) unsigned NOT NULL,
   `provider` varbinary(25) NOT NULL,

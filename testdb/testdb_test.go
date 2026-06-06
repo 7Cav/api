@@ -1,6 +1,8 @@
 package testdb_test
 
 import (
+	"database/sql"
+	"strings"
 	"testing"
 
 	"github.com/7cav/api/testdb"
@@ -82,5 +84,104 @@ func TestFixtures_MemberRelationsResolve(t *testing.T) {
 		if n == 0 {
 			t.Errorf("expected seeded %s, got none", q.label)
 		}
+	}
+}
+
+// The harness schema must not pre-create the four indexes proposed by
+// PRD #112 — their absence is what keeps the "red" EXPLAIN plans of the
+// index slice reproducible.
+func TestSchema_CarriesNoPRDIndexes(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	for _, idx := range []struct{ table, index string }{
+		{"xf_post", "user_id_post_date"},
+		{"xf_nf_rosters_service_record", "idx_relation_id"},
+		{"xf_nf_rosters_user_award", "idx_relation_id"},
+		{"xf_nf_rosters_user", "idx_user_id"},
+	} {
+		var n int
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM information_schema.statistics
+			 WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`,
+			idx.table, idx.index,
+		).Scan(&n)
+		if err != nil {
+			t.Fatalf("checking index %s.%s: %v", idx.table, idx.index, err)
+		}
+		if n != 0 {
+			t.Errorf("PRD index %s on %s must not exist in the harness schema", idx.index, idx.table)
+		}
+	}
+}
+
+// hotLastPostAggregation is the subquery driving the lite-roster
+// last-forum-post column and the AWOL report — the PRD's measured
+// hotspot (4.2s -> 28ms once MariaDB can run it as a loose index scan).
+const hotLastPostAggregation = `SELECT user_id, MAX(post_date) FROM xf_post GROUP BY user_id`
+
+// groupByOptimization returns the Extra column of the EXPLAIN row for
+// the hot aggregation, which is where MariaDB reports loose index scans
+// ("Using index for group-by").
+func groupByOptimization(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	rows, err := db.Query(`EXPLAIN ` + hotLastPostAggregation)
+	if err != nil {
+		t.Fatalf("explaining hot aggregation: %v", err)
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("reading EXPLAIN columns: %v", err)
+	}
+	if !rows.Next() {
+		t.Fatal("EXPLAIN returned no rows")
+	}
+	vals := make([]sql.NullString, len(cols))
+	scan := make([]any, len(cols))
+	for i := range vals {
+		scan[i] = &vals[i]
+	}
+	if err := rows.Scan(scan...); err != nil {
+		t.Fatalf("scanning EXPLAIN row: %v", err)
+	}
+	for i, c := range cols {
+		if c == "Extra" {
+			return vals[i].String
+		}
+	}
+	t.Fatal("EXPLAIN output has no Extra column")
+	return ""
+}
+
+// The post fixtures must be voluminous enough that the loose-index-scan
+// vs full-scan distinction is observable: the seeded schema (no PRD
+// composite) must NOT plan a loose index scan, and adding the composite
+// in a throwaway database must flip the very same query to one.
+func TestFixtures_HotAggregationRedPlanReproducible(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	var posts int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM xf_post`).Scan(&posts); err != nil {
+		t.Fatalf("counting posts: %v", err)
+	}
+	if posts < 10000 {
+		t.Errorf("expected at least 10000 seeded posts for meaningful plans, got %d", posts)
+	}
+
+	const looseScan = "Using index for group-by"
+
+	if extra := groupByOptimization(t, db); strings.Contains(extra, looseScan) {
+		t.Errorf("red plan not reproducible: hot aggregation already runs as loose index scan (Extra=%q)", extra)
+	}
+
+	// Sanity in this test's own disposable database: the PRD composite
+	// flips the same query to a loose index scan, proving the fixture
+	// volume makes the distinction meaningful.
+	if _, err := db.Exec(`CREATE INDEX user_id_post_date ON xf_post (user_id, post_date)`); err != nil {
+		t.Fatalf("creating PRD composite in disposable database: %v", err)
+	}
+	if extra := groupByOptimization(t, db); !strings.Contains(extra, looseScan) {
+		t.Errorf("with the PRD composite the hot aggregation should plan a loose index scan, got Extra=%q", extra)
 	}
 }
