@@ -8,21 +8,21 @@ package types
 // corpus transform documents the break (the Keycloak surface dies at
 // cutover, #134).
 type Profile struct {
-	User              *User       `json:"user"`
-	Rank              *Rank       `json:"rank"`
-	RealName          string      `json:"realName"`
-	UniformUrl        string      `json:"uniformUrl"`
-	Roster            RosterType  `json:"roster"`
-	Primary           *Position   `json:"primary"`
-	Secondaries       []*Position `json:"secondaries"`
-	Records           []*Record   `json:"records"`
-	Awards            []*Award    `json:"awards"`
-	JoinDate          string      `json:"joinDate"`
-	PromotionDate     string      `json:"promotionDate"`
-	DiscordId         string      `json:"discordId"`
-	LastForumPostDate string      `json:"lastForumPostDate"`
-	Mos               string      `json:"mos"`
-	ConsoleGamertag   string      `json:"consoleGamertag"`
+	User              *User           `json:"user"`
+	Rank              *Rank           `json:"rank"`
+	RealName          string          `json:"realName"`
+	UniformUrl        string          `json:"uniformUrl"`
+	Roster            RosterType      `json:"roster"`
+	Primary           *Position       `json:"primary"`
+	Secondaries       List[*Position] `json:"secondaries"`
+	Records           List[*Record]   `json:"records"`
+	Awards            List[*Award]    `json:"awards"`
+	JoinDate          string          `json:"joinDate"`
+	PromotionDate     string          `json:"promotionDate"`
+	DiscordId         string          `json:"discordId"`
+	LastForumPostDate string          `json:"lastForumPostDate"`
+	Mos               string          `json:"mos"`
+	ConsoleGamertag   string          `json:"consoleGamertag"`
 }
 
 // User is the forum identity embedded in profile shapes. UserId is the FORUM

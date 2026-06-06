@@ -11,8 +11,8 @@ type RankExpanded struct {
 	RankDisplayOrder uint32 `json:"rankDisplayOrder"`
 }
 
-// RanksResponse is the GET /api/v1/milpacs/ranks envelope. Ranks must be
-// allocated even when empty ([] on the wire, never null).
+// RanksResponse is the GET /api/v1/milpacs/ranks envelope. Ranks is a List,
+// so even the zero value serializes as [] on the wire, never null.
 type RanksResponse struct {
-	Ranks []*RankExpanded `json:"ranks"`
+	Ranks List[*RankExpanded] `json:"ranks"`
 }
