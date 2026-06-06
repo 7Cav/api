@@ -138,6 +138,35 @@ func TestFixtures_ApiKeysResolveScopes(t *testing.T) {
 	}
 }
 
+// Each Open call must yield its own database so tests can run DDL
+// (e.g. CREATE INDEX for green-plan comparisons) without leaking into
+// sibling tests.
+func TestOpen_IsolatesDatabasesPerCall(t *testing.T) {
+	db1, dsn1 := testdb.Open(t)
+	db2, dsn2 := testdb.Open(t)
+
+	if dsn1 == dsn2 {
+		t.Fatalf("two Open calls returned the same DSN: %s", dsn1)
+	}
+
+	if _, err := db1.Exec(`CREATE INDEX idx_relation_id ON xf_nf_rosters_service_record (relation_id)`); err != nil {
+		t.Fatalf("creating index in first database: %v", err)
+	}
+
+	var n int
+	if err := db2.QueryRow(
+		`SELECT COUNT(*) FROM information_schema.statistics
+		 WHERE table_schema = DATABASE()
+		   AND table_name = 'xf_nf_rosters_service_record'
+		   AND index_name = 'idx_relation_id'`,
+	).Scan(&n); err != nil {
+		t.Fatalf("checking second database: %v", err)
+	}
+	if n != 0 {
+		t.Error("DDL in one Open database leaked into another")
+	}
+}
+
 // The harness schema must not pre-create the four indexes proposed by
 // PRD #112 — their absence is what keeps the "red" EXPLAIN plans of the
 // index slice reproducible.
