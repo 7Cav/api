@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/7cav/api/datastores"
 )
@@ -62,6 +63,17 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
+		}
+
+		// Fill the metrics label-holder's key-id slot (#130): the metrics
+		// middleware is UPSTREAM (outer) of auth and r.WithContext below
+		// clones the request, so the key attached to the INNER context never
+		// reaches it — the mutable holder in the (shared parent) context is
+		// the only channel. The id, never the bearer token (same rule as the
+		// Sentry key_id tag). nil holder = chain without metrics (the legacy
+		// gateway reuses this middleware until cutover deletes that stack).
+		if labels := metricLabelsFromContext(r.Context()); labels != nil {
+			labels.keyID = strconv.FormatUint(uint64(key.KeyId), 10)
 		}
 
 		// Attach the validated key to the request ctx so INNER consumers can

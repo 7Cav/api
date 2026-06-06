@@ -15,12 +15,13 @@
 //
 //   - sentryMiddleware (placeholder, #132): panic-recovery at the front of
 //     the chain; 5xx Sentry reports hook the writeError choke point.
-//   - metricsMiddleware (placeholder, #130): Prometheus request counter and
-//     latency histogram. BOTH labels must reach this OUTER layer via the
-//     context label-holder mechanism — route label included: AuthMiddleware's
-//     r.WithContext clones the request, so the mux sets Pattern on the inner
-//     copy only and this layer's request keeps Pattern == "". See
-//     metricsMiddleware below for the mechanism.
+//   - metricsMiddleware (#130, metrics.go): Prometheus request counter
+//     (route/method/status/key_id) and latency histogram (route/method).
+//     Outside auth, so rejected requests are counted. Both labels reach this
+//     OUTER layer via the context label-holder (metricLabels): AuthMiddleware
+//     fills the key-id slot, the routeLabel wrapper inside the mux fills the
+//     route slot from r.Pattern. The exposition is served by MetricsHandler
+//     on the INTERNAL-ONLY listener, never through this chain.
 //   - AuthMiddleware: bearer-key validation with the golden-pinned two-tier
 //     plain-text 401s. Runs BEFORE routing, so an unknown path without
 //     credentials is a 401, not a 404 (golden-pinned). Scope checks are
@@ -86,7 +87,10 @@ func routes(ds datastores.Datastore) *http.ServeMux {
 	// --- milpacs (scope: read) -------------------------------------------
 	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
 
-	mux.HandleFunc("/", fallback(mux))
+	// The catch-all is route-labeled like every registered pattern: 404s and
+	// 405s meter under its "/" pattern — bounded, and distinct from "" (a
+	// request auth rejected before routing ever happened).
+	mux.Handle("/", routeLabel(fallback(mux)))
 
 	return mux
 }
@@ -95,9 +99,10 @@ func routes(ds datastores.Datastore) *http.ServeMux {
 // route's required scope, and its handler. The scope is a required positional
 // argument — gating by wrapping convention is how a scope check gets
 // forgotten, and a forgotten check is invisible to every test that uses a
-// fully-scoped key.
+// fully-scoped key. routeLabel wraps OUTSIDE the scope gate so even a 403
+// meters under the route it was denied on.
 func handle(mux *http.ServeMux, pattern, scope string, h http.Handler) {
-	mux.Handle(pattern, requireScope(scope, h))
+	mux.Handle(pattern, routeLabel(requireScope(scope, h)))
 }
 
 // fallback serves every request no route pattern matched, splitting two
@@ -137,21 +142,6 @@ func sentryMiddleware(next http.Handler) http.Handler {
 	return next
 }
 
-// metricsMiddleware is the documented extension point for #130 (Prometheus):
-// request counter labeled route/method/status/key-id and duration histogram
-// labeled route/method. Pass-through until that slice lands.
-//
-// Label plumbing (#130, precise mechanism): NEITHER label can be read off
-// this layer's *http.Request after next.ServeHTTP returns. AuthMiddleware
-// calls r.WithContext, which CLONES the request — the mux then sets Pattern
-// on that inner clone, and the auth middleware attaches the key to the inner
-// context — so the request this layer holds keeps Pattern == "" and carries
-// no key. Both labels must instead travel through a context LABEL-HOLDER:
-// this middleware puts a pointer to a mutable holder struct into the context
-// before calling next (context values survive WithContext clones because the
-// clone wraps the same parent context); AuthMiddleware fills the key-id slot,
-// and the route slot is filled from r.Pattern inside the mux (e.g. by the
-// wrapper handle registers), where the matched pattern is actually set.
-func metricsMiddleware(next http.Handler) http.Handler {
-	return next
-}
+// metricsMiddleware lives in metrics.go (#130): Prometheus request counter
+// labeled route/method/status/key_id and duration histogram labeled
+// route/method, plumbed through the context label-holder (metricLabels).
