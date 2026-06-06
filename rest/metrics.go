@@ -202,6 +202,13 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// Unwrap exposes the underlying writer to http.ResponseController so inner
+// layers keep Flusher/Hijacker/deadline access through this wrapper — without
+// it those optional interfaces silently vanish for everything inside metrics.
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // status returns the captured status; a handler that never wrote anything is
 // the implied 200, same as net/http reports it.
 func (w *statusWriter) status() int {
