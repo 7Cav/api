@@ -138,10 +138,38 @@ func isJSONContentType(ct string) bool {
 	return strings.HasPrefix(ct, "application/json")
 }
 
+// isContractHeader reports whether name is in the contractHeaders allowlist.
+func isContractHeader(name string) bool {
+	for _, h := range contractHeaders {
+		if h == name {
+			return true
+		}
+	}
+	return false
+}
+
 // CompareGolden semantically compares a committed golden against an observed
 // one. Returned strings are human-readable mismatches; empty means equal.
+//
+// Besides status/headers/body it self-checks the recorded request metadata
+// (case, method, path, auth) so a golden replayed under the wrong request is
+// a diff rather than silently write-only, flags recorded header keys outside
+// the contractHeaders allowlist, and rejects malformed goldens that carry
+// both or neither of body/bodyText.
 func CompareGolden(want, got *Golden) []string {
 	var diffs []string
+	if want.Case != got.Case {
+		diffs = append(diffs, fmt.Sprintf("case: want %q, got %q", want.Case, got.Case))
+	}
+	if want.Method != got.Method {
+		diffs = append(diffs, fmt.Sprintf("method: want %q, got %q", want.Method, got.Method))
+	}
+	if want.Path != got.Path {
+		diffs = append(diffs, fmt.Sprintf("path: want %q, got %q", want.Path, got.Path))
+	}
+	if want.Auth != got.Auth {
+		diffs = append(diffs, fmt.Sprintf("auth: want %q, got %q", want.Auth, got.Auth))
+	}
 	if want.Status != got.Status {
 		diffs = append(diffs, fmt.Sprintf("status: want %d, got %d", want.Status, got.Status))
 	}
@@ -149,6 +177,20 @@ func CompareGolden(want, got *Golden) []string {
 		w, g := want.Header[name], got.Header[name]
 		if w != g {
 			diffs = append(diffs, fmt.Sprintf("header %s: want %q, got %q", name, w, g))
+		}
+	}
+	for name := range want.Header {
+		if !isContractHeader(name) {
+			diffs = append(diffs, fmt.Sprintf("header %s: recorded but not contract-compared (not in allowlist)", name))
+		}
+	}
+	for _, side := range []struct {
+		label string
+		g     *Golden
+	}{{"want", want}, {"got", got}} {
+		if (side.g.Body != nil) == (side.g.BodyText != nil) {
+			diffs = append(diffs, fmt.Sprintf("%s: malformed golden: exactly one of body/bodyText must be set (json=%t text=%t)",
+				side.label, side.g.Body != nil, side.g.BodyText != nil))
 		}
 	}
 	switch {

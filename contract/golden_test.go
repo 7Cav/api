@@ -28,6 +28,76 @@ func jsonGolden(status int, body string) *Golden {
 	}
 }
 
+// fullGolden builds a golden with all request metadata populated, as RunCase
+// and the committed corpus produce them.
+func fullGolden() *Golden {
+	g := jsonGolden(200, `{"a":1}`)
+	g.Method = "GET"
+	g.Path = "/api/v1/milpacs/ranks"
+	g.Auth = AuthRead
+	return g
+}
+
+func TestCompareGolden_RequestMetadataMismatch(t *testing.T) {
+	tampers := []struct {
+		field  string
+		mutate func(g *Golden)
+	}{
+		{"case", func(g *Golden) { g.Case = "tampered" }},
+		{"method", func(g *Golden) { g.Method = "POST" }},
+		{"path", func(g *Golden) { g.Path = "/api/v1/tampered" }},
+		{"auth", func(g *Golden) { g.Auth = AuthNoScopes }},
+	}
+	for _, tc := range tampers {
+		t.Run(tc.field, func(t *testing.T) {
+			want, got := fullGolden(), fullGolden()
+			tc.mutate(got)
+			diffs := CompareGolden(want, got)
+			require.NotEmpty(t, diffs, "recorded request metadata must be compared, not write-only")
+			assert.Contains(t, strings.Join(diffs, "\n"), tc.field)
+		})
+	}
+}
+
+func TestCompareGolden_NonAllowlistedRecordedHeaderIsADiff(t *testing.T) {
+	want, got := fullGolden(), fullGolden()
+	want.Header["X-Made-Up"] = "1"
+	diffs := CompareGolden(want, got)
+	require.NotEmpty(t, diffs)
+	assert.Contains(t, strings.Join(diffs, "\n"), "recorded but not contract-compared")
+	assert.Contains(t, strings.Join(diffs, "\n"), "X-Made-Up")
+}
+
+func TestCompareGolden_BodyAndBodyTextBothSetIsADiff(t *testing.T) {
+	for _, side := range []string{"want", "got"} {
+		t.Run(side, func(t *testing.T) {
+			want, got := fullGolden(), fullGolden()
+			text := "also text"
+			if side == "want" {
+				want.BodyText = &text
+			} else {
+				got.BodyText = &text
+			}
+			diffs := CompareGolden(want, got)
+			require.NotEmpty(t, diffs, "a golden with both body and bodyText is malformed")
+			joined := strings.Join(diffs, "\n")
+			assert.Contains(t, joined, "exactly one of")
+			assert.Contains(t, joined, side)
+		})
+	}
+}
+
+func TestCompareGolden_NeitherBodyNorBodyTextIsADiff(t *testing.T) {
+	want, got := fullGolden(), fullGolden()
+	want.Body, got.Body = nil, nil
+	diffs := CompareGolden(want, got)
+	require.NotEmpty(t, diffs, "a golden with neither body nor bodyText is malformed")
+	joined := strings.Join(diffs, "\n")
+	assert.Contains(t, joined, "exactly one of")
+	assert.Contains(t, joined, "want")
+	assert.Contains(t, joined, "got")
+}
+
 func TestCompareGolden_Equal(t *testing.T) {
 	assert.Empty(t, CompareGolden(jsonGolden(200, `{"a":1}`), jsonGolden(200, `{"a": 1}`)),
 		"whitespace must not matter")
