@@ -112,8 +112,9 @@ func TestWriteJSON_MarshalFailureBecomesInternalError(t *testing.T) {
 }
 
 // Every ≥500 response is Error-logged at the choke point with code, message,
-// method, and path — cheap insurance that a production outage is visible
-// server-side even if cutover (#134) lands before the Sentry slice (#132).
+// method, and path — the log line keeps outages visible server-side even
+// without a SENTRY_DSN (local/dev), where the choke point's Sentry report
+// (#132) is a no-op.
 func TestWriteError_500sAreLoggedWithRequestContext(t *testing.T) {
 	buf := captureErrorLog(t)
 	rr := httptest.NewRecorder()

@@ -151,9 +151,9 @@ func metricsMiddleware(next http.Handler) http.Handler {
 		// connection without writing anything; HTTP/2 resets the stream). A
 		// handler that already committed a status before panicking keeps that
 		// status — it is on the wire. The panic is re-raised AFTER recording
-		// (the inner defer fires as this deferred func returns) so net/http —
-		// and #132's recovery layer once it lands outside this one — sees
-		// semantics unchanged.
+		// (the inner defer fires as this deferred func returns) so the sentry
+		// recovery layer outside this one (#132) — and net/http when sentry
+		// is disabled — sees semantics unchanged.
 		defer func() {
 			status := sw.status()
 			if p := recover(); p != nil {

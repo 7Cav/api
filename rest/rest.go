@@ -9,7 +9,7 @@
 //
 // # Middleware chain (PRD order — assembled in New)
 //
-//	sentry → metrics → auth → gzip → mux
+//	sentry → metrics → auth (→ sentryLabel) → gzip → mux
 //
 // Extension points, outermost first:
 //
@@ -79,7 +79,7 @@ var (
 )
 
 // New assembles the new stack: the route mux wrapped in the PRD middleware
-// chain (sentry → metrics → auth → gzip → mux). The returned handler serves
+// chain (sentry → metrics → auth (→ sentryLabel) → gzip → mux). The returned handler serves
 // the /api surface; non-API paths (the docs UI) are the cutover slice's
 // concern (#134) and 404 here until then.
 //
