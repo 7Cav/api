@@ -12,6 +12,8 @@ package datastores_test
 
 import (
 	"context"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/7cav/api/datastores"
@@ -21,6 +23,15 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// TestMain quiets the datastore's chatty Info/Warn production loggers
+// (mirroring contract/harness_test.go) so the verbose harness log CI
+// tees stays readable. Error stays visible.
+func TestMain(m *testing.M) {
+	datastores.Info.SetOutput(io.Discard)
+	datastores.Warn.SetOutput(io.Discard)
+	os.Exit(m.Run())
+}
 
 // openHarnessDatastore dials a fresh, seeded harness database through
 // gorm — the exact stack production uses — and returns the datastore

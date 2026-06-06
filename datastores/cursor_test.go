@@ -44,7 +44,9 @@ func TestDecodeCursor_ValidRoundTrip(t *testing.T) {
 	assert.Equal(t, uint32(7499), id)
 }
 
-// base64URL returns base64.RawURLEncoding.EncodeToString([]byte(s)).
+// base64URL builds near-miss garbage via the same encoding real cursors
+// use, so decode failures exercise the payload parsing, not the base64
+// layer.
 func base64URL(s string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(s))
 }
@@ -84,7 +86,7 @@ func TestDecodeMessageCursor_GarbageReturnsErrInvalidCursor(t *testing.T) {
 
 func TestEncodeDecodeMessageCursor_PositionZeroRoundTrips(t *testing.T) {
 	enc := encodeMessageCursor(0)
-	require.NotEmpty(t, enc, "position=0 must encode to a non-empty cursor (regression: smoke ticket 6899)")
+	require.NotEmpty(t, enc, "position=0 must encode to a non-empty cursor (regression: smoke ticket 6899 — empty cursor conflated with position 0)")
 	pos, err := decodeMessageCursor(enc)
 	require.NoError(t, err)
 	assert.Equal(t, uint32(0), pos)

@@ -27,7 +27,10 @@ func TestParseBearerToken(t *testing.T) {
 		{"max-len boundary", "Bearer " + strings.Repeat("x", 128), 128, strings.Repeat("x", 128)},
 		{"one over max-len", "Bearer " + strings.Repeat("x", 129), 128, ""},
 		{"outer whitespace tolerated", "  Bearer abc  ", 128, "abc"},
-		{"inner extra spaces collapsed", "Bearer   abc", 128, "abc"},
+		// Note: only whitespace between scheme and token is trimmed; with
+		// "Bearer a  b" the inner spaces would survive (TrimSpace, nothing
+		// collapsed).
+		{"extra spaces after scheme trimmed", "Bearer   abc", 128, "abc"},
 		{"missing scheme separator", "Bearerabc", 128, ""},
 	}
 	for _, c := range cases {

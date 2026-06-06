@@ -410,8 +410,9 @@ func TestGetTicketFirstMessages(t *testing.T) {
 
 // The message cursor means "next position to include": page one with no
 // cursor starts at the starter post (position 0 — regression: smoke
-// ticket 6899), and each cursor resumes exactly after the last
-// returned message.
+// ticket 6899, where the empty cursor was conflated with position 0 and
+// the starter post dropped), and each cursor resumes exactly after the
+// last returned message.
 func TestListTicketMessages_CursorPagination(t *testing.T) {
 	ds, _ := openTicketsHarness(t)
 
