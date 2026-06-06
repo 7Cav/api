@@ -53,6 +53,9 @@ var specRoutes = map[string]string{
 	"/api/v1/milpacs/profile/id/0":   "/api/v1/milpacs/profile/id/{userId}",
 	"/api/v1/milpacs/profile/id/abc": "/api/v1/milpacs/profile/id/{userId}",
 	"/api/v1/milpacs/profile/id/777": "/api/v1/milpacs/profile/id/{userId}",
+	// Profile by username: happy, not-found.
+	"/api/v1/milpacs/profile/username/Jarvis.A":   "/api/v1/milpacs/profile/username/{username}",
+	"/api/v1/milpacs/profile/username/Ghost.User": "/api/v1/milpacs/profile/username/{username}",
 	// The tickets 401-tier battery cases replay against this path before the
 	// route is implemented (auth runs before routing, so the observed 401s
 	// are route-independent); the operation documents 401 explicitly.

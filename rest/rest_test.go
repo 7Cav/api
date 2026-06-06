@@ -36,8 +36,9 @@ func init() {
 // a loud failure if a test reaches further than the routes it mounts.
 type fakeDatastore struct {
 	datastores.Datastore
-	findAllRanks     func() ([]*proto.RankExpanded, error)
-	findProfilesById func(userIds ...uint64) ([]*proto.Profile, error)
+	findAllRanks           func() ([]*proto.RankExpanded, error)
+	findProfilesById       func(userIds ...uint64) ([]*proto.Profile, error)
+	findProfilesByUsername func(username string) ([]*proto.Profile, error)
 }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
@@ -166,6 +167,20 @@ func (f *fakeDatastore) FindProfilesById(userIds ...uint64) ([]*proto.Profile, e
 	}
 }
 
+func (f *fakeDatastore) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
+	if f.findProfilesByUsername != nil {
+		return f.findProfilesByUsername(username)
+	}
+	switch username {
+	case "Jarvis.A":
+		return []*proto.Profile{seedJarvis()}, nil
+	case "John.Doe":
+		return []*proto.Profile{seedDoe()}, nil
+	default:
+		return nil, gorm.ErrRecordNotFound
+	}
+}
+
 func newStack(t *testing.T) http.Handler {
 	t.Helper()
 	return rest.New(&fakeDatastore{})
@@ -186,6 +201,8 @@ var implementedCases = []string{
 	"milpacs/profile_by_id_zero",
 	"milpacs/profile_by_id_parse_error",
 	"milpacs/profile_by_id_internal_error",
+	"milpacs/profile_by_username_happy",
+	"milpacs/profile_by_username_not_found",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",
@@ -363,6 +380,113 @@ func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 	assert.JSONEq(t, `{"code":13,"message":"error fetching ranks: unexpected EOF","details":[]}`, rr.Body.String())
+}
+
+// --- Profile query-binding quirks (PRD #112, request-side leniency) --------
+//
+// Unbound message fields remain query-bindable on profile routes: the old
+// gateway bound any ProfileRequest field NOT consumed by the path template
+// from the query string (filter_MilpacService_GetProfile_0/_1 in the
+// generated gateway code), and the old handler checked username BEFORE
+// user_id — so ?username= on the by-id route silently overrides the path
+// value. Frozen as-is by the PRD; no goldens witness it (the corpus records
+// path-only requests), so these new-stack tests pin it instead.
+
+func TestNewStack_ByIdRoute_UsernameQueryOverridesPathId(t *testing.T) {
+	h := newStack(t)
+
+	// Path id 2 is John.Doe; the username query must win and return Jarvis.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/2?username=Jarvis.A", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+	assert.Contains(t, rr.Body.String(), `"userId":"3"`)
+}
+
+func TestNewStack_ByIdRoute_UsernameQueryPrecedesZeroIdGuard(t *testing.T) {
+	h := newStack(t)
+
+	// The old handler checks username first: id 0 with a username query is a
+	// successful username lookup, not the zero-id 400.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/0?username=Jarvis.A", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+}
+
+func TestNewStack_ByIdRoute_UnknownUsernameQueryIs404NamingUsername(t *testing.T) {
+	h := newStack(t)
+
+	// Precedence holds on the error path too: the 404 names the username,
+	// even though the path id would have resolved.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/1?username=Ghost.User", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	assert.JSONEq(t, `{"code":5,"message":"no profile found for username: Ghost.User","details":[]}`, rr.Body.String())
+}
+
+func TestNewStack_ByIdRoute_UnknownQueryParamsIgnored(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/1?totally_unknown=1&alsoUnknown=x", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+}
+
+func TestNewStack_UsernameRoute_UserIdQueryBindsButPathUsernameWins(t *testing.T) {
+	h := newStack(t)
+
+	// user_id is the username route's query-bindable field; the handler's
+	// username-first precedence makes a valid value invisible.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?user_id=999", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+}
+
+func TestNewStack_UsernameRoute_MalformedUserIdQueryIs400(t *testing.T) {
+	h := newStack(t)
+
+	// Binding still parses the value (the old gateway 400'd before the
+	// handler ran) — camelCase spelling accepted, proto field name in the
+	// message, parse-error text leaked, exactly the gateway's wording.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?userId=abc", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"parsing field \"user_id\": strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
+}
+
+func TestNewStack_ByIdRoute_RepeatedUsernameQueryIs400(t *testing.T) {
+	h := newStack(t)
+
+	// Singular fields reject repeated values (gateway behavior, message
+	// shape preserved).
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/2?username=a&username=b", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"too many values for field \"username\": a, b","details":[]}`, rr.Body.String())
 }
 
 // --- Wrong-method contract (human ruling on review Critical 1, #125) -------

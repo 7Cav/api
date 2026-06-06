@@ -2,8 +2,10 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
@@ -31,12 +33,28 @@ func getAllRanks(ds datastores.Datastore) http.Handler {
 // profile_by_id_happy golden proves relation wins). Error message strings
 // frozen from the old stack (servers/grpc GetProfile + the gateway's
 // type-mismatch text).
+//
+// Binding quirk (PRD request-side leniency, frozen): username — the
+// ProfileRequest field the path does NOT bind — remains query-bindable, and
+// the old handler checked username BEFORE user_id, so a username query
+// overrides the path id entirely (including the zero-id guard).
 func getProfileByID(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Path binding first, query binding second — gateway order: a
+		// malformed path id 400s even when a username query is present.
 		userID, err := strconv.ParseUint(r.PathValue("user_id"), 10, 64)
 		if err != nil {
 			// Gateway type-mismatch tier, parse-error text leaked. Frozen.
 			writeError(w, r, codeInvalidArgument, "type mismatch, parameter: %s, error: %v", "user_id", err)
+			return
+		}
+		username, err := queryField(r, "username", "username")
+		if err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", err)
+			return
+		}
+		if username != "" {
+			serveProfileByUsername(w, r, ds, username)
 			return
 		}
 		if userID == 0 {
@@ -55,6 +73,67 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 		}
 		writeProfile(w, r, profiles[0])
 	})
+}
+
+// getProfileByUsername serves GET /api/v1/milpacs/profile/username/{username}:
+// the username binding of the same lookup. Error message strings frozen from
+// the old handler (servers/grpc GetProfile, username branch).
+//
+// Binding quirk (PRD request-side leniency, frozen): user_id remains
+// query-bindable here — the value still parses (a malformed one 400s, as the
+// gateway did before the handler ran) but the handler's username-first
+// precedence makes a valid one invisible.
+func getProfileByUsername(ds datastores.Datastore) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if raw, err := queryField(r, "user_id", "userId"); err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", err)
+			return
+		} else if raw != "" {
+			if _, err := strconv.ParseUint(raw, 10, 64); err != nil {
+				// Gateway query-binding parse error, text frozen from
+				// grpc-gateway runtime (populateField).
+				writeError(w, r, codeInvalidArgument, "parsing field %q: %v", "user_id", err)
+				return
+			}
+		}
+		serveProfileByUsername(w, r, ds, r.PathValue("username"))
+	})
+}
+
+// serveProfileByUsername is the shared username lookup: the by-username
+// route's body, and the by-id route's username-query override path.
+func serveProfileByUsername(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, username string) {
+	profiles, err := ds.FindProfilesByUsername(username)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(w, r, codeNotFound, "no profile found for username: %s", username)
+			return
+		}
+		writeError(w, r, codeInternal, "fetch profile by username: %v", err)
+		return
+	}
+	writeProfile(w, r, profiles[0])
+}
+
+// queryField reads a singular query-bindable message field, accepting both
+// the proto (snake_case) and JSON (camelCase) key spellings — the gateway's
+// dual-spelling leniency (PRD-frozen). Absent → "". Repeated values on a
+// singular field are an error with the gateway's message shape; the proto
+// field name is the one error messages cite.
+func queryField(r *http.Request, protoName, jsonName string) (string, error) {
+	q := r.URL.Query()
+	vals := q[protoName]
+	if jsonName != protoName {
+		vals = append(vals, q[jsonName]...)
+	}
+	switch len(vals) {
+	case 0:
+		return "", nil
+	case 1:
+		return vals[0], nil
+	default:
+		return "", fmt.Errorf("too many values for field %q: %s", protoName, strings.Join(vals, ", "))
+	}
 }
 
 // writeProfile maps one datastore profile to the wire type and writes it.
