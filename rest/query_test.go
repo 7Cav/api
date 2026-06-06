@@ -75,21 +75,26 @@ func TestQueryBinder_LenientBools(t *testing.T) {
 	}
 }
 
-func TestQueryBinder_InvalidUint32IsTypeMismatch(t *testing.T) {
+// Repeated (list) fields wrap parse failures in the gateway's "parsing list"
+// tier — the old stack 400'd these, it never silently dropped them
+// (runtime.populateRepeatedField, verified against grpc-gateway v2.29.0).
+func TestQueryBinder_InvalidUint32InListIsParsingList(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "status_id=abc"))
 	b.uint32SliceField("status_id")
 	require.Error(t, b.err)
 	assert.Equal(t,
-		`type mismatch, parameter: status_id, error: strconv.ParseUint: parsing "abc": invalid syntax`,
+		`parsing list "status_id": strconv.ParseUint: parsing "abc": invalid syntax`,
 		b.err.Error())
 }
 
-func TestQueryBinder_InvalidBoolIsTypeMismatch(t *testing.T) {
+// Scalar fields wrap parse failures in the gateway's "parsing field" tier;
+// the field name is always the snake_case proto name even for camel input.
+func TestQueryBinder_InvalidBoolIsParsingField(t *testing.T) {
 	b := newQueryBinder(mustQuery(t, "excludeSubcategories=bogus"))
 	b.boolField("exclude_subcategories")
 	require.Error(t, b.err)
 	assert.Equal(t,
-		`type mismatch, parameter: exclude_subcategories, error: strconv.ParseBool: parsing "bogus": invalid syntax`,
+		`parsing field "exclude_subcategories": strconv.ParseBool: parsing "bogus": invalid syntax`,
 		b.err.Error())
 }
 
@@ -98,7 +103,7 @@ func TestQueryBinder_FirstErrorWins(t *testing.T) {
 	b.uint32Field("per_page")
 	b.boolField("include_hidden")
 	require.Error(t, b.err)
-	assert.Contains(t, b.err.Error(), "parameter: per_page")
+	assert.Contains(t, b.err.Error(), `parsing field "per_page"`)
 }
 
 func TestSnakeToCamel(t *testing.T) {

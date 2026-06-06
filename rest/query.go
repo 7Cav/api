@@ -11,11 +11,20 @@ package rest
 //   - unknown parameters are ignored by construction — the binder only ever
 //     reads the keys handlers ask for.
 //
-// Parse failures surface as the frozen "type mismatch" wire text via err —
-// the enumerated cutover break (PRD #112 breaks list): the new stack answers
-// 400 where the old gateway silently dropped invalid enum query values.
-// First failure wins; later reads still return zero values so handlers can
-// bind every field then check err once.
+// Parse failures surface via err in the gateway's frozen query-parse wire
+// text (verified against grpc-gateway v2.29.0 runtime.PopulateQueryParameters
+// — the old stack 400'd these, it did NOT silently drop them):
+//
+//   - scalar fields:   parsing field "<snake>": <strconv error>
+//   - repeated fields: parsing list "<snake>": <strconv error>
+//
+// The field name is always the snake_case proto name, whichever spelling the
+// request used. The "type mismatch, parameter:" tier is the gateway's
+// PATH-param wrapping and lives in bindTicketID only — never here. (PRD
+// #112's enumerated break about invalid enum query values being silently
+// dropped is real but moot on this surface: no tickets route declares an
+// enum-typed query parameter.) First failure wins; later reads still return
+// zero values so handlers can bind every field then check Err once.
 //
 // Where both spellings appear at once (no golden pins it — the old gateway's
 // map iteration made it nondeterministic): repeated fields see snake values
@@ -47,10 +56,19 @@ func (b *queryBinder) raw(snake string) []string {
 	return vals
 }
 
-// fail records the first binding failure in the frozen wire text.
-func (b *queryBinder) fail(snake string, err error) {
+// failField records the first binding failure in the gateway's scalar
+// query-parse wire text (runtime.populateField).
+func (b *queryBinder) failField(snake string, err error) {
 	if b.err == nil {
-		b.err = fmt.Errorf("type mismatch, parameter: %s, error: %v", snake, err)
+		b.err = fmt.Errorf("parsing field %q: %v", snake, err)
+	}
+}
+
+// failList records the first binding failure in the gateway's repeated-field
+// query-parse wire text (runtime.populateRepeatedField).
+func (b *queryBinder) failList(snake string, err error) {
+	if b.err == nil {
+		b.err = fmt.Errorf("parsing list %q: %v", snake, err)
 	}
 }
 
@@ -73,7 +91,7 @@ func (b *queryBinder) uint32Field(snake string) uint32 {
 	}
 	v, err := strconv.ParseUint(vals[len(vals)-1], 10, 32)
 	if err != nil {
-		b.fail(snake, err)
+		b.failField(snake, err)
 		return 0
 	}
 	return uint32(v)
@@ -85,7 +103,7 @@ func (b *queryBinder) uint32SliceField(snake string) []uint32 {
 	for _, raw := range vals {
 		v, err := strconv.ParseUint(raw, 10, 32)
 		if err != nil {
-			b.fail(snake, err)
+			b.failList(snake, err)
 			return nil
 		}
 		out = append(out, uint32(v))
@@ -100,7 +118,7 @@ func (b *queryBinder) boolField(snake string) bool {
 	}
 	v, err := strconv.ParseBool(vals[len(vals)-1])
 	if err != nil {
-		b.fail(snake, err)
+		b.failField(snake, err)
 		return false
 	}
 	return v

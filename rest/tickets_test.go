@@ -154,18 +154,15 @@ func TestNewStack_UnknownTicketSubResourceIsJSON404(t *testing.T) {
 	}
 }
 
-// --- Enumerated cutover breaks (PRD #112 breaks list, new-stack-only) ------
+// --- Query-parse 400 parity (old-gateway behavior, frozen wire text) -------
 //
-// These are deliberately plain tests, NOT battery cases: the golden corpus
-// replays against the old stack too, and the old stack behaves differently
-// here by design (the breaks ship at cutover).
-
-// Invalid values for typed query parameters return 400 instead of the old
-// gateway's silent drop (breaks list: "Invalid enum values in queries return
-// 400 instead of being silently dropped"). The tickets surface has no
-// enum-typed query parameter — the closest kin are its uint32 and bool
-// filters, which carry the same break: a value the type cannot parse is a
-// type-mismatch 400, never ignored.
+// The old gateway did NOT silently drop unparseable uint32/bool query values
+// — runtime.PopulateQueryParameters 400'd them (verified against
+// grpc-gateway v2.29.0): "parsing field" for scalars, "parsing list" for
+// repeated fields, the snake_case proto field name in both. These are parity
+// pins, not enumerated breaks. The breaks-list entry about invalid ENUM query
+// values being silently dropped is real but does not apply to this surface:
+// the tickets routes declare no enum-typed query parameter.
 func TestNewStack_InvalidQueryValuesReturn400(t *testing.T) {
 	h := newStack(t)
 
@@ -174,15 +171,15 @@ func TestNewStack_InvalidQueryValuesReturn400(t *testing.T) {
 		want string
 	}{
 		{"/api/v1/tickets?status_id=abc",
-			`type mismatch, parameter: status_id, error: strconv.ParseUint: parsing "abc": invalid syntax`},
+			`parsing list "status_id": strconv.ParseUint: parsing "abc": invalid syntax`},
 		{"/api/v1/tickets?excludeSubcategories=bogus",
-			`type mismatch, parameter: exclude_subcategories, error: strconv.ParseBool: parsing "bogus": invalid syntax`},
+			`parsing field "exclude_subcategories": strconv.ParseBool: parsing "bogus": invalid syntax`},
 		{"/api/v1/tickets?perPage=-1",
-			`type mismatch, parameter: per_page, error: strconv.ParseUint: parsing "-1": invalid syntax`},
+			`parsing field "per_page": strconv.ParseUint: parsing "-1": invalid syntax`},
 		{"/api/v1/tickets/42/messages?per_page=abc",
-			`type mismatch, parameter: per_page, error: strconv.ParseUint: parsing "abc": invalid syntax`},
+			`parsing field "per_page": strconv.ParseUint: parsing "abc": invalid syntax`},
 		{"/api/v1/tickets/42/messages?include_hidden=banana",
-			`type mismatch, parameter: include_hidden, error: strconv.ParseBool: parsing "banana": invalid syntax`},
+			`parsing field "include_hidden": strconv.ParseBool: parsing "banana": invalid syntax`},
 	}
 	for _, tc := range cases {
 		rr := ticketsGet(t, h, tc.path)
