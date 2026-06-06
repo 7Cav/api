@@ -15,9 +15,9 @@ import (
 // real server connection (the recorder implements Flusher directly and would
 // mask the gap).
 func TestStatusWriter_ResponseControllerTunnelsThroughMetrics(t *testing.T) {
-	var flushErr error
+	flushErr := make(chan error, 1) // handler runs on the server goroutine
 	h := metricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		flushErr = http.NewResponseController(w).Flush()
+		flushErr <- http.NewResponseController(w).Flush()
 	}))
 
 	srv := httptest.NewServer(h)
@@ -26,6 +26,6 @@ func TestStatusWriter_ResponseControllerTunnelsThroughMetrics(t *testing.T) {
 	res, err := srv.Client().Get(srv.URL + "/")
 	require.NoError(t, err)
 	res.Body.Close()
-	require.NoError(t, flushErr,
+	require.NoError(t, <-flushErr,
 		"ResponseController.Flush must reach the underlying writer via statusWriter.Unwrap")
 }

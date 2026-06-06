@@ -32,10 +32,14 @@ func init() {
 // loud failure if a test reaches further than the routes it mounts.
 type fakeDatastore struct {
 	datastores.Datastore
-	findAllRanks func() ([]*proto.RankExpanded, error)
+	findAllRanks   func() ([]*proto.RankExpanded, error)
+	validateApiKey func(rawKey string) (*datastores.ApiKeyResult, error)
 }
 
 func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult, error) {
+	if f.validateApiKey != nil {
+		return f.validateApiKey(rawKey)
+	}
 	scopes := func(names ...string) map[string]struct{} {
 		m := map[string]struct{}{}
 		for _, n := range names {

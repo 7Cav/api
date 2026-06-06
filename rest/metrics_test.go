@@ -4,8 +4,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
+	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
 	dto "github.com/prometheus/client_model/go"
@@ -286,6 +288,204 @@ func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
 	assert.Equal(t, before+1, after, `a panicked never-written response must meter as status="500"`)
 }
 
+// The headline error-rate tier: a handler-written 500 (datastore outage
+// surfacing through the writeError choke point) meters under the route it
+// failed on, with the caller's key id — per-key error attribution.
+func TestMetrics_HandlerError500MetersUnderRouteAndKey(t *testing.T) {
+	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+		return nil, io.ErrUnexpectedEOF
+	}})
+	labels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "GET",
+		"status": "500",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/milpacs/ranks", "cav7_readkey")
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "handler 500s must meter under the route with the key id")
+}
+
+// The auth-tier 503: ValidateApiKey failing (datastore outage during auth)
+// answers Unavailable BEFORE routing and before any key validates — route and
+// key_id stay empty, same as the 401 tier and distinct from the catch-all "/".
+func TestMetrics_AuthDatastoreOutage503MetersWithEmptyRouteAndKey(t *testing.T) {
+	h := rest.New(&fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		return nil, io.ErrUnexpectedEOF
+	}})
+	labels := map[string]string{
+		"route":  "",
+		"method": "GET",
+		"status": "503",
+		"key_id": "",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/milpacs/ranks", "cav7_readkey")
+	require.Equal(t, http.StatusServiceUnavailable, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "auth-tier 503s must meter with empty route/key_id labels")
+}
+
+// The 405 half of the documented wrong-method ruling (#125): a POST to a
+// known GET route lands on the route-labeled catch-all — it meters under the
+// bounded "/" pattern (the fallback answered, no registered pattern matched),
+// authenticated, status 405.
+func TestMetrics_WrongMethod405MetersUnderCatchAll(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "/",
+		"method": "POST",
+		"status": "405",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodPost, "/api/v1/milpacs/ranks", "cav7_readkey")
+	require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "wrong-method 405s must meter under the catch-all pattern")
+}
+
+// counterFamilyTotal sums every child of the named counter family — the
+// family-wide request count, label-set independent.
+func counterFamilyTotal(families map[string]*dto.MetricFamily, name string) float64 {
+	var total float64
+	if mf, ok := families[name]; ok {
+		for _, m := range mf.GetMetric() {
+			total += m.GetCounter().GetValue()
+		}
+	}
+	return total
+}
+
+// Scraping the exposition must not meter itself: MetricsHandler is its own
+// internal-only mount, never wrapped in the public chain — two consecutive
+// scrapes with no API traffic in between leave the request-counter family
+// total unchanged.
+func TestMetrics_SelfScrapeDoesNotIncrementRequestCounter(t *testing.T) {
+	first := counterFamilyTotal(scrapeMetrics(t), "api_http_requests_total")
+	second := counterFamilyTotal(scrapeMetrics(t), "api_http_requests_total")
+	assert.Equal(t, first, second, "the metrics scrape must not count itself as API traffic")
+}
+
+// Chain order seen from the metrics side: gzip sits INSIDE metrics, so a
+// gzipped 200 still meters as status="200" — the statusWriter observes the
+// status before the body ever hits the gzip writer.
+func TestMetrics_GzippedRequestMetersStatus200(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "GET",
+		"status": "200",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	req.Header.Set("Accept-Encoding", "gzip")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "gzip", rr.Result().Header.Get("Content-Encoding"))
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, `a gzipped 200 must meter as status="200"`)
+}
+
+// HEAD is a supported read verb (the mux matches HEAD against GET patterns):
+// it meters under the GET route pattern with method="HEAD" — its own bounded
+// child, not folded into GET.
+func TestMetrics_HEADMetersUnderGetRoutePattern(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "HEAD",
+		"status": "200",
+		"key_id": "101",
+	}
+	histLabels := map[string]string{
+		"route":  "GET /api/v1/milpacs/ranks",
+		"method": "HEAD",
+	}
+
+	families := scrapeMetrics(t)
+	before := counterValue(t, families, "api_http_requests_total", labels)
+	histBefore := histogramSampleCount(t, families, "api_http_request_duration_seconds", histLabels)
+
+	rr := do(h, http.MethodHead, "/api/v1/milpacs/ranks", "cav7_readkey")
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	families = scrapeMetrics(t)
+	after := counterValue(t, families, "api_http_requests_total", labels)
+	histAfter := histogramSampleCount(t, families, "api_http_request_duration_seconds", histLabels)
+	assert.Equal(t, before+1, after, `HEAD must meter under the GET pattern with method="HEAD"`)
+	assert.Equal(t, histBefore+1, histAfter, "HEAD must observe the histogram under its own method child")
+}
+
+// Concurrent requests across tiers must each meter exactly once — the
+// counter vec, the label-holder plumbing, and the statusWriter are all
+// per-request or internally synchronized; run with -race to verify.
+func TestMetrics_ConcurrentMixedTierRequestsAllMeter(t *testing.T) {
+	h := newStack(t)
+
+	const perTier = 8
+	tiers := []struct {
+		method, path, bearer string
+		wantCode             int
+		labels               map[string]string
+	}{
+		{http.MethodGet, "/api/v1/milpacs/ranks", "cav7_readkey", http.StatusOK,
+			map[string]string{"route": "GET /api/v1/milpacs/ranks", "method": "GET", "status": "200", "key_id": "101"}},
+		{http.MethodGet, "/api/v1/milpacs/ranks", "", http.StatusUnauthorized,
+			map[string]string{"route": "", "method": "GET", "status": "401", "key_id": ""}},
+		{http.MethodGet, "/api/v1/milpacs/ranks", "cav7_ticketskey", http.StatusForbidden,
+			map[string]string{"route": "GET /api/v1/milpacs/ranks", "method": "GET", "status": "403", "key_id": "102"}},
+		{http.MethodGet, "/api/v1/does/not/exist", "cav7_readkey", http.StatusNotFound,
+			map[string]string{"route": "/", "method": "GET", "status": "404", "key_id": "101"}},
+	}
+
+	before := scrapeMetrics(t)
+	befores := make([]float64, len(tiers))
+	for i, tier := range tiers {
+		befores[i] = counterValue(t, before, "api_http_requests_total", tier.labels)
+	}
+
+	var wg sync.WaitGroup
+	codes := make([]int, len(tiers)*perTier)
+	for i := 0; i < len(tiers)*perTier; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			tier := tiers[i%len(tiers)]
+			codes[i] = do(h, tier.method, tier.path, tier.bearer).Code
+		}(i)
+	}
+	wg.Wait()
+
+	for i, code := range codes {
+		require.Equal(t, tiers[i%len(tiers)].wantCode, code, "request %d answered the wrong tier", i)
+	}
+
+	after := scrapeMetrics(t)
+	for i, tier := range tiers {
+		assert.Equal(t, befores[i]+perTier,
+			counterValue(t, after, "api_http_requests_total", tier.labels),
+			"tier %d (%s %s → %d) must meter exactly %d times", i, tier.method, tier.path, tier.wantCode, perTier)
+	}
+}
+
 // The exposition carries the default Go runtime and process collectors
 // alongside the request metrics.
 func TestMetrics_RuntimeCollectorsServed(t *testing.T) {
@@ -312,6 +512,13 @@ func TestMetrics_BearerMaterialAbsentFromExposition(t *testing.T) {
 	} {
 		do(h, http.MethodGet, "/api/v1/milpacs/ranks", bearer)
 	}
+
+	// The 503 tier (ValidateApiKey errors mid-outage) sees the bearer too —
+	// drive it so the sweep covers every tier that handles key material.
+	outage := rest.New(&fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		return nil, io.ErrUnexpectedEOF
+	}})
+	do(outage, http.MethodGet, "/api/v1/milpacs/ranks", "cav7_readkey")
 
 	srv := httptest.NewServer(rest.MetricsHandler())
 	defer srv.Close()
