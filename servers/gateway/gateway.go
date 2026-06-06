@@ -34,6 +34,7 @@ import (
 	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/openapi"
 	"github.com/7cav/api/proto"
+	grpcServices "github.com/7cav/api/servers/grpc"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 )
@@ -90,7 +91,10 @@ func authMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		// Attach the validated key to the request ctx (mirrors the gRPC auth
+		// interceptor) so downstream consumers — e.g. Sentry key-id tagging —
+		// can identify the caller without ever seeing the bearer token.
+		next.ServeHTTP(w, r.WithContext(grpcServices.ContextWithKey(r.Context(), key)))
 	})
 }
 
@@ -120,6 +124,25 @@ type gzipResponseWriter struct {
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	w.Header().Del("Content-Length") // This is necessary as otherwise it will have the uncompressed length
 	return w.Writer.Write(b)
+}
+
+// buildAPIHandler assembles the /api middleware chain:
+// auth(sentry(cache(compression(inner)))). Sentry sits inside auth so it only
+// sees authenticated requests, with the API key already on ctx for key-id
+// tagging, and outside the cache and compression layers so it observes the
+// final response status. No SENTRY_DSN → it is a pass-through.
+//
+// Sentry-inside-auth also means auth-layer infrastructure failures (e.g. a
+// datastore outage producing mass 401s) generate no Sentry events by design —
+// accepted for Phase 0, revisit in the Phase 3 observability slices
+// (#130–#132).
+//
+// Package-level (not inlined in Server) so the chain order is a tested
+// contract — see the buildAPIHandler tests — rather than an untestable
+// expression inside a dialing function.
+func buildAPIHandler(ds datastores.Datastore, c *cache.RedisCache, inner http.Handler) http.Handler {
+	return authMiddleware(ds,
+		sentryMiddleware(middleware.CacheMiddleware(c, compressionMiddleware(inner))))
 }
 
 func (service *Service) Server() *http.Server {
@@ -159,8 +182,7 @@ func (service *Service) Server() *http.Server {
 
 	openApi := getOpenAPIHandler()
 
-	handler := authMiddleware(service.Datastore,
-		middleware.CacheMiddleware(service.Cache, compressionMiddleware(gwMux)))
+	handler := buildAPIHandler(service.Datastore, service.Cache, gwMux)
 
 	// if requests start with /api then forward it on to the grpc-gateway client
 	// otherwise, just serve it as norma (basically the OpenAPI)

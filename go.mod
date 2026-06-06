@@ -5,6 +5,7 @@ go 1.25.10
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/bufbuild/buf v1.70.0
+	github.com/getsentry/sentry-go v0.46.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/redis/go-redis/v9 v9.20.0
 	github.com/spf13/cobra v1.10.2
