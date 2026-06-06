@@ -15,7 +15,8 @@ import (
 
 // positionsGet replays one authenticated GET against the stack — the local
 // shorthand for this file's request loop.
-func positionsGet(h http.Handler, path, key string) *httptest.ResponseRecorder {
+func positionsGet(t *testing.T, h http.Handler, path, key string) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
@@ -46,7 +47,7 @@ func TestNewStack_PositionAndAwolOutagesAreInternalJSON(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
-			rr := positionsGet(h, tc.path, "cav7_readkey")
+			rr := positionsGet(t, h, tc.path, "cav7_readkey")
 
 			require.Equal(t, http.StatusInternalServerError, rr.Code)
 			assert.JSONEq(t, `{"code":13,"message":"`+tc.want+`","details":[]}`, rr.Body.String())
@@ -62,7 +63,7 @@ func TestNewStack_EmptyPositionGroupsIsEmptyArray(t *testing.T) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 
-	rr := positionsGet(h, "/api/v1/milpacs/position/groups", "cav7_readkey")
+	rr := positionsGet(t, h, "/api/v1/milpacs/position/groups", "cav7_readkey")
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, `{"groups":[]}`, strings.TrimSpace(rr.Body.String()))
@@ -76,7 +77,7 @@ func TestNewStack_SearchNilProfilesMapIsEmptyObject(t *testing.T) {
 		return &proto.LiteRoster{}, nil // Profiles map nil, not allocated
 	}}, &stubReferenceCache{})
 
-	rr := positionsGet(h, "/api/v1/milpacs/position/search/Rifleman", "cav7_readkey")
+	rr := positionsGet(t, h, "/api/v1/milpacs/position/search/Rifleman", "cav7_readkey")
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, `{"profiles":{}}`, strings.TrimSpace(rr.Body.String()))
@@ -90,10 +91,49 @@ func TestNewStack_SearchNilRosterWithNilErrorIsInternalJSON(t *testing.T) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 
-	rr := positionsGet(h, "/api/v1/milpacs/position/search/Rifleman", "cav7_readkey")
+	rr := positionsGet(t, h, "/api/v1/milpacs/position/search/Rifleman", "cav7_readkey")
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	assert.JSONEq(t, `{"code":13,"message":"datastore returned no roster","details":[]}`, rr.Body.String())
+}
+
+// A sparse lite profile must come through the mapper with its nils PRESERVED:
+// unset User/Rank/Primary stay null on the wire (never fabricated as zeroed
+// &types.User{}/&types.Rank{}) and empty Secondaries is [] — the
+// recording-seed shape (seedDoeLite, contract/fake_datastore_test.go) minus
+// User/Rank, so every nil-guard branch in liteRosterFromProto runs unset.
+func TestNewStack_SearchSparseLiteProfilePreservesNils(t *testing.T) {
+	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*proto.LiteRoster, error) {
+		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{2: {
+			RealName:        "John Doe",
+			UniformUrl:      "https://7cav.us/data/roster_uniforms/0/2.jpg",
+			Roster:          proto.RosterType_ROSTER_TYPE_COMBAT,
+			Secondaries:     []*proto.Position{},
+			JoinDate:        "2026-01-15",
+			ConsoleGamertag: "CavGamer77",
+		}}}, nil
+	}}, &stubReferenceCache{})
+
+	rr := positionsGet(t, h, "/api/v1/milpacs/position/search/Rifleman", "cav7_readkey")
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.JSONEq(t, `{"profiles":{"2":{
+		"user":null,
+		"rank":null,
+		"realName":"John Doe",
+		"uniformUrl":"https://7cav.us/data/roster_uniforms/0/2.jpg",
+		"roster":"ROSTER_TYPE_COMBAT",
+		"primary":null,
+		"secondaries":[],
+		"joinDate":"2026-01-15",
+		"promotionDate":"",
+		"discordId":"",
+		"awardDate":"",
+		"recordDate":"",
+		"lastForumPostDate":"",
+		"mos":"",
+		"consoleGamertag":"CavGamer77"
+	}}}`, rr.Body.String())
 }
 
 // --- Position-query decoding (deliberate break, PRD #112 / #128) -----------
@@ -117,6 +157,10 @@ func TestNewStack_SearchQueryDecodesOncePreservingSlashes(t *testing.T) {
 	}{
 		{"/api/v1/milpacs/position/search/Regimental%20Technical%20Aide", "Regimental Technical Aide"},
 		{"/api/v1/milpacs/position/search/Platoon/Leader", "Platoon/Leader"},
+		// %2F is the canonical exotic encoding the deliberate break diverges
+		// on: standard per-segment decoding yields a literal slash INSIDE the
+		// bound value, indistinguishable from the unencoded multi-segment form.
+		{"/api/v1/milpacs/position/search/Platoon%2FLeader", "Platoon/Leader"},
 		{"/api/v1/milpacs/position/search/Platoon%20Sergeant/Bravo%26Charlie", "Platoon Sergeant/Bravo&Charlie"},
 		// %25 is a literal percent: single decoding yields "100%", and the
 		// datastore's own LIKE-escaping handles it from there.
@@ -125,7 +169,7 @@ func TestNewStack_SearchQueryDecodesOncePreservingSlashes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
 			got = ""
-			rr := positionsGet(h, tc.path, "cav7_readkey")
+			rr := positionsGet(t, h, tc.path, "cav7_readkey")
 
 			require.Equal(t, http.StatusOK, rr.Code)
 			assert.Equal(t, tc.want, got, "datastore must see the standard-decoded query")
@@ -141,7 +185,7 @@ func TestNewStack_SearchQueryDecodesOncePreservingSlashes(t *testing.T) {
 func TestNewStack_SearchWithoutTrailingSlashIsEmptyQuery400(t *testing.T) {
 	h := newStack(t)
 
-	rr := positionsGet(h, "/api/v1/milpacs/position/search", "cav7_readkey")
+	rr := positionsGet(t, h, "/api/v1/milpacs/position/search", "cav7_readkey")
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	assert.JSONEq(t, `{"code":3,"message":"position query cannot be empty","details":[]}`, rr.Body.String())
@@ -167,9 +211,9 @@ func TestNewStack_WrongMethodOnSearchWildcardIs405WithAllow(t *testing.T) {
 // The scope gate is witnessed PER route: a ticket-scoped key (read:tickets,
 // not read) must 403 with the frozen body on each #128 route — the golden
 // tier only witnesses one milpacs path, so this loop proves no route was
-// registered without its requireScope gate. The search trailing-slash form
-// rides along: 403 answers BEFORE the empty-query 400 (the uniform tier
-// order, ruled at #126 — 403-before-binding-400).
+// registered without its requireScope gate. The search trailing-slash and
+// slashless forms ride along: 403 answers BEFORE the empty-query 400 (the
+// uniform tier order, ruled at #126 — 403-before-binding-400).
 func TestNewStack_PositionAndAwolRoutes403UnderTicketScopedKey(t *testing.T) {
 	h := newStack(t)
 
@@ -177,13 +221,34 @@ func TestNewStack_PositionAndAwolRoutes403UnderTicketScopedKey(t *testing.T) {
 		"/api/v1/milpacs/position/groups",
 		"/api/v1/milpacs/position/search/Rifleman",
 		"/api/v1/milpacs/position/search/",
+		"/api/v1/milpacs/position/search",
 		"/api/v1/milpacs/awol",
 	} {
 		t.Run(path, func(t *testing.T) {
-			rr := positionsGet(h, path, "cav7_ticketskey")
+			rr := positionsGet(t, h, path, "cav7_ticketskey")
 
 			require.Equal(t, http.StatusForbidden, rr.Code)
 			assert.JSONEq(t, `{"code":7,"message":"scope required: read","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
+// The #128 routes must NOT gain the ParseForm guard: their generated gateway
+// handlers never called ParseForm (no query-bound fields), so malformed query
+// syntax fell through and the request succeeded — same leniency pin as
+// TestNewStack_ConnectedAccountRoutes_MalformedQuerySyntaxIgnored.
+func TestNewStack_PositionAndAwolRoutes_MalformedQuerySyntaxIgnored(t *testing.T) {
+	h := newStack(t)
+
+	for _, path := range []string{
+		"/api/v1/milpacs/position/search/Rifleman?junk=%zz",
+		"/api/v1/milpacs/position/groups?junk=%zz",
+		"/api/v1/milpacs/awol?junk=%zz",
+	} {
+		t.Run(path, func(t *testing.T) {
+			rr := positionsGet(t, h, path, "cav7_readkey")
+
+			require.Equal(t, http.StatusOK, rr.Code, "old gateway never ParseForm'd these routes")
 		})
 	}
 }
