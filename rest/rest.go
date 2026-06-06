@@ -59,6 +59,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/7cav/api/datastores"
 )
@@ -149,13 +150,19 @@ const ticketSubPattern = "GET /api/v1/tickets/{ticket_id}/{sub}"
 func ticketSubResource(ds datastores.Datastore) http.Handler {
 	messages := requireScope("read:tickets", listTicketMessages(ds))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.PathValue("sub") != "messages" {
+		if !knownTicketSub(r.PathValue("sub")) {
 			notFound(w, r)
 			return
 		}
 		messages.ServeHTTP(w, r)
 	})
 }
+
+// knownTicketSub is the {ticket_id}/{sub} wildcard's narrowing — "messages"
+// is the only real sub-resource. ONE definition shared by the dispatcher and
+// the fallback's 405 probe: if they disagreed, a wrong-method request could
+// 405 ("route exists") on a path whose GET is a 404.
+func knownTicketSub(sub string) bool { return sub == "messages" }
 
 // handle registers one public route: a method-qualified mux pattern, the
 // route's required scope, and its handler. The scope is a required positional
@@ -180,19 +187,31 @@ func handle(mux *http.ServeMux, pattern, scope string, h http.Handler) {
 // read surface is GET/HEAD-only; HEAD matches GET patterns and never lands
 // here). A probe pattern of "/" is the catch-all matching itself — an
 // unknown path. Pattern-based, so parameterized fan-out routes (#126–#129)
-// are covered with no per-route bookkeeping.
+// are covered with no per-route bookkeeping — EXCEPT the {ticket_id}/{sub}
+// wildcard, which over-matches by construction: its dispatcher 404s every
+// sub but "messages", so a probe hit on that pattern counts as a known route
+// only under the same narrowing (knownTicketSub).
 func fallback(mux *http.ServeMux) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			probe := r.Clone(r.Context())
 			probe.Method = http.MethodGet
 			if _, pattern := mux.Handler(probe); pattern != "" && pattern != "/" {
-				methodNotAllowed(w, r)
-				return
+				if pattern != ticketSubPattern || knownTicketSub(lastSegment(probe.URL.Path)) {
+					methodNotAllowed(w, r)
+					return
+				}
 			}
 		}
 		notFound(w, r)
 	}
+}
+
+// lastSegment returns the path's final segment — the {sub} binding of a
+// ticketSubPattern match (mux.Handler reports the pattern but binds no path
+// values on the probe).
+func lastSegment(path string) string {
+	return path[strings.LastIndexByte(path, '/')+1:]
 }
 
 // sentryMiddleware is the documented extension point for #132 (full Sentry

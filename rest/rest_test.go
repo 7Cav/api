@@ -356,6 +356,39 @@ func TestNewStack_WrongMethodOnKnownRouteIs405WithAllow(t *testing.T) {
 	}
 }
 
+// The fallback's GET probe must apply the SAME narrowing the
+// {ticket_id}/{sub} dispatcher does: "messages" is the only known
+// sub-resource. Without it, POST /tickets/42/bogus would 405 ("route
+// exists") while GET on the same path 404s — the probe claiming a route the
+// GET surface denies, violating the 405 ruling's own principle.
+func TestNewStack_WrongMethodOnUnknownTicketSubResourceStays404(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/42/bogus", nil)
+	req.Header.Set("Authorization", "Bearer cav7_ticketskey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code, "GET on this path is a 404; the probe must agree")
+	assert.Empty(t, rr.Header().Get("Allow"))
+	assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String())
+}
+
+// The narrowing must not over-correct: the messages route itself is real,
+// so wrong-method there keeps the 405 + Allow.
+func TestNewStack_WrongMethodOnTicketMessagesIs405WithAllow(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/42/messages", nil)
+	req.Header.Set("Authorization", "Bearer cav7_ticketskey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	assert.Equal(t, "GET, HEAD", rr.Header().Get("Allow"))
+	assert.JSONEq(t, `{"code":12,"message":"Method Not Allowed","details":[]}`, rr.Body.String())
+}
+
 func TestNewStack_WrongMethodOnUnknownRouteStays404(t *testing.T) {
 	h := newStack(t)
 
