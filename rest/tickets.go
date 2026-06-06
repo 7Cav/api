@@ -67,9 +67,8 @@ func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) ht
 // the gateway's leaked strconv error, pinned by get_by_id_parse_error).
 func getTicketById(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ticketID, err := parseTicketID(r.PathValue("ticket_id"))
-		if err != nil {
-			writeError(w, r, codeInvalidArgument, "type mismatch, parameter: ticket_id, error: %v", err)
+		ticketID, ok := bindTicketID(w, r)
+		if !ok {
 			return
 		}
 		ticket, err := ds.GetTicket(r.Context(), rc, ticketID, "")
@@ -123,16 +122,18 @@ func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.D
 	})
 }
 
-// parseTicketID binds the {ticket_id} path value. The error text reaching
-// the wire mirrors the old gateway's leaked strconv error verbatim
-// (golden-pinned), so this returns the bare strconv error for the caller to
-// wrap in the frozen "type mismatch" message.
-func parseTicketID(raw string) (uint32, error) {
-	id, err := strconv.ParseUint(raw, 10, 32)
+// bindTicketID binds the {ticket_id} path value for the two bindings that
+// carry it (by-id, messages). On failure it writes the frozen wire error —
+// the old gateway's leaked strconv text, golden-pinned by
+// tickets/get_by_id_parse_error and tickets/messages_parse_error — and
+// returns ok=false.
+func bindTicketID(w http.ResponseWriter, r *http.Request) (uint32, bool) {
+	id, err := strconv.ParseUint(r.PathValue("ticket_id"), 10, 32)
 	if err != nil {
-		return 0, err
+		writeError(w, r, codeInvalidArgument, "type mismatch, parameter: ticket_id, error: %v", err)
+		return 0, false
 	}
-	return uint32(id), nil
+	return uint32(id), true
 }
 
 // listTicketMessages serves GET /api/v1/tickets/{ticket_id}/messages: one
@@ -143,9 +144,8 @@ func parseTicketID(raw string) (uint32, error) {
 // from the old stack (servers/grpc ListTicketMessages).
 func listTicketMessages(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ticketID, err := parseTicketID(r.PathValue("ticket_id"))
-		if err != nil {
-			writeError(w, r, codeInvalidArgument, "type mismatch, parameter: ticket_id, error: %v", err)
+		ticketID, ok := bindTicketID(w, r)
+		if !ok {
 			return
 		}
 		b := newQueryBinder(r.URL.Query())
