@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
 // Generate protobufs
@@ -21,6 +23,40 @@ func Lint() error {
 		return err
 	}
 	return run("buf", "breaking", "--against", "https://github.com/7cav/api.git#branch=develop")
+}
+
+// Run the test suite (MariaDB integration tests skip unless TESTDB_ADDR is set)
+func Test() error {
+	fmt.Println("Running tests...")
+	return run("go", "test", "./...")
+}
+
+// Spin up the dockerized MariaDB harness and run the full test suite against it.
+// The compose project is unique per checkout and the host port ephemeral
+// (discovered via `docker compose port`), so parallel worktrees can run
+// harnesses side by side. Mirrors the Makefile's testdb targets.
+func TestIntegration() error {
+	fmt.Println("Running integration tests against the MariaDB harness...")
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	compose := []string{"compose", "-p", "testdb-" + strings.ToLower(filepath.Base(wd)), "-f", "testdb/compose.yaml"}
+	if err := run("docker", append(compose, "up", "-d", "--wait")...); err != nil {
+		return err
+	}
+	out, err := exec.Command("docker", append(compose, "port", "mariadb", "3306")...).Output()
+	if err != nil {
+		return fmt.Errorf("discovering harness port: %w", err)
+	}
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Env = append(os.Environ(), "TESTDB_ADDR="+strings.TrimSpace(string(out)))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("integration tests failed: %w", err)
+	}
+	return nil
 }
 
 // Install dependencies and tools
