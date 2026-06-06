@@ -90,8 +90,9 @@ var (
 // and the poller keeping it fresh), not merely non-nil: a cold cache
 // degrades silently — empty categories, blank status/priority/prefix names,
 // and category filters collapsing from subtree to exact-match. New refuses
-// nil outright: with no recovery middleware in the chain, a nil cache is a
-// guaranteed panic on the first tickets request against the real datastore.
+// nil outright: a nil cache is a guaranteed panic on the first tickets
+// request against the real datastore (recovery exists only when SENTRY_DSN
+// is set — and a panic-per-request service is broken either way).
 func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
 	if rc == nil {
 		panic("rest.New: nil TicketReferenceCache — pass the refreshed referencecache.Cache (see #134)")
@@ -232,4 +233,3 @@ func fallback(mux *http.ServeMux) http.HandlerFunc {
 func lastSegment(path string) string {
 	return path[strings.LastIndexByte(path, '/')+1:]
 }
-
