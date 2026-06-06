@@ -8,17 +8,17 @@ package contract
 //
 // The spec lives at openapi/openapi.yaml. Validation uses
 // pb33f/libopenapi-validator (test-only dependency), chosen because it is the
-// maintained Go validator with real OpenAPI 3.1 support (kin-openapi remains
-// 3.0-only).
+// maintained Go validator with real OpenAPI 3.1 support (kin-openapi was
+// 3.0-only at time of choice, 2026-06).
 
 import (
 	"bytes"
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -31,6 +31,7 @@ import (
 
 	validator "github.com/pb33f/libopenapi-validator"
 	"github.com/pb33f/libopenapi-validator/errors"
+	"github.com/pb33f/libopenapi-validator/helpers"
 	"github.com/pb33f/libopenapi-validator/paths"
 	"github.com/pb33f/libopenapi-validator/responses"
 	"github.com/pb33f/libopenapi-validator/schema_validation"
@@ -43,7 +44,12 @@ func loadSpec(t *testing.T) (libopenapi.Document, *v3.Document) {
 	t.Helper()
 	raw, err := os.ReadFile(specPath)
 	require.NoError(t, err, "hand-owned OpenAPI spec missing at %s", specPath)
+	return buildSpec(t, raw)
+}
 
+// buildSpec builds a document and v3 model from raw spec bytes.
+func buildSpec(t *testing.T, raw []byte) (libopenapi.Document, *v3.Document) {
+	t.Helper()
 	doc, err := libopenapi.NewDocument(raw)
 	require.NoError(t, err, "spec does not parse as an OpenAPI document")
 
@@ -104,16 +110,14 @@ func TestSpec_KeycloakSurfaceAbsent(t *testing.T) {
 		"keycloak surface must be absent from the hand-owned spec")
 }
 
-// TestSpec_WireConventions pins the documented house style structurally:
-// every schema property is lowerCamelCase (protobufAny's "@type" is the one
-// historical exception), and every enum schema leads with its _UNSPECIFIED
-// zero name (protojson zero-safe enum-name convention).
-func TestSpec_WireConventions(t *testing.T) {
-	_, model := loadSpec(t)
-	require.NotNil(t, model.Components)
-
-	lowerCamel := regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
-
+// forEachDocumentSchema visits every inline (non-$ref) schema in the
+// document at its definition site: components.schemas, components.parameters,
+// components.responses (content and headers), and every path operation's
+// parameters and response content. $ref uses are skipped — the referenced
+// schema is visited where it is defined. Recursion covers properties, items,
+// additionalProperties, oneOf, anyOf, allOf and not.
+func forEachDocumentSchema(t *testing.T, model *v3.Document, visit func(path string, s *base.Schema)) {
+	t.Helper()
 	var walk func(path string, sp *base.SchemaProxy)
 	walk = func(path string, sp *base.SchemaProxy) {
 		if sp == nil || sp.IsReference() {
@@ -123,18 +127,9 @@ func TestSpec_WireConventions(t *testing.T) {
 		if s == nil {
 			return
 		}
+		visit(path, s)
 		for pair := orderedmap.First(s.Properties); pair != nil; pair = pair.Next() {
-			name := pair.Key()
-			if name != "@type" {
-				assert.True(t, lowerCamel.MatchString(name),
-					"%s: property %q is not lowerCamelCase", path, name)
-			}
-			walk(path+"."+name, pair.Value())
-		}
-		if len(s.Enum) > 0 {
-			first := fmt.Sprintf("%v", s.Enum[0].Value)
-			assert.True(t, strings.HasSuffix(first, "_UNSPECIFIED"),
-				"%s: enum must lead with its _UNSPECIFIED zero name, got %q", path, first)
+			walk(path+"."+pair.Key(), pair.Value())
 		}
 		if s.Items != nil && s.Items.IsA() {
 			walk(path+"[]", s.Items.A)
@@ -148,11 +143,111 @@ func TestSpec_WireConventions(t *testing.T) {
 		for i, sub := range s.AnyOf {
 			walk(fmt.Sprintf("%s.anyOf[%d]", path, i), sub)
 		}
+		for i, sub := range s.AllOf {
+			walk(fmt.Sprintf("%s.allOf[%d]", path, i), sub)
+		}
+		if s.Not != nil {
+			walk(path+".not", s.Not)
+		}
 	}
 
-	for pair := orderedmap.First(model.Components.Schemas); pair != nil; pair = pair.Next() {
-		walk("components.schemas."+pair.Key(), pair.Value())
+	walkContent := func(path string, content *orderedmap.Map[string, *v3.MediaType]) {
+		for pair := orderedmap.First(content); pair != nil; pair = pair.Next() {
+			walk(path+".content."+pair.Key(), pair.Value().Schema)
+		}
 	}
+	walkResponse := func(path string, r *v3.Response) {
+		if r == nil {
+			return
+		}
+		walkContent(path, r.Content)
+		for pair := orderedmap.First(r.Headers); pair != nil; pair = pair.Next() {
+			walk(path+".headers."+pair.Key(), pair.Value().Schema)
+		}
+	}
+
+	if model.Components != nil {
+		for pair := orderedmap.First(model.Components.Schemas); pair != nil; pair = pair.Next() {
+			walk("components.schemas."+pair.Key(), pair.Value())
+		}
+		for pair := orderedmap.First(model.Components.Parameters); pair != nil; pair = pair.Next() {
+			walk("components.parameters."+pair.Key(), pair.Value().Schema)
+		}
+		for pair := orderedmap.First(model.Components.Responses); pair != nil; pair = pair.Next() {
+			walkResponse("components.responses."+pair.Key(), pair.Value())
+		}
+	}
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		route := pair.Key()
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			opPath := strings.ToUpper(method) + " " + route
+			for _, p := range op.Parameters {
+				walk(opPath+".param."+p.Name, p.Schema)
+			}
+			if op.Responses != nil {
+				for rp := orderedmap.First(op.Responses.Codes); rp != nil; rp = rp.Next() {
+					walkResponse(opPath+".responses."+rp.Key(), rp.Value())
+				}
+				walkResponse(opPath+".responses.default", op.Responses.Default)
+			}
+		}
+	}
+}
+
+// TestSpec_WireConventions pins the documented house style structurally over
+// every inline schema in the document (components AND path-level inline
+// schemas): every schema property is lowerCamelCase (Any's "@type" is the
+// one historical exception), and every enum schema leads with its
+// _UNSPECIFIED zero name (protojson zero-safe enum-name convention).
+func TestSpec_WireConventions(t *testing.T) {
+	_, model := loadSpec(t)
+	require.NotNil(t, model.Components)
+
+	lowerCamel := regexp.MustCompile(`^[a-z][a-zA-Z0-9]*$`)
+
+	forEachDocumentSchema(t, model, func(path string, s *base.Schema) {
+		for pair := orderedmap.First(s.Properties); pair != nil; pair = pair.Next() {
+			name := pair.Key()
+			if name != "@type" {
+				assert.True(t, lowerCamel.MatchString(name),
+					"%s: property %q is not lowerCamelCase", path, name)
+			}
+		}
+		if len(s.Enum) > 0 {
+			first := fmt.Sprintf("%v", s.Enum[0].Value)
+			assert.True(t, strings.HasSuffix(first, "_UNSPECIFIED"),
+				"%s: enum must lead with its _UNSPECIFIED zero name, got %q", path, first)
+		}
+	})
+}
+
+// TestSpec_SchemasAreEmitEverything pins the emit-everything strictness
+// structurally: every object schema that declares properties must require
+// ALL of them and close itself with additionalProperties: false. Without
+// this, deleting a required: list or an additionalProperties: false line is
+// a silent loosening — goldens witness presence, not the spec's tolerance
+// for absence. Any is the documented exception: protobuf Any is an open type
+// by design (arbitrary fields per @type), so it cannot be closed.
+func TestSpec_SchemasAreEmitEverything(t *testing.T) {
+	_, model := loadSpec(t)
+
+	forEachDocumentSchema(t, model, func(path string, s *base.Schema) {
+		if path == "components.schemas.Any" {
+			return // open by design; see schema description
+		}
+		if orderedmap.Len(s.Properties) == 0 {
+			return // the rule binds object schemas that declare properties
+		}
+		var props []string
+		for pair := orderedmap.First(s.Properties); pair != nil; pair = pair.Next() {
+			props = append(props, pair.Key())
+		}
+		assert.ElementsMatch(t, props, s.Required,
+			"%s: object schema must require ALL its properties (emit-everything)", path)
+		closed := s.AdditionalProperties != nil && s.AdditionalProperties.IsB() && !s.AdditionalProperties.B
+		assert.True(t, closed,
+			"%s: object schema must set additionalProperties: false (emit-everything)", path)
+	})
 }
 
 // --- Golden replay against the spec --------------------------------------
@@ -176,36 +271,115 @@ func classifySpecPath(casePath string) string {
 // the spec: the unknown-path 404/401 tier. OpenAPI describes operations;
 // non-operation surface stays corpus-only. The replay loop asserts these
 // paths stay unmatched, so the spec cannot silently grow a route that
-// swallows them.
+// swallows them. Membership is pinned by TestSpec_CarveOutMapsAreLive to the
+// auth/unknown_path_* cases only — this map is not a generic escape hatch.
 var offSpecCases = map[string]string{
 	"auth/unknown_path_authenticated":   "unknown path under the API prefix: JSON 404 is mux behavior, not an operation",
 	"auth/unknown_path_unauthenticated": "unknown path without auth: 401 tier fires before routing",
 }
 
 // templateUnmatchableCases are goldens whose concrete request path cannot be
-// matched by any OpenAPI path template — the gateway's {positionQuery=**}
-// glob swallows slashes and empty segments, which OpenAPI cannot express.
-// Their operation is resolved by name instead; request-side validation is
-// skipped (the spec documents the canonical single-segment form), response
-// validation still runs against the operation.
+// matched by ANY OpenAPI path template — the gateway's {position_query=**}
+// glob (proto/milpacs.proto) swallows slashes, which OpenAPI cannot express.
+// Exactly one recorded form qualifies: the multi-segment query. (The
+// trailing-slash form DOES match /{positionQuery} with an empty segment; it
+// lives in specViolatingRequests instead.) The replay loop asserts the
+// exemption's own justification — paths.FindPath must fail — then resolves
+// the operation by template name: request-side validation is impossible, but
+// response validation still runs against the named operation.
 var templateUnmatchableCases = map[string]string{
-	"position/search_multi_segment":  "/api/v1/milpacs/position/search/{positionQuery}",
-	"position/search_trailing_slash": "/api/v1/milpacs/position/search/{positionQuery}",
+	"position/search_multi_segment": "/api/v1/milpacs/position/search/{positionQuery}",
+}
+
+// mustFailRequest pins WHY a deliberately contract-violating request must
+// fail validation: an error of wantType carrying wantMessage must be among
+// the validator's findings, so a must-fail case cannot silently start
+// failing for an unrelated reason.
+type mustFailRequest struct {
+	reason      string
+	wantType    string // errors.ValidationError.ValidationType
+	wantMessage string // substring of errors.ValidationError.Message
 }
 
 // specViolatingRequests are goldens whose request deliberately breaks the
 // documented request contract; the replay loop asserts request validation
-// FAILS for them — proving the spec's parameter and security constraints
-// describe the same gate the API enforces (each records a 4xx response).
-var specViolatingRequests = map[string]string{
-	"auth/milpacs_missing_header":       "no Authorization header: violates the bearer security requirement",
-	"auth/milpacs_raw_key":              "raw key without Bearer scheme: violates the bearer security requirement",
-	"auth/tickets_missing_header":       "no Authorization header: violates the bearer security requirement",
-	"auth/tickets_raw_key":              "raw key without Bearer scheme: violates the bearer security requirement",
-	"milpacs/profile_by_id_parse_error": "non-numeric userId violates the uint64-as-string path parameter",
-	"roster/bogus_enum":                 "IMAGINARY_ROSTER is neither an enum name nor a number",
-	"tickets/get_by_id_parse_error":     "non-numeric ticketId violates the integer path parameter",
-	"tickets/messages_parse_error":      "non-numeric ticketId violates the integer path parameter",
+// FAILS for them — for the pinned reason — proving the spec's parameter and
+// security constraints describe the same gate the API enforces. Every entry
+// records a 4xx response (asserted in the replay loop).
+var specViolatingRequests = map[string]mustFailRequest{
+	"auth/milpacs_missing_header": {
+		reason:      "no Authorization header: violates the bearer security requirement",
+		wantType:    helpers.SecurityValidation,
+		wantMessage: "Authorization header for 'bearer' scheme",
+	},
+	"auth/milpacs_raw_key": {
+		reason:      "raw key without Bearer scheme: violates the bearer security requirement",
+		wantType:    helpers.SecurityValidation,
+		wantMessage: "Authorization header scheme 'bearer' mismatch",
+	},
+	"auth/tickets_missing_header": {
+		reason:      "no Authorization header: violates the bearer security requirement",
+		wantType:    helpers.SecurityValidation,
+		wantMessage: "Authorization header for 'bearer' scheme",
+	},
+	"auth/tickets_raw_key": {
+		reason:      "raw key without Bearer scheme: violates the bearer security requirement",
+		wantType:    helpers.SecurityValidation,
+		wantMessage: "Authorization header scheme 'bearer' mismatch",
+	},
+	"milpacs/profile_by_id_parse_error": {
+		reason:      "non-numeric userId violates the uint64-as-string path parameter",
+		wantType:    helpers.ParameterValidation,
+		wantMessage: "Path parameter 'userId' failed to validate",
+	},
+	"position/search_trailing_slash": {
+		reason:      "the ** glob's empty-segment form: the required positionQuery path parameter is empty",
+		wantType:    helpers.ParameterValidation,
+		wantMessage: "Path parameter 'positionQuery' is missing",
+	},
+	"roster/bogus_enum": {
+		reason:      "IMAGINARY_ROSTER is neither an enum name nor a number",
+		wantType:    helpers.ParameterValidation,
+		wantMessage: "Path parameter 'roster' failed to validate",
+	},
+	"tickets/get_by_id_parse_error": {
+		reason:      "non-numeric ticketId violates the integer path parameter",
+		wantType:    helpers.ParameterValidation,
+		wantMessage: "Path parameter 'ticketId' is not a valid integer",
+	},
+	"tickets/messages_parse_error": {
+		reason:      "non-numeric ticketId violates the integer path parameter",
+		wantType:    helpers.ParameterValidation,
+		wantMessage: "Path parameter 'ticketId' is not a valid integer",
+	},
+}
+
+// TestSpec_CarveOutMapsAreLive: the three exemption maps must reference real
+// battery cases and keep their pinned cardinality — a renamed case or a
+// bogus key otherwise rots silently, and a growing map is a growing hole in
+// the replay loop.
+func TestSpec_CarveOutMapsAreLive(t *testing.T) {
+	known := map[string]bool{}
+	for _, c := range Cases() {
+		known[c.Name] = true
+	}
+
+	assert.Len(t, offSpecCases, 2, "off-spec carve-outs are pinned")
+	for name := range offSpecCases {
+		assert.True(t, known[name], "offSpecCases key %q names no battery case", name)
+		assert.True(t, strings.HasPrefix(name, "auth/unknown_path_"),
+			"offSpecCases is the unknown-path tier only, got %q — it must not become a generic spec-coverage escape hatch", name)
+	}
+
+	assert.Len(t, templateUnmatchableCases, 1, "template-unmatchable carve-outs are pinned")
+	for name := range templateUnmatchableCases {
+		assert.True(t, known[name], "templateUnmatchableCases key %q names no battery case", name)
+	}
+
+	assert.Len(t, specViolatingRequests, 9, "must-fail request entries are pinned")
+	for name := range specViolatingRequests {
+		assert.True(t, known[name], "specViolatingRequests key %q names no battery case", name)
+	}
 }
 
 // formatValidationErrors renders validator findings as one message per line,
@@ -221,14 +395,15 @@ func formatValidationErrors(operationID string, errs []*errors.ValidationError) 
 	return b.String()
 }
 
-// caseRequest reconstructs the recorded HTTP request for a battery case,
-// exactly as RunCase sends it.
-func caseRequest(c Case) *http.Request {
-	req := httptest.NewRequest(c.Method, c.Path, nil)
-	if v, ok := authHeader(c.Auth); ok {
-		req.Header.Set("Authorization", v)
+// hasValidationError reports whether an error of wantType carrying
+// wantMessage is among the validator's findings.
+func hasValidationError(errs []*errors.ValidationError, wantType, wantMessage string) bool {
+	for _, e := range errs {
+		if e.ValidationType == wantType && strings.Contains(e.Message, wantMessage) {
+			return true
+		}
 	}
-	return req
+	return false
 }
 
 // goldenResponse reconstructs the recorded HTTP response for a golden.
@@ -251,19 +426,74 @@ func goldenResponse(g *Golden) *http.Response {
 }
 
 // operationID names an operation for failure messages.
-func operationID(pathItem *v3.PathItem, specPath string) string {
-	if pathItem != nil && pathItem.Get != nil && pathItem.Get.OperationId != "" {
-		return pathItem.Get.OperationId
+func operationID(op *v3.Operation, method, specPath string) string {
+	if op != nil && op.OperationId != "" {
+		return op.OperationId
 	}
-	return "GET " + specPath
+	return strings.ToUpper(method) + " " + specPath
+}
+
+// replayGoldenResponse checks a golden's recorded response against the spec
+// and returns human-readable problems (empty = the response validates). It
+// refuses to pass vacuously — the library validator returns valid=true when
+// an operation has nil responses, a matched response has no content, or the
+// media type carries no schema (all legal OpenAPI 3.1), so this resolves the
+// response itself and requires substance first: the operation must declare
+// responses, the golden's status must be EXPLICITLY documented (default
+// resolution does not count — every corpus-witnessed status is declared),
+// and a JSON golden requires an application/json schema to validate against.
+func replayGoldenResponse(respValidator responses.ResponseBodyValidator, req *http.Request, golden *Golden, pathItem *v3.PathItem, specPath string) []string {
+	op := pathItem.Get // the corpus is GET-only (pinned by TestBatteryIsWellFormed)
+	opID := operationID(op, http.MethodGet, specPath)
+	if op == nil {
+		return []string{fmt.Sprintf("operation %s: spec path has no GET operation", opID)}
+	}
+	if op.Responses == nil || orderedmap.Len(op.Responses.Codes) == 0 {
+		return []string{fmt.Sprintf("operation %s declares no responses", opID)}
+	}
+	code := strconv.Itoa(golden.Status)
+	docResp := op.Responses.Codes.GetOrZero(code)
+	if docResp == nil {
+		return []string{fmt.Sprintf(
+			"operation %s: golden status %s is not explicitly documented in responses — default resolution does not count; declare the witnessed status",
+			opID, code)}
+	}
+	switch {
+	case golden.Body != nil: // JSON golden: demand a schema to validate against
+		var schema *base.SchemaProxy
+		if docResp.Content != nil {
+			if mt := docResp.Content.GetOrZero("application/json"); mt != nil {
+				schema = mt.Schema
+			}
+		}
+		if schema == nil {
+			return []string{fmt.Sprintf(
+				"operation %s: response %s declares no application/json schema — a JSON golden would validate vacuously",
+				opID, code)}
+		}
+	case golden.BodyText != nil:
+		if orderedmap.Len(docResp.Content) == 0 {
+			return []string{fmt.Sprintf(
+				"operation %s: response %s declares no content but the golden records a body", opID, code)}
+		}
+	}
+
+	resp := goldenResponse(golden)
+	valid, verrs := respValidator.ValidateResponseBodyWithPathItem(req, resp, pathItem, specPath)
+	if !valid {
+		return []string{formatValidationErrors(opID, verrs)}
+	}
+	return nil
 }
 
 // TestSpec_GoldenReplay is the executable-spec loop: every committed golden
 // is replayed against the OpenAPI document. Request validation runs where
-// the request is expressible (and is asserted to FAIL for the deliberately
-// contract-violating requests); response validation — status code, content
-// type, body schema — runs for every golden. Failures name the operation and
-// the field.
+// the request is expressible (and is asserted to FAIL — for the pinned
+// reason — for the deliberately contract-violating requests); response
+// validation — explicitly documented status code, content type, body schema —
+// runs for every golden that resolves to an operation. The two unknown-path
+// carve-outs assert non-resolution instead (offSpecCases). Failures name the
+// operation and the field.
 func TestSpec_GoldenReplay(t *testing.T) {
 	doc, model := loadSpec(t)
 	v, errs := validator.NewValidator(doc)
@@ -274,12 +504,12 @@ func TestSpec_GoldenReplay(t *testing.T) {
 		t.Run(c.Name, func(t *testing.T) {
 			golden, err := LoadGolden(goldensDir, c.Name)
 			require.NoError(t, err)
-			req := caseRequest(c)
+			req := newCaseRequest(c)
 
 			if reason, off := offSpecCases[c.Name]; off {
-				pathItem, _, _ := paths.FindPath(req, model, nil)
+				pathItem, _, matched := paths.FindPath(req, model, nil)
 				assert.Nil(t, pathItem,
-					"case %s must stay off-spec (%s) but matched a spec path", c.Name, reason)
+					"case %s must stay off-spec (%s) but matched spec path %q", c.Name, reason, matched)
 				return
 			}
 
@@ -289,6 +519,13 @@ func TestSpec_GoldenReplay(t *testing.T) {
 			var pathItem *v3.PathItem
 			skipRequestValidation := false
 			if tmpl, ok := templateUnmatchableCases[c.Name]; ok {
+				// Assert the exemption's own justification first: if the path
+				// ever becomes template-matchable, the carve-out must die
+				// rather than silently suppress request validation.
+				found, _, matched := paths.FindPath(req, model, nil)
+				require.Nil(t, found,
+					"case %s is listed template-unmatchable but FindPath matched %q — remove it from templateUnmatchableCases",
+					c.Name, matched)
 				specPath = tmpl
 				pathItem = model.Paths.PathItems.GetOrZero(tmpl)
 				require.NotNil(t, pathItem, "case %s: spec is missing path %s", c.Name, tmpl)
@@ -301,44 +538,165 @@ func TestSpec_GoldenReplay(t *testing.T) {
 					"case %s: matched the wrong spec path", c.Name)
 				pathItem = found
 			}
-			opID := operationID(pathItem, specPath)
+			opID := operationID(pathItem.Get, http.MethodGet, specPath)
 
 			if !skipRequestValidation {
 				valid, verrs := v.ValidateHttpRequestSyncWithPathItem(req, pathItem, specPath)
-				if reason, bad := specViolatingRequests[c.Name]; bad {
+				if entry, bad := specViolatingRequests[c.Name]; bad {
+					require.GreaterOrEqual(t, golden.Status, 400,
+						"case %s: must-fail entries record 4xx responses", c.Name)
 					assert.False(t, valid,
-						"case %s: request must violate the spec (%s) but validated clean", c.Name, reason)
+						"case %s: request must violate the spec (%s) but validated clean", c.Name, entry.reason)
+					assert.True(t, hasValidationError(verrs, entry.wantType, entry.wantMessage),
+						"case %s: request must fail for its documented reason ([%s] %q), got:\n%s",
+						c.Name, entry.wantType, entry.wantMessage, formatValidationErrors(opID, verrs))
 				} else {
 					assert.True(t, valid, "case %s: request does not validate:\n%s",
 						c.Name, formatValidationErrors(opID, verrs))
 				}
 			}
 
-			resp := goldenResponse(golden)
-			valid, verrs := respValidator.ValidateResponseBodyWithPathItem(req, resp, pathItem, specPath)
-			assert.True(t, valid, "case %s: recorded response does not validate:\n%s",
-				c.Name, formatValidationErrors(opID, verrs))
+			for _, p := range replayGoldenResponse(respValidator, req, golden, pathItem, specPath) {
+				t.Errorf("case %s: recorded response does not validate:\n%s", c.Name, p)
+			}
+		})
+	}
+}
+
+// batteryCase resolves a battery case by name.
+func batteryCase(t *testing.T, name string) Case {
+	t.Helper()
+	for _, c := range Cases() {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("no battery case named %s", name)
+	return Case{}
+}
+
+// mutateSpec applies one raw-text mutation to the spec source and rebuilds
+// the document and model. find must occur exactly once so the mutation
+// cannot silently miss its target when the spec is edited.
+func mutateSpec(t *testing.T, find, replace string) (libopenapi.Document, *v3.Document) {
+	t.Helper()
+	raw, err := os.ReadFile(specPath)
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(raw), find),
+		"canary mutation target must occur exactly once in the spec:\n%s", find)
+	return buildSpec(t, []byte(strings.Replace(string(raw), find, replace, 1)))
+}
+
+// TestSpec_MutationCanary is the permanent teeth-check for response
+// validation: it replays a golden against a deliberately broken in-memory
+// copy of the spec and demands a LOUD failure naming the operation and the
+// broken piece. The underlying library returns valid=true for nil responses,
+// missing content and non-JSON media types — if the replay loop ever turns
+// vacuous again (nil responses, stripped content, default-swallowed
+// statuses, loosened types), this test fails first.
+func TestSpec_MutationCanary(t *testing.T) {
+	const ranks200Block = `        "200":
+          description: Rank reference list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RanksResponse'
+`
+	const ranksResponsesBlock = `      responses:
+` + ranks200Block + `        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+`
+
+	muts := []struct {
+		name     string
+		find     string
+		replace  string
+		caseName string
+		want     string // substring the failure must carry
+	}{
+		{
+			name:     "flipped field type fails schema validation",
+			find:     "rankDisplayOrder:\n          type: integer",
+			replace:  "rankDisplayOrder:\n          type: string",
+			caseName: "milpacs/ranks",
+			want:     "rankDisplayOrder",
+		},
+		{
+			name: "witnessed status must be explicitly documented, not default-swallowed",
+			find: `"200":
+          description: Rank reference list.`,
+			replace: `"299":
+          description: Rank reference list.`,
+			caseName: "milpacs/ranks",
+			want:     "status 200",
+		},
+		{
+			name:     "JSON golden requires an application/json response schema",
+			find:     ranks200Block,
+			replace:  "        \"200\":\n          description: Rank reference list.\n",
+			caseName: "milpacs/ranks",
+			want:     "application/json",
+		},
+		{
+			name:     "operation must declare responses",
+			find:     ranksResponsesBlock,
+			replace:  "",
+			caseName: "milpacs/ranks",
+			want:     "declares no responses",
+		},
+	}
+
+	for _, m := range muts {
+		t.Run(m.name, func(t *testing.T) {
+			_, model := mutateSpec(t, m.find, m.replace)
+			respValidator := responses.NewResponseBodyValidator(model)
+
+			c := batteryCase(t, m.caseName)
+			golden, err := LoadGolden(goldensDir, c.Name)
+			require.NoError(t, err)
+			req := newCaseRequest(c)
+			pathItem, _, tmpl := paths.FindPath(req, model, nil)
+			require.NotNil(t, pathItem)
+
+			problems := replayGoldenResponse(respValidator, req, golden, pathItem, tmpl)
+			require.NotEmpty(t, problems,
+				"broken spec (%s) must fail response validation — the replay loop has gone vacuous", m.name)
+			joined := strings.Join(problems, "\n")
+			assert.Contains(t, joined, m.want, "failure must name the broken piece")
+			assert.Contains(t, joined, "MilpacService_GetAllRanks", "failure must name the operation")
 		})
 	}
 }
 
 // TestSpec_EveryOperationHasGolden is coverage direction A: every operation
-// in the spec is exercised by at least one golden, so the document cannot
-// describe surface the corpus does not witness.
+// in the spec is exercised by at least one golden — including at least one
+// 2xx golden, so error-only coverage cannot count as witnessing the success
+// shape — and the document cannot describe surface the corpus does not
+// witness.
 func TestSpec_EveryOperationHasGolden(t *testing.T) {
 	_, model := loadSpec(t)
 
 	covered := map[string]bool{}
+	covered2xx := map[string]bool{}
 	for _, c := range Cases() {
 		if _, off := offSpecCases[c.Name]; off {
 			continue
 		}
+		specPath := classifySpecPath(c.Path)
 		if tmpl, ok := templateUnmatchableCases[c.Name]; ok {
-			covered["GET "+tmpl] = true
+			specPath = tmpl
+		}
+		if specPath == "" {
 			continue
 		}
-		if specPath := classifySpecPath(c.Path); specPath != "" {
-			covered["GET "+specPath] = true
+		key := "GET " + specPath
+		covered[key] = true
+		golden, err := LoadGolden(goldensDir, c.Name)
+		require.NoError(t, err)
+		if golden.Status/100 == 2 {
+			covered2xx[key] = true
 		}
 	}
 
@@ -346,13 +704,17 @@ func TestSpec_EveryOperationHasGolden(t *testing.T) {
 	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
 		specPath := pair.Key()
 		item := pair.Value()
+		// The corpus is GET-only today (pinned by TestBatteryIsWellFormed),
+		// so coverage keys carry GET; iterating every declared operation
+		// keeps this loop honest if a non-GET operation ever appears.
 		for method, op := range item.GetOperations().FromOldest() {
 			total++
 			key := strings.ToUpper(method) + " " + specPath
+			id := operationID(op, method, specPath)
 			assert.True(t, covered[key],
-				"operation %s (%s) has no golden — record one or remove the operation",
-				operationID(item, specPath), key)
-			_ = op
+				"operation %s (%s) has no golden — record one or remove the operation", id, key)
+			assert.True(t, covered2xx[key],
+				"operation %s (%s) has no 2xx golden — error-only goldens do not witness the success shape", id, key)
 		}
 	}
 	assert.NotZero(t, total, "spec declares no operations")
