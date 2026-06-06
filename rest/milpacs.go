@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -48,6 +49,10 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInvalidArgument, "type mismatch, parameter: %s, error: %v", "user_id", err)
 			return
 		}
+		if err := checkQuerySyntax(r); err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", err)
+			return
+		}
 		username, err := queryField(r, "username", "username")
 		if err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
@@ -85,6 +90,10 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 // precedence makes a valid one invisible.
 func getProfileByUsername(ds datastores.Datastore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := checkQuerySyntax(r); err != nil {
+			writeError(w, r, codeInvalidArgument, "%v", err)
+			return
+		}
 		if raw, err := queryField(r, "user_id", "userId"); err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
@@ -159,6 +168,21 @@ func serveProfileByUsername(w http.ResponseWriter, r *http.Request, ds datastore
 		return
 	}
 	writeProfile(w, r, profiles[0])
+}
+
+// checkQuerySyntax rejects malformed query-string SYNTAX on the two profile
+// routes whose old generated gateway handlers called req.ParseForm() and 400'd
+// on its error (request_MilpacService_GetProfile_0/_1 in proto/milpacs.pb.gw.go,
+// wrapped as InvalidArgument "%v" — text leaked verbatim, e.g. `invalid URL
+// escape "%zz"`, `invalid semicolon separator in query`). The error fired even
+// when the malformed pair was an unknown parameter, BEFORE field filtering.
+// r.URL.Query() would silently drop bad pairs, so the parse is explicit.
+//
+// SCOPE: the discord and gamertag routes must NOT call this — their generated
+// handlers never called ParseForm (single path-bound field, no query binding).
+func checkQuerySyntax(r *http.Request) error {
+	_, err := url.ParseQuery(r.URL.RawQuery)
+	return err
 }
 
 // queryField reads a singular query-bindable message field, accepting both

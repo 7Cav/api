@@ -548,6 +548,62 @@ func TestNewStack_ByIdRoute_RepeatedUsernameQueryIs400(t *testing.T) {
 	assert.JSONEq(t, `{"code":3,"message":"too many values for field \"username\": a, b","details":[]}`, rr.Body.String())
 }
 
+// Malformed query SYNTAX is a 400 on the profile by-id and by-username routes:
+// the old gateway's generated handlers called req.ParseForm() and wrapped its
+// error as InvalidArgument "%v" (request_MilpacService_GetProfile_0/_1) — even
+// when the malformed pair was an unknown parameter. r.URL.Query() would drop
+// the bad pair silently; the explicit ParseQuery guard preserves the 400.
+func TestNewStack_ProfileRoutes_MalformedQuerySyntaxIs400(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"by_id_bad_escape", "/api/v1/milpacs/profile/id/1?username=%zz", `invalid URL escape \"%zz\"`},
+		{"by_id_semicolon", "/api/v1/milpacs/profile/id/1?a=1;b=2", `invalid semicolon separator in query`},
+		{"by_username_bad_escape", "/api/v1/milpacs/profile/username/Jarvis.A?user_id=%zz", `invalid URL escape \"%zz\"`},
+		{"by_username_semicolon", "/api/v1/milpacs/profile/username/Jarvis.A?a=1;b=2", `invalid semicolon separator in query`},
+		// The malformed pair being an UNKNOWN param changed nothing: ParseForm
+		// ran before any field filtering.
+		{"by_id_unknown_param_bad_escape", "/api/v1/milpacs/profile/id/1?junk=%zz", `invalid URL escape \"%zz\"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			assert.JSONEq(t, `{"code":3,"message":"`+tc.want+`","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
+// The discord and gamertag routes must NOT gain the ParseForm guard: their
+// generated gateway handlers never called ParseForm (verified against
+// proto/milpacs.pb.gw.go — single path-bound field, no query binding), so
+// malformed query syntax fell through to the lookup.
+func TestNewStack_ConnectedAccountRoutes_MalformedQuerySyntaxIgnored(t *testing.T) {
+	h := newStack(t)
+
+	for _, path := range []string{
+		"/api/v1/milpac/discord/112233445566778899?junk=%zz",
+		"/api/v1/milpac/gamertag/CavGamer77?junk=%zz",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusOK, rr.Code, "old gateway never ParseForm'd these routes")
+		})
+	}
+}
+
 // --- Wrong-method contract (human ruling on review Critical 1, #125) -------
 //
 // Wrong-method on an existing route returns 405 Method Not Allowed with an
