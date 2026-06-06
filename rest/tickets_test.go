@@ -399,6 +399,107 @@ func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
 	}, got)
 }
 
+// --- Bracket-key query folding (old-gateway quirk, round-2 R2) --------------
+//
+// The old gateway's DefaultQueryParser rewrote any query key matching
+// ^(.*)\[(.*)\]$ (grpc-gateway v2.29.0 runtime/query.go valuesKeyRegexp) into
+// the base key with the bracket CONTENT PREPENDED as an extra value:
+// ?status_id[0]=5 became key "status_id", values ["0","5"]. The bracket
+// content is a VALUE, never an index. The folded key then went through the
+// normal per-key protocol — so brackets on a repeated field bind every value
+// (including the bracket content), and brackets on a scalar are ALWAYS the
+// too-many-values 400 (the fold makes the group ≥2 values). Mirrored in the
+// binder (rest/query.go bracketGroups); converged with #126.
+func TestNewStack_BracketKeyFoldsIntoRepeatedField(t *testing.T) {
+	var got *datastores.ListTicketsFilter
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+		got = f
+		return []*proto.Ticket{}, "", false, nil
+	}}, &stubReferenceCache{})
+
+	rr := ticketsGet(t, h, "/api/v1/tickets?status_id[0]=5")
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, got, "the filter must reach the datastore")
+	assert.Equal(t, []uint32{0, 5}, got.StatusIDs,
+		"bracket content prepends as a value: [0] folds in ahead of 5")
+}
+
+// Non-numeric bracket content on a numeric repeated field: the content is a
+// prepended VALUE, so it hits the every-value-parses protocol and 400s with
+// the frozen parsing-list text — the old gateway never treated it as an
+// index to discard.
+func TestNewStack_BracketKeyNonNumericContentIsParsingList400(t *testing.T) {
+	h := newStack(t)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets?status_id[x]=5")
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"parsing list \"status_id\": strconv.ParseUint: parsing \"x\": invalid syntax","details":[]}`,
+		rr.Body.String())
+}
+
+// A bracket key on a SCALAR field is always the too-many-values 400: the
+// fold makes the group at least two values (bracket content + the wire
+// values), and the gateway's per-key check ran len(values) > 1 on the folded
+// group — the bracket content first in the quoted list (frozen text).
+func TestNewStack_BracketKeyOnScalarIsTooManyValues400(t *testing.T) {
+	h := newStack(t)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets?per_page[0]=1")
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"too many values for field \"per_page\": 0, 1","details":[]}`,
+		rr.Body.String())
+}
+
+// Bracket keys whose BASE matches no declared field stay ignored — the
+// unknown-param leniency applies to the rewritten key, exactly like any
+// other unknown key. Includes the greedy-regexp edge: ^(.*)\[(.*)\]$ is
+// greedy, so status_id[0][1] folds to base "status_id[0]" — no field — not
+// to "status_id".
+func TestNewStack_NonMatchingBracketKeysAreIgnored(t *testing.T) {
+	var got *datastores.ListTicketsFilter
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+		got = f
+		return []*proto.Ticket{}, "", false, nil
+	}}, &stubReferenceCache{})
+
+	rr := ticketsGet(t, h, "/api/v1/tickets")
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, got, "the filter must reach the datastore")
+	baseline := got
+
+	got = nil
+	rr = ticketsGet(t, h, "/api/v1/tickets?bogus[0]=5&status_id[0][1]=5")
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, got, "the filter must reach the datastore")
+	assert.Equal(t, baseline, got,
+		"non-matching bracket keys must bind exactly what no query binds")
+}
+
+// Bracket bases fold by EITHER spelling (the gateway resolved the rewritten
+// key by text name and JSON name), and folded groups concatenate AFTER the
+// plain values — the gateway appended each url.Values key's group in map
+// order (nondeterministic), so plain-first/folds-last (folds sorted by raw
+// key) is the deterministic RULING, same tier as camel-wins.
+func TestNewStack_BracketKeySpellingsAndOrderingRuling(t *testing.T) {
+	var got *datastores.ListTicketsFilter
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+		got = f
+		return []*proto.Ticket{}, "", false, nil
+	}}, &stubReferenceCache{})
+
+	rr := ticketsGet(t, h, "/api/v1/tickets?statusId[0]=5")
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, got, "the filter must reach the datastore")
+	assert.Equal(t, []uint32{0, 5}, got.StatusIDs, "camelCase base folds too")
+
+	got = nil
+	rr = ticketsGet(t, h, "/api/v1/tickets?status_id=7&status_id[0]=5")
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.NotNil(t, got, "the filter must reach the datastore")
+	assert.Equal(t, []uint32{7, 0, 5}, got.StatusIDs,
+		"plain values first, folded groups after (ruling)")
+}
+
 // include_hidden reaches ListTicketMessages in BOTH directions — a dropped
 // or inverted flag would leak hidden messages (or hide visible ones) with
 // every golden still green.

@@ -8,8 +8,13 @@ package rest
 //   - repeated fields bind by key repetition (?status_id=1&status_id=5);
 //     the comma-separated form is NOT supported (values pass through intact);
 //   - bools parse leniently via strconv.ParseBool (1/t/TRUE/...);
+//   - bracket keys FOLD (the gateway's valuesKeyRegexp rewrite — see
+//     bracketKeyRegexp): ?status_id[0]=5 binds status_id with values
+//     ["0","5"], the folded group joining the normal per-key protocol
+//     (so a bracket key on a scalar is always the too-many-values 400);
 //   - unknown parameters are ignored by construction — the binder only ever
-//     reads the keys handlers ask for.
+//     reads the keys handlers ask for, and a bracket key whose base matches
+//     no declared field is just another unknown key.
 //
 // Parse failures surface via err in the gateway's frozen query-parse wire
 // text (verified against grpc-gateway v2.29.0 runtime.PopulateQueryParameters
@@ -45,9 +50,21 @@ package rest
 import (
 	"fmt"
 	"net/url"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
+
+// bracketKeyRegexp is the old gateway's bracket-key rewrite, mirrored exactly
+// (grpc-gateway v2.29.0 runtime/query.go valuesKeyRegexp): a query key
+// matching ^(.*)\[(.*)\]$ folds into its base key (match 1) with the bracket
+// CONTENT (match 2) PREPENDED as an extra value — ?status_id[0]=5 is key
+// "status_id", values ["0","5"]. The bracket content is a VALUE, never an
+// index: non-numeric content (?status_id[x]=5) prepends "x" and fails the
+// parse on numeric fields. Greedy: a[b][c] folds to base "a[b]" (which then
+// matches no field — ignored, unknown-param leniency).
+var bracketKeyRegexp = regexp.MustCompile(`^(.*)\[(.*)\]$`)
 
 type queryBinder struct {
 	values url.Values
@@ -65,33 +82,77 @@ func newQueryBinder(values url.Values) *queryBinder {
 // directly, so a forgotten check stays greppable.
 func (b *queryBinder) Err() error { return b.err }
 
-// raw returns the values bound to the field across both spellings, snake
-// first, nil when absent. Always a fresh slice: appending camel values onto
+// bracketGroups returns the folded value group of every bracket key whose
+// base (match 1 of bracketKeyRegexp) is one of the field's spellings — the
+// old gateway resolved the rewritten key by text name AND JSON name, so both
+// spellings fold. Each group is that key's values with the bracket content
+// prepended (the gateway's exact rewrite). The gateway processed each
+// url.Values key as its own group in MAP order — nondeterministic across
+// groups — so the deterministic stand-in here is a RULING (same tier as
+// camel-wins): groups sort by raw key, and callers place them after the
+// plain spellings.
+func (b *queryBinder) bracketGroups(snake string) [][]string {
+	camel := snakeToCamel(snake)
+	var keys []string
+	for key := range b.values {
+		if m := bracketKeyRegexp.FindStringSubmatch(key); len(m) == 3 && (m[1] == snake || m[1] == camel) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	groups := make([][]string, 0, len(keys))
+	for _, key := range keys {
+		m := bracketKeyRegexp.FindStringSubmatch(key)
+		groups = append(groups, append([]string{m[2]}, b.values[key]...))
+	}
+	return groups
+}
+
+// raw returns the values bound to the field: both plain spellings (snake
+// first — ruling, see package comment), then the bracket-key folds
+// (bracketGroups order). The old gateway appended each url.Values key's
+// group to the repeated field in map order, so folded values never
+// interleave WITHIN a plain key's values — whole groups concatenate, and
+// the cross-group order here is the deterministic ruling. nil when absent.
+// Always a fresh slice once anything joins the snake values: appending onto
 // b.values[snake] directly would write into the url.Values backing array
 // when it has spare capacity (and stringSliceField hands the result to
 // callers).
 func (b *queryBinder) raw(snake string) []string {
 	vals := b.values[snake]
+	var camelVals []string
 	if camel := snakeToCamel(snake); camel != snake {
-		if camelVals := b.values[camel]; len(camelVals) > 0 {
-			return append(append([]string(nil), vals...), camelVals...)
-		}
+		camelVals = b.values[camel]
 	}
-	return vals
+	brackets := b.bracketGroups(snake)
+	if len(camelVals) == 0 && len(brackets) == 0 {
+		return vals
+	}
+	out := append(append([]string(nil), vals...), camelVals...)
+	for _, g := range brackets {
+		out = append(out, g...)
+	}
+	return out
 }
 
 // scalar returns a scalar field's values in binding order (snake first,
 // camel last — the camel value wins) after enforcing the old gateway's
 // too-many-values check: either spelling carrying more than one value fails
-// with that spelling's values quoted, before any parsing (parity). nil after
-// a failure.
+// with that spelling's values quoted, before any parsing (parity). Bracket
+// keys join the check as their own groups (the gateway ran the per-key
+// len > 1 check on the FOLDED group) — and since the fold prepends the
+// bracket content, a matching bracket key on a scalar is ALWAYS the
+// too-many-values 400, quoting the folded group (content first). Group
+// check order snake → camel → brackets is the deterministic ruling standing
+// in for the gateway's map-order nondeterminism. nil after a failure.
 func (b *queryBinder) scalar(snake string) []string {
 	snakeVals := b.values[snake]
 	var camelVals []string
 	if camel := snakeToCamel(snake); camel != snake {
 		camelVals = b.values[camel]
 	}
-	for _, vals := range [][]string{snakeVals, camelVals} {
+	groups := append([][]string{snakeVals, camelVals}, b.bracketGroups(snake)...)
+	for _, vals := range groups {
 		if len(vals) > 1 {
 			if b.err == nil {
 				b.err = fmt.Errorf("too many values for field %q: %s", snake, strings.Join(vals, ", "))
