@@ -569,6 +569,91 @@ func TestNewStack_ByIdRoute_EmptyUsernameQueryFallsThroughToPathId(t *testing.T)
 	assert.Contains(t, rr.Body.String(), `"username":"John.Doe"`, "empty username binds as unset; path id 2 resolves")
 }
 
+// Cross-spelling: ?user_id=1&userId=2 is NOT a repeated-value error — the old
+// gateway processed each url.Values key independently (each parsed, each set
+// the field, last-iterated-wins nondeterministically, no error). Every value
+// must parse; a bad one 400s with the gateway's parsing-field text regardless
+// of order. When all parse, the camelCase value wins deterministically — a
+// ruling standing in for the old map-order nondeterminism (converged with
+// #129's query binder) — and is invisible anyway under username precedence.
+func TestNewStack_UsernameRoute_CrossSpellingUserIdQuery(t *testing.T) {
+	h := newStack(t)
+
+	// The reference: the path-username profile with no query at all.
+	ref := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A", nil)
+	ref.Header.Set("Authorization", "Bearer cav7_readkey")
+	refRec := httptest.NewRecorder()
+	h.ServeHTTP(refRec, ref)
+	require.Equal(t, http.StatusOK, refRec.Code)
+
+	t.Run("both_parse_200_snake_first", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?user_id=1&userId=2", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, refRec.Body.String(), rr.Body.String(),
+			"bound user_id is invisible under username precedence — response equals the path-username profile")
+	})
+
+	t.Run("both_parse_200_camel_first", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?userId=2&user_id=1", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, refRec.Body.String(), rr.Body.String())
+	})
+
+	t.Run("bad_snake_400_snake_first", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?user_id=abc&userId=5", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.JSONEq(t, `{"code":3,"message":"parsing field \"user_id\": strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
+	})
+
+	t.Run("bad_snake_400_camel_first", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?userId=5&user_id=abc", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.JSONEq(t, `{"code":3,"message":"parsing field \"user_id\": strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
+	})
+}
+
+// Same-key repetition stays the deterministic gateway error (per-key check:
+// runtime/query.go errored whenever ONE key carried multiple values for a
+// singular field, citing the proto field name and that key's values).
+func TestNewStack_UsernameRoute_RepeatedUserIdQueryIs400(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		name  string
+		query string
+	}{
+		{"snake_repeated", "user_id=1&user_id=2"},
+		{"camel_repeated", "userId=1&userId=2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?"+tc.query, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			assert.JSONEq(t, `{"code":3,"message":"too many values for field \"user_id\": 1, 2","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
 func TestNewStack_ByIdRoute_RepeatedUsernameQueryIs400(t *testing.T) {
 	h := newStack(t)
 

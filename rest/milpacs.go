@@ -55,10 +55,14 @@ func getProfileByID(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
-		username, _, err := queryField(r, "username", "username")
+		usernameVals, err := queryField(r, "username", "username")
 		if err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
+		}
+		username := ""
+		if len(usernameVals) > 0 {
+			username = usernameVals[len(usernameVals)-1]
 		}
 		// Non-empty, not merely present: username is a STRING field, so the
 		// gateway bound a present-but-empty value as "" without error, and the
@@ -102,13 +106,19 @@ func getProfileByUsername(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
 		}
-		if raw, present, err := queryField(r, "user_id", "userId"); err != nil {
+		userIDVals, err := queryField(r, "user_id", "userId")
+		if err != nil {
 			writeError(w, r, codeInvalidArgument, "%v", err)
 			return
-		} else if present {
-			// PRESENT, not non-empty: the gateway parsed every present value
-			// (no empty-value guard in runtime/query.go), so ?user_id= is a
-			// 400 — "" fails ParseUint exactly as it did then.
+		}
+		// Parse EVERY present value — both spellings, including "" (the
+		// gateway had no empty-value guard, so ?user_id= is a 400). A bad
+		// value always errored in the old gateway regardless of map order;
+		// the snake-spelling value parsing first here is the deterministic
+		// stand-in. When all parse, the last (camelCase) value is the bound
+		// one — a RULING (see queryField), invisible anyway under the
+		// handler's username-first precedence.
+		for _, raw := range userIDVals {
 			if _, err := strconv.ParseUint(raw, 10, 64); err != nil {
 				// Gateway query-binding parse error, text frozen from
 				// grpc-gateway runtime (populateField).
@@ -198,26 +208,35 @@ func checkQuerySyntax(r *http.Request) error {
 
 // queryField reads a singular query-bindable message field, accepting both
 // the proto (snake_case) and JSON (camelCase) key spellings — the gateway's
-// dual-spelling leniency (PRD-frozen). present reports whether the key
-// appeared at all: the gateway parsed every PRESENT value (runtime/query.go
-// has no empty-value guard), so a present-but-empty numeric field must still
-// reach the parser — present and non-empty are distinct states. Repeated
-// values on a singular field are an error with the gateway's message shape;
-// the proto field name is the one error messages cite.
-func queryField(r *http.Request, protoName, jsonName string) (value string, present bool, err error) {
+// dual-spelling leniency (PRD-frozen). It returns every present value, one
+// per spelling, because the gateway processed each url.Values KEY
+// independently: each value parsed, each set the field, no cross-spelling
+// error. The proto field name is the one error messages cite (the gateway
+// cited fieldDescriptor.FullName().Name() whatever the key spelling).
+//
+//   - len(vals) == 0: field absent. Present-but-EMPTY is NOT absent — the
+//     gateway parsed every present value (no empty-value guard in
+//     runtime/query.go), so "" still reaches the caller's parser.
+//   - Repetition under ONE key errors with the gateway's deterministic
+//     "too many values" shape (per-key check, that key's values joined).
+//   - Order is deterministic: snake-spelling value first, camelCase last —
+//     so a caller binding last-value-wins lands on the camelCase value. That
+//     precedence is a RULING (converged with #129's query binder), standing
+//     in for the old gateway's map-iteration nondeterminism, not parity.
+func queryField(r *http.Request, protoName, jsonName string) (vals []string, err error) {
 	q := r.URL.Query()
-	vals := q[protoName]
+	keys := []string{protoName}
 	if jsonName != protoName {
-		vals = append(vals, q[jsonName]...)
+		keys = append(keys, jsonName)
 	}
-	switch len(vals) {
-	case 0:
-		return "", false, nil
-	case 1:
-		return vals[0], true, nil
-	default:
-		return "", true, fmt.Errorf("too many values for field %q: %s", protoName, strings.Join(vals, ", "))
+	for _, key := range keys {
+		kv := q[key]
+		if len(kv) > 1 {
+			return nil, fmt.Errorf("too many values for field %q: %s", protoName, strings.Join(kv, ", "))
+		}
+		vals = append(vals, kv...)
 	}
+	return vals, nil
 }
 
 // writeProfile maps one datastore profile to the wire type and writes it.
