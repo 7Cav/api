@@ -3,10 +3,14 @@ package rest_test
 // The hand-owned OpenAPI 3.1 spec (openapi/openapi.yaml) is executable
 // against the NEW stack too: every implemented battery case's OBSERVED
 // response (not the committed golden — contract/spec_test.go already covers
-// those) is validated against the document, with the same non-vacuousness
+// those) is validated against the document. Today that means the ranks
+// operation's full surface plus the 401 tiers observed on the profile-by-id
+// and tickets-list operations — the rest of the spec's operations are
+// witnessed only once their routes land (#126–#129). Same non-vacuousness
 // rules as the contract replay loop: the observed status must be EXPLICITLY
-// documented on the operation, and a JSON response requires an
-// application/json schema to validate against.
+// documented on the operation, a JSON response requires an application/json
+// schema to validate against, and every implemented case's path must be
+// classified in specRoutes — unclassified paths fail, never skip.
 
 import (
 	"bytes"
@@ -33,12 +37,19 @@ import (
 const specPath = "../openapi/openapi.yaml"
 
 // specRoutes maps an implemented battery case's request path (query string
-// stripped) to its spec path template. Fan-out slices extend it with their
-// routes; "" marks the deliberately off-spec unknown-path surface, asserted
+// stripped) to its spec path template. EVERY implemented case's path must be
+// classified here (recipe step 6 in the rest package doc) — validateObserved
+// fails on an unclassified path rather than skipping, so coverage cannot rot
+// silently. "" marks the deliberately off-spec unknown-path surface, asserted
 // to stay unmatched.
 var specRoutes = map[string]string{
-	"/api/v1/milpacs/ranks":  "/api/v1/milpacs/ranks",
-	"/api/v1/does/not/exist": "", // off-spec: unknown-path tier (mux behavior, not an operation)
+	"/api/v1/milpacs/ranks": "/api/v1/milpacs/ranks",
+	// The 401-tier battery cases replay against these two paths before their
+	// routes are implemented (auth runs before routing, so the observed 401s
+	// are route-independent); the operations document 401 explicitly.
+	"/api/v1/milpacs/profile/id/1": "/api/v1/milpacs/profile/id/{userId}",
+	"/api/v1/tickets":              "/api/v1/tickets",
+	"/api/v1/does/not/exist":       "", // off-spec: unknown-path tier (mux behavior, not an operation)
 }
 
 func loadSpecModel(t *testing.T) *v3.Document {
@@ -145,19 +156,15 @@ func TestNewStack_SpecValidation(t *testing.T) {
 		known[c.Name] = c
 	}
 
+	// EVERY implemented case is validated — no silent skips: an
+	// unclassified path fails inside validateObserved (the specRoutes
+	// require), so forgetting recipe step 6 is a red test, not a vacuous
+	// pass. The 401-tier cases replaying against not-yet-implemented routes
+	// still validate fine: their observed 401s are explicitly documented on
+	// the spec operations those paths classify to.
 	for _, name := range implementedCases {
 		c, ok := known[name]
 		require.True(t, ok, "implementedCases entry %q names no battery case", name)
-		// The 401-tier cases replay against routes the new stack does not
-		// serve yet; their paths classify to spec routes whose operations the
-		// fan-out slices own. Only validate cases whose path is classified.
-		basePath := c.Path
-		if i := strings.IndexByte(basePath, '?'); i >= 0 {
-			basePath = basePath[:i]
-		}
-		if _, classified := specRoutes[basePath]; !classified {
-			continue
-		}
 		t.Run(name, func(t *testing.T) {
 			g, _, err := contract.RunCase(h, c)
 			require.NoError(t, err)

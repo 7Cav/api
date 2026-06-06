@@ -44,6 +44,10 @@
 //     coverage, contract/spec_test.go).
 //  5. Goldens green: add the route's battery case names to implementedCases
 //     in rest_test.go — the replay harness does the rest.
+//  6. Classify every new case's request path in specRoutes
+//     (rest/spec_test.go) so the new-stack spec validation covers the
+//     route's observed responses — an unclassified path fails that suite,
+//     it never skips.
 package rest
 
 import (
