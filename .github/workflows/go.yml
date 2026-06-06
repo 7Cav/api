@@ -44,9 +44,19 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v6.0.2
     # The service container is up for the whole job; this step is "no
-    # harness" only in the sense that TESTDB_ADDR is left unset.
+    # harness" only in the sense that TESTDB_ADDR is left unset. Mirror
+    # of the with-harness guard, inverted: the harness-backed packages
+    # must visibly SKIP here — zero skips would mean the tests dialed a
+    # database despite TESTDB_ADDR being unset.
     - name: Test (TESTDB_ADDR unset — integration tests must skip)
-      run: go test ./...
+      run: |
+        set -euo pipefail
+        go test -v ./testdb ./datastores 2>&1 | tee no-harness.log
+        if ! grep -q -- '--- SKIP' no-harness.log; then
+          echo "::error::no harness-backed test skipped with TESTDB_ADDR unset — the skip gate has drifted and plain 'go test ./...' now requires a database"
+          exit 1
+        fi
+        go test ./...
     # `go test ./...` prints identical output whether the integration
     # tests ran or all skipped, so env-wiring drift would silently turn
     # the harness suite into a no-op forever. Surface the verdicts of
@@ -56,9 +66,16 @@ jobs:
     - name: Test with MariaDB harness
       run: |
         set -euo pipefail
-        go test -v ./testdb ./datastores 2>&1 | tee testdb-harness.log
-        if grep -q -- '--- SKIP' testdb-harness.log; then
+        go test -v ./testdb ./datastores 2>&1 | tee harness.log
+        if grep -q -- '--- SKIP' harness.log; then
           echo "::error::harness integration tests skipped despite TESTDB_ADDR being set — env wiring has drifted and the harness suite degraded to a no-op"
+          exit 1
+        fi
+        # Positive sentinel: no-skips alone can't tell "ran" from
+        # "absent" (e.g. a renamed package would grep clean while running
+        # nothing). Require a known harness test to have PASSED.
+        if ! grep -q -- '--- PASS: TestValidateApiKey_ActiveKeyResolvesActiveScopes' harness.log; then
+          echo "::error::sentinel harness test TestValidateApiKey_ActiveKeyResolvesActiveScopes did not run — the harness suite silently vanished from the verbose run"
           exit 1
         fi
         go test ./...
