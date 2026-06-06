@@ -157,38 +157,14 @@ func TestSpec_WireConventions(t *testing.T) {
 
 // --- Golden replay against the spec --------------------------------------
 
-// specRoutes classifies battery case paths to spec path templates, ordered
-// most-specific first (same discipline as the route table in corpus_test.go:
-// literal segments must never be swallowed by a parameter sibling).
-var specRoutes = []struct {
-	specPath string
-	pattern  *regexp.Regexp
-}{
-	{"/api/v1/tickets/categories", regexp.MustCompile(`^/api/v1/tickets/categories$`)},
-	{"/api/v1/tickets/ref/{ticketRef}", regexp.MustCompile(`^/api/v1/tickets/ref/[^/]+$`)},
-	{"/api/v1/tickets/{ticketId}/messages", regexp.MustCompile(`^/api/v1/tickets/[^/]+/messages$`)},
-	{"/api/v1/tickets/{ticketId}", regexp.MustCompile(`^/api/v1/tickets/[^/]+$`)},
-	{"/api/v1/tickets", regexp.MustCompile(`^/api/v1/tickets$`)},
-	{"/api/v1/roster/{roster}/lite", regexp.MustCompile(`^/api/v1/roster/[^/]+/lite$`)},
-	{"/api/v1/roster/{roster}", regexp.MustCompile(`^/api/v1/roster/[^/]+$`)},
-	{"/api/v1/s1/uniforms/{roster}", regexp.MustCompile(`^/api/v1/s1/uniforms/[^/]+$`)},
-	{"/api/v1/milpacs/position/groups", regexp.MustCompile(`^/api/v1/milpacs/position/groups$`)},
-	{"/api/v1/milpacs/position/search/{positionQuery}", regexp.MustCompile(`^/api/v1/milpacs/position/search(/.*)?$`)},
-	{"/api/v1/milpacs/ranks", regexp.MustCompile(`^/api/v1/milpacs/ranks$`)},
-	{"/api/v1/milpacs/awol", regexp.MustCompile(`^/api/v1/milpacs/awol$`)},
-	{"/api/v1/milpacs/profile/id/{userId}", regexp.MustCompile(`^/api/v1/milpacs/profile/id/[^/]+$`)},
-	{"/api/v1/milpacs/profile/username/{username}", regexp.MustCompile(`^/api/v1/milpacs/profile/username/[^/]+$`)},
-	{"/api/v1/milpac/discord/{discordId}", regexp.MustCompile(`^/api/v1/milpac/discord/[^/]+$`)},
-	{"/api/v1/milpac/gamertag/{gamertag}", regexp.MustCompile(`^/api/v1/milpac/gamertag/[^/]+$`)},
-}
-
 // classifySpecPath maps a battery case path (query string stripped) to its
-// spec path template, or "" when the path belongs to no spec route.
+// spec path template (publicRoutes in routes_test.go), or "" when the path
+// belongs to no spec route.
 func classifySpecPath(casePath string) string {
 	if i := strings.IndexByte(casePath, '?'); i >= 0 {
 		casePath = casePath[:i]
 	}
-	for _, r := range specRoutes {
+	for _, r := range publicRoutes {
 		if r.pattern.MatchString(casePath) {
 			return r.specPath
 		}
@@ -222,14 +198,14 @@ var templateUnmatchableCases = map[string]string{
 // FAILS for them — proving the spec's parameter and security constraints
 // describe the same gate the API enforces (each records a 4xx response).
 var specViolatingRequests = map[string]string{
-	"auth/milpacs_missing_header":      "no Authorization header: violates the bearer security requirement",
-	"auth/milpacs_raw_key":             "raw key without Bearer scheme: violates the bearer security requirement",
-	"auth/tickets_missing_header":      "no Authorization header: violates the bearer security requirement",
-	"auth/tickets_raw_key":             "raw key without Bearer scheme: violates the bearer security requirement",
+	"auth/milpacs_missing_header":       "no Authorization header: violates the bearer security requirement",
+	"auth/milpacs_raw_key":              "raw key without Bearer scheme: violates the bearer security requirement",
+	"auth/tickets_missing_header":       "no Authorization header: violates the bearer security requirement",
+	"auth/tickets_raw_key":              "raw key without Bearer scheme: violates the bearer security requirement",
 	"milpacs/profile_by_id_parse_error": "non-numeric userId violates the uint64-as-string path parameter",
-	"roster/bogus_enum":                "IMAGINARY_ROSTER is neither an enum name nor a number",
-	"tickets/get_by_id_parse_error":    "non-numeric ticketId violates the integer path parameter",
-	"tickets/messages_parse_error":     "non-numeric ticketId violates the integer path parameter",
+	"roster/bogus_enum":                 "IMAGINARY_ROSTER is neither an enum name nor a number",
+	"tickets/get_by_id_parse_error":     "non-numeric ticketId violates the integer path parameter",
+	"tickets/messages_parse_error":      "non-numeric ticketId violates the integer path parameter",
 }
 
 // formatValidationErrors renders validator findings as one message per line,

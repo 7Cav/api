@@ -115,6 +115,31 @@ must reproduce the logical seed above (the goldens themselves are the
 authoritative value reference) and accept the battery's bearer tokens
 (`authHeader` in `golden.go`).
 
+## The OpenAPI spec is validated here too
+
+The hand-owned OpenAPI 3.1 reference spec (`openapi/openapi.yaml`, issue
+#121) is executable: `spec_test.go` replays every committed golden against
+the document with pb33f/libopenapi-validator (test-only dependency; chosen
+for real 3.1 support — kin-openapi remains 3.0-only) and asserts route
+coverage in both directions:
+
+- **every spec operation has at least one golden** (the document cannot
+  describe surface the corpus does not witness), and
+- **every golden route resolves to a spec operation** (the API cannot serve
+  surface the document does not describe).
+
+Per golden: response validation (status code, content type, body schema)
+always runs; request validation runs where the request is expressible, and
+is asserted to *fail* for the goldens that deliberately violate the request
+contract (missing/raw-key auth, non-numeric ids, bogus enum literals) —
+proving the spec's constraints describe the same gate the API enforces.
+Failures name the operation and the field. Documented carve-outs live in
+`spec_test.go`: the two unknown-path goldens (non-operation surface,
+asserted to stay off-spec) and the two glob-only position-search forms an
+OpenAPI path template cannot match (validated against the named operation
+instead). The shared route table backing both this corpus and the spec
+coverage is `publicRoutes` in `routes_test.go`.
+
 ## Re-recording
 
 Possible only while the old stack remains in-tree:
