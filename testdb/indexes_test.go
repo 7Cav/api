@@ -23,11 +23,14 @@ func applyIndexDDL(t *testing.T, db *sql.DB) {
 // keystone (post-date aggregation 4,226ms -> 28ms on the mirror).
 const looseScan = "Using index for group-by"
 
-// hotLastPostAggregation is the derived-table body driving the
-// lite-roster last-forum-post column and the AWOL report (verbatim
-// from datastores/mysql.go) — the PRD's measured hotspot. The query
-// stays as written: the indexed derived table measured faster than a
-// correlated rewrite on the mirror. Index, don't refactor.
+// hotLastPostAggregation is the derived-table body of
+// getLatestForumPostDates (verbatim from datastores/mysql.go), driving
+// the last-forum-post column on lite rosters AND full profiles
+// (processProfiles calls it too, mysql.go) — the PRD's measured
+// hotspot. The AWOL report uses a different aggregation, pinned
+// separately below. The query stays as written: the indexed derived
+// table measured faster than a correlated rewrite on the mirror.
+// Index, don't refactor.
 const hotLastPostAggregation = `SELECT user_id, MAX(post_date) as date FROM xf_post GROUP BY user_id`
 
 // groupByOptimization returns the Extra column of the EXPLAIN row for
@@ -56,6 +59,36 @@ func TestIndexDDL_HotAggregationFlipsToLooseIndexScan(t *testing.T) {
 
 	if extra := groupByOptimization(t, db); !strings.Contains(extra, looseScan) {
 		t.Errorf("after the index script the hot aggregation must plan a loose index scan, got Extra=%q", extra)
+	}
+}
+
+// coveringScan is the EXPLAIN Extra marker for a covering index scan:
+// the aggregation is answered from the index alone, no row lookups.
+const coveringScan = "Using index"
+
+// awolLastPostAggregation is the derived-table body of the AWOL report
+// (verbatim from datastores/mysql.go FindAwol). The extra MAX(post_id)
+// disqualifies the loose index scan; instead the composite plans a
+// covering index scan — the PRD's "AWOL 4,211ms -> 198ms" keystone.
+const awolLastPostAggregation = `SELECT user_id, MAX(post_date) as date, MAX(post_id) as post_id FROM xf_post GROUP BY user_id`
+
+// The index script must flip the AWOL aggregation from a full table
+// scan to a covering scan of user_id_post_date. It can never plan a
+// loose index scan (MAX(post_id) is not part of the composite), so the
+// hot-aggregation test above does not cover it — without this test a
+// regression of the AWOL keystone fails nothing.
+func TestIndexDDL_AwolAggregationFlipsToCoveringIndexScan(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	if row := explainFirstRow(t, db, awolLastPostAggregation); row["type"] != "ALL" {
+		t.Fatalf("red plan not reproducible: unindexed schema should full-scan the AWOL aggregation, got type=%q key=%q", row["type"], row["key"])
+	}
+
+	applyIndexDDL(t, db)
+
+	row := explainFirstRow(t, db, awolLastPostAggregation)
+	if row["key"] != "user_id_post_date" || !strings.Contains(row["Extra"], coveringScan) {
+		t.Errorf("after the index script the AWOL aggregation must covering-scan user_id_post_date, got type=%q key=%q Extra=%q", row["type"], row["key"], row["Extra"])
 	}
 }
 

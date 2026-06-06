@@ -3,7 +3,9 @@
 -- Four indexes backing the API's hot read paths (mirror-measured):
 --   - xf_post user_id_post_date: flips the last-post aggregation
 --     (SELECT user_id, MAX(post_date) ... GROUP BY user_id) to a loose
---     index scan — 4,226ms -> 28ms; AWOL report 4,211ms -> 198ms.
+--     index scan — 4,226ms -> 28ms. The AWOL report's aggregation
+--     (extra MAX(post_id)) cannot loose-scan; it instead plans a
+--     covering scan of the same composite — 4,211ms -> 198ms.
 --   - idx_relation_id on xf_nf_rosters_service_record and
 --     xf_nf_rosters_user_award: index-backs the profile preloads
 --     (WHERE relation_id IN (...)) — 44ms -> ~0ms.
