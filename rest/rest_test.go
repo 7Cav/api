@@ -258,6 +258,7 @@ func newStack(t *testing.T) http.Handler {
 var implementedCases = []string{
 	"milpacs/ranks",
 	"milpacs/position_groups",
+	"milpacs/awol",
 	"milpacs/profile_by_id_happy",
 	"milpacs/profile_by_id_sparse",
 	"milpacs/profile_by_id_not_found",
