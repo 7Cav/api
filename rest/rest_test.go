@@ -903,6 +903,68 @@ func TestNewStack_ByIdRoute_MalformedPathIdBeatsUsernameQuery(t *testing.T) {
 	assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: user_id, error: strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
 }
 
+// Combined malformed path AND malformed query syntax: the PATH error wins —
+// the generated gateway handler parsed pathParams before ParseForm, so the
+// type-mismatch tier answers even when the query would also 400. Pinned
+// (verified against the real old stack in-process).
+func TestNewStack_ByIdRoute_MalformedPathBeatsMalformedQuerySyntax(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/abc?username=%zz", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: user_id, error: strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
+}
+
+// On the by-id route user_id is PATH-bound, so the gateway's field filter
+// (filter_MilpacService_GetProfile_0) excluded it from query binding — under
+// BOTH spellings (the filter keyed on the resolved field, not the query-key
+// text). A ?user_id=abc / ?userId=abc that would 400 on the username route is
+// just an ignored unknown parameter here.
+func TestNewStack_ByIdRoute_UserIdQueryIgnoredBecausePathFiltered(t *testing.T) {
+	h := newStack(t)
+
+	for _, query := range []string{"user_id=abc", "userId=abc"} {
+		t.Run(query, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/1?"+query, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusOK, rr.Code, "path-filtered field: the query spelling binds nothing")
+			assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+		})
+	}
+}
+
+// --- Scope-vs-binding ordering (ruled cutover break) -------------------------
+//
+// The OLD stack answered binding-400s before scope-403s: RequireScope lived
+// inside the RPC bodies, after the gateway had already parsed path params —
+// a wrong-scope key with a malformed path id got the 400. The new stack's
+// uniform tier order (401 → 403 → route semantics) answers the 403 first.
+// RULING: keep 403-first — a deliberate, documented cutover break (same
+// precedent tier as the 405 ruling on review Critical 1/#125, recorded in
+// PRD #112's enumerated breaks; ratified in the PR body). The sibling branch
+// (#129) documents the same ruling at its scope gate. This pin is
+// new-stack-only by design: no golden can witness it without poisoning the
+// old-stack replay.
+func TestNewStack_WrongScopeBeatsMalformedPath_RuledBreak(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/abc", nil)
+	req.Header.Set("Authorization", "Bearer cav7_ticketskey") // read:tickets ≠ read
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code,
+		"403 answers before the path-binding 400 — ruled, NOT old-stack parity (old stack: 400 first)")
+	assert.JSONEq(t, `{"code":7,"message":"scope required: read","details":[]}`, rr.Body.String())
+}
+
 // The scope gate is witnessed PER profile route: a ticket-scoped key
 // (read:tickets, not read) must 403 with the frozen body on each of the four.
 // The golden tier only witnesses one path; this loop proves no route was
