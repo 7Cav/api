@@ -102,15 +102,39 @@ func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
 
 // --- /tickets subtree routing edges (unpinned by goldens, frozen here) -----
 
-// /tickets/ref/messages is a by-ref lookup of the ref "messages" — the ref
-// pattern is more specific than the {ticket_id}/{sub} dispatcher and keeps
-// winning all of /tickets/ref/*, exactly like the old gateway's route order.
-func TestNewStack_TicketsRefMessagesIsByRefLookup(t *testing.T) {
+// /tickets/ref/messages reproduces the old gateway's route order verbatim.
+// The gateway's ServeMux.Handle PREPENDED patterns, so match order was the
+// REVERSE of registration: ListCategories → ListTicketMessages →
+// GetTicketByRef → GetTicket → ListTickets. /tickets/ref/messages therefore
+// hit {ticket_id}/messages FIRST, bound ticket_id="ref", and leaked the
+// frozen strconv 400 — it was never a by-ref lookup of "messages". The 400
+// fired inside the gateway before the RPC body ran, and RequireScope lived
+// inside the RPC body it never reached — so any AUTHENTICATED key sees the
+// 400, scope notwithstanding.
+func TestNewStack_TicketsRefMessagesIsFrozenParse400(t *testing.T) {
 	h := newStack(t)
 
-	rr := ticketsGet(t, h, "/api/v1/tickets/ref/messages")
-	require.Equal(t, http.StatusNotFound, rr.Code)
-	assert.JSONEq(t, `{"code":5,"message":"ticket \"messages\" not found","details":[]}`, rr.Body.String())
+	for _, key := range []string{"cav7_ticketskey", "cav7_readkey", "cav7_noscopekey"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets/ref/messages", nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code, key)
+		assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"ref\": invalid syntax","details":[]}`, rr.Body.String(), key)
+	}
+}
+
+// /tickets/ref with no tail: the old gateway's match order reached GetTicket
+// ({ticket_id}) with ticket_id="ref" — the same frozen parse 400. The new
+// stack's {ticket_id} route produces it naturally (verified parity); pinned
+// so it cannot rot.
+func TestNewStack_TicketsRefNoTailIsFrozenParse400(t *testing.T) {
+	h := newStack(t)
+
+	rr := ticketsGet(t, h, "/api/v1/tickets/ref")
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"ref\": invalid syntax","details":[]}`, rr.Body.String())
 }
 
 // An unknown sub-resource under a ticket id is the JSON 404 — and it stays a

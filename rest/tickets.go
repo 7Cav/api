@@ -136,6 +136,23 @@ func bindTicketID(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 	return uint32(id), true
 }
 
+// refMessagesParity serves GET /api/v1/tickets/ref/messages — old-gateway
+// parity for a route-order collision. The gateway's ServeMux.Handle PREPENDED
+// patterns, so its match order was the reverse of registration:
+// ListCategories → ListTicketMessages → GetTicketByRef → GetTicket →
+// ListTickets. /tickets/ref/messages therefore matched
+// {ticket_id}/messages FIRST, bound ticket_id="ref", and leaked the strconv
+// error below — frozen wire text. The 400 fired inside the gateway before
+// the RPC body, where RequireScope lived — so it is deliberately
+// scope-INDEPENDENT (any authenticated key sees it; registration in routes()
+// skips the scope gate).
+func refMessagesParity() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, codeInvalidArgument,
+			`type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing "ref": invalid syntax`)
+	})
+}
+
 // listTicketMessages serves GET /api/v1/tickets/{ticket_id}/messages: one
 // page of the thread, position ascending, golden-pinned by
 // tickets/messages_*. The cursor is opaque, meaning "next position to

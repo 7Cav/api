@@ -98,22 +98,34 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", listCategories(ds, rc))
 	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", getTicketById(ds, rc))
 	handle(mux, "GET /api/v1/tickets/ref/{ticket_ref}", "read:tickets", getTicketByRef(ds, rc))
-	mux.Handle("GET /api/v1/tickets/{ticket_id}/{sub}", ticketSubResource(ds))
+	// Exact pattern beats ref/{ticket_ref} in ServeMux precedence — see
+	// refMessagesParity for why this path is a frozen 400, not a by-ref
+	// lookup. Deliberately NOT scope-gated: the old 400 fired in the gateway
+	// before the RPC, so RequireScope never ran.
+	mux.Handle("GET /api/v1/tickets/ref/messages", refMessagesParity())
+	mux.Handle(ticketSubPattern, ticketSubResource(ds))
 
 	mux.HandleFunc("/", fallback(mux))
 
 	return mux
 }
 
+// ticketSubPattern is the registration shape for the messages route — shared
+// with fallback, whose 405 probe must apply the same sub == "messages"
+// narrowing this dispatcher does.
+const ticketSubPattern = "GET /api/v1/tickets/{ticket_id}/{sub}"
+
 // ticketSubResource dispatches GET /api/v1/tickets/{ticket_id}/{sub} — the
 // registration shape for the messages route. ServeMux cannot register
 // {ticket_id}/messages directly: it conflicts with ref/{ticket_ref} (the two
 // overlap at /tickets/ref/messages and neither is more specific, a
 // registration panic). ref/{ticket_ref} IS more specific than
-// {ticket_id}/{sub}, so registering the wildcard keeps the ref route winning
-// all of /tickets/ref/* — matching the old gateway, where
-// /tickets/ref/messages is a by-ref lookup of the ref "messages". This
-// dispatcher then narrows the wildcard itself:
+// {ticket_id}/{sub}, so the wildcard alone would hand /tickets/ref/messages
+// to the by-ref route — the OPPOSITE of the old gateway, whose prepend-order
+// matching tried {ticket_id}/messages BEFORE ref/{ticket_ref} and emitted the
+// frozen parse 400 (see refMessagesParity; the explicit literal registration
+// in routes() restores that). This dispatcher then narrows the wildcard
+// itself:
 //
 //   - sub == "messages" → the scope-gated messages handler (requireScope
 //     applied HERE because handle() cannot register this route — the scope
