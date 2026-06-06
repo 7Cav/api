@@ -4,9 +4,9 @@ package rest_test
 // against the NEW stack too: every implemented battery case's OBSERVED
 // response (not the committed golden — contract/spec_test.go already covers
 // those) is validated against the document. Today that means the ranks
-// operation's full surface plus the 401 tiers observed on the profile-by-id
-// and tickets-list operations — the rest of the spec's operations are
-// witnessed only once their routes land (#126–#129). Same non-vacuousness
+// operation's full surface, all five tickets operations (#129), and the 401
+// tiers observed on the profile-by-id operation — the remaining operations
+// are witnessed once their routes land (#126–#128). Same non-vacuousness
 // rules as the contract replay loop: the observed status must be EXPLICITLY
 // documented on the operation, a JSON response requires an application/json
 // schema to validate against, and every implemented case's path must be
@@ -43,10 +43,10 @@ const specPath = "../openapi/openapi.yaml"
 // silently. "" marks the deliberately off-spec unknown-path surface, asserted
 // to stay unmatched.
 var specRoutes = map[string]string{
-	"/api/v1/milpacs/ranks":      "/api/v1/milpacs/ranks",
-	"/api/v1/tickets/categories": "/api/v1/tickets/categories",
-	"/api/v1/tickets/42":         "/api/v1/tickets/{ticketId}",
-	"/api/v1/tickets/9999":       "/api/v1/tickets/{ticketId}",
+	"/api/v1/milpacs/ranks":        "/api/v1/milpacs/ranks",
+	"/api/v1/tickets/categories":   "/api/v1/tickets/categories",
+	"/api/v1/tickets/42":           "/api/v1/tickets/{ticketId}",
+	"/api/v1/tickets/9999":         "/api/v1/tickets/{ticketId}",
 	"/api/v1/tickets/abc":          "/api/v1/tickets/{ticketId}",
 	"/api/v1/tickets/ref/MF1UI9HE": "/api/v1/tickets/ref/{ticketRef}",
 	"/api/v1/tickets/ref/NOPE9999": "/api/v1/tickets/ref/{ticketRef}",
