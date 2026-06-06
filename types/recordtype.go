@@ -35,6 +35,17 @@ var recordTypeNames = map[RecordType]string{
 	RecordTypeGraduation:   "RECORD_TYPE_GRADUATION",
 }
 
+// String returns the wire name, or the bare decimal number for values the
+// catalog has no name for — mirroring the generated proto String() (the
+// RosterType worked example), so enum values interpolate identically into
+// error-message strings and logs.
+func (rt RecordType) String() string {
+	if name, ok := recordTypeNames[rt]; ok {
+		return name
+	}
+	return strconv.FormatInt(int64(rt), 10)
+}
+
 // MarshalJSON emits the enum name as a JSON string; values without a name
 // emit the bare number (protojson behavior for unknown enum values).
 func (rt RecordType) MarshalJSON() ([]byte, error) {

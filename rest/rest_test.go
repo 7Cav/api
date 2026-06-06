@@ -561,14 +561,20 @@ func TestNewStack_UsernameRoute_UserIdQueryBindsButPathUsernameWins(t *testing.T
 	h := newStack(t)
 
 	// user_id is the username route's query-bindable field; the handler's
-	// username-first precedence makes a valid value invisible.
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?user_id=999", nil)
-	req.Header.Set("Authorization", "Bearer cav7_readkey")
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
+	// username-first precedence makes a valid value invisible — under either
+	// spelling (the camelCase one exercises the dual-spelling leniency on the
+	// parsed-but-invisible path, not just the error path).
+	for _, query := range []string{"user_id=999", "userId=999"} {
+		t.Run(query, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?"+query, nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
 
-	require.Equal(t, http.StatusOK, rr.Code)
-	assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+			require.Equal(t, http.StatusOK, rr.Code)
+			assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+		})
+	}
 }
 
 func TestNewStack_UsernameRoute_MalformedUserIdQueryIs400(t *testing.T) {
@@ -772,6 +778,46 @@ func TestNewStack_ConnectedAccountRoutes_MalformedQuerySyntaxIgnored(t *testing.
 			h.ServeHTTP(rr, req)
 
 			require.Equal(t, http.StatusOK, rr.Code, "old gateway never ParseForm'd these routes")
+		})
+	}
+}
+
+// Path parse precedes the username-override: a malformed path id 400s with
+// the gateway's type-mismatch tier even when a valid ?username= is present —
+// the generated handler parsed pathParams before ParseForm/query binding.
+func TestNewStack_ByIdRoute_MalformedPathIdBeatsUsernameQuery(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/abc?username=Jarvis.A", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.JSONEq(t, `{"code":3,"message":"type mismatch, parameter: user_id, error: strconv.ParseUint: parsing \"abc\": invalid syntax","details":[]}`, rr.Body.String())
+}
+
+// The scope gate is witnessed PER profile route: a ticket-scoped key
+// (read:tickets, not read) must 403 with the frozen body on each of the four.
+// The golden tier only witnesses one path; this loop proves no route was
+// registered without its requireScope gate.
+func TestNewStack_AllProfileRoutes403UnderTicketScopedKey(t *testing.T) {
+	h := newStack(t)
+
+	for _, path := range []string{
+		"/api/v1/milpacs/profile/id/1",
+		"/api/v1/milpacs/profile/username/Jarvis.A",
+		"/api/v1/milpac/discord/112233445566778899",
+		"/api/v1/milpac/gamertag/CavGamer77",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Authorization", "Bearer cav7_ticketskey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusForbidden, rr.Code)
+			assert.JSONEq(t, `{"code":7,"message":"scope required: read","details":[]}`, rr.Body.String())
 		})
 	}
 }

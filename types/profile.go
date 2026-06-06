@@ -1,8 +1,10 @@
 package types
 
 // Profile is the full milpac view: rank, positions, awards, records, and the
-// connected-account identifiers. Served by the four profile lookup routes
-// (by id, username, Discord id, gamertag).
+// connected-account identifiers. It is the shared profile shape of the API,
+// not a single route's response: today the four profile lookup routes (by
+// id, username, Discord id, gamertag) serve it as the top-level body, and
+// from #127 on it also appears as the roster map's value type.
 //
 // Deliberately ABSENT: keycloakId. The new types never had the field — the
 // corpus transform documents the break (the Keycloak surface dies at

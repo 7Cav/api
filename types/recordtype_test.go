@@ -42,3 +42,12 @@ func TestRecordType_UnknownValueMarshalsAsNumber(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, `99`, string(raw))
 }
+
+// String mirrors the wire name (and the number fallback), matching the
+// RosterType worked example — enum values format the same way in error
+// messages and logs as they do in JSON.
+func TestRecordType_StringMatchesWireName(t *testing.T) {
+	assert.Equal(t, "RECORD_TYPE_PROMOTION", types.RecordTypePromotion.String())
+	assert.Equal(t, "RECORD_TYPE_UNSPECIFIED", types.RecordType(0).String())
+	assert.Equal(t, "99", types.RecordType(99).String())
+}
