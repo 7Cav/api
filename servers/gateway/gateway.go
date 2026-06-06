@@ -31,7 +31,6 @@ import (
 
 	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/openapi"
 	"github.com/7cav/api/proto"
 	grpcServices "github.com/7cav/api/servers/grpc"
@@ -127,10 +126,20 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 }
 
 // buildAPIHandler assembles the /api middleware chain:
-// auth(sentry(cache(compression(inner)))). Sentry sits inside auth so it only
+// auth(sentry(compression(inner))). Sentry sits inside auth so it only
 // sees authenticated requests, with the API key already on ctx for key-id
-// tagging, and outside the cache and compression layers so it observes the
-// final response status. No SENTRY_DSN → it is a pass-through.
+// tagging, and outside the compression layer so it observes the final
+// response status. No SENTRY_DSN → it is a pass-through.
+//
+// Phase 2 de-cache (#123): the response-cache middleware is out of the chain
+// — with it, the X-Cache header (enumerated break). The unused c parameter is
+// deliberate: the cache package, CacheManager poller, and Redis keep running
+// through the soak (#124 deletes them), and keeping the signature makes the
+// revert a one-liner — restore the chain line to:
+//
+//	sentryMiddleware(middleware.CacheMiddleware(c, compressionMiddleware(inner)))
+//
+// (re-adding the github.com/7cav/api/middleware import).
 //
 // Sentry-inside-auth also means auth-layer infrastructure failures (e.g. a
 // datastore outage producing mass 401s) generate no Sentry events by design —
@@ -141,8 +150,9 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // contract — see the buildAPIHandler tests — rather than an untestable
 // expression inside a dialing function.
 func buildAPIHandler(ds datastores.Datastore, c *cache.RedisCache, inner http.Handler) http.Handler {
+	_ = c // kept for the one-line revert; see the doc comment above
 	return authMiddleware(ds,
-		sentryMiddleware(middleware.CacheMiddleware(c, compressionMiddleware(inner))))
+		sentryMiddleware(compressionMiddleware(inner)))
 }
 
 func (service *Service) Server() *http.Server {
