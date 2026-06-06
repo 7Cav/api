@@ -94,3 +94,104 @@ CREATE TABLE `xf_user` (
   KEY `siropu_donation_amount` (`siropu_donation_amount`),
   KEY `siropu_donation_date` (`siropu_donation_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `xf_user_connected_account` (
+  `user_id` int(10) unsigned NOT NULL,
+  `provider` varbinary(25) NOT NULL,
+  `provider_key` varbinary(150) NOT NULL,
+  `extra_data` mediumblob NOT NULL,
+  PRIMARY KEY (`user_id`,`provider`),
+  UNIQUE KEY `provider` (`provider`,`provider_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+-- NF Rosters add-on (milpacs)
+-- ---------------------------------------------------------------------
+
+-- NOTE: production carries no index on user_id (PRD #112 proposes
+-- idx_user_id). Do not add one here.
+CREATE TABLE `xf_nf_rosters_user` (
+  `relation_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `roster_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned NOT NULL,
+  `username` text NOT NULL,
+  `position_id` int(10) unsigned NOT NULL,
+  `secondary_position_ids` blob NOT NULL,
+  `rank_id` int(10) unsigned NOT NULL,
+  `bio` text NOT NULL,
+  `uniform_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `added_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `custom_fields` mediumblob NOT NULL,
+  PRIMARY KEY (`relation_id`),
+  KEY `idx_roster_id` (`roster_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `xf_nf_rosters_rank` (
+  `rank_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(50) NOT NULL,
+  `rank_image` int(10) unsigned NOT NULL DEFAULT 0,
+  `display_order` int(10) unsigned NOT NULL DEFAULT 0,
+  `extra_group_ids` blob NOT NULL,
+  PRIMARY KEY (`rank_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `xf_nf_rosters_position` (
+  `position_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `position_title` varchar(50) NOT NULL,
+  `position_group_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `display_order` int(10) unsigned NOT NULL DEFAULT 0,
+  `materialized_order` int(10) unsigned NOT NULL DEFAULT 0,
+  `extra_group_ids` blob NOT NULL,
+  `possible_secondary` tinyint(3) unsigned NOT NULL DEFAULT 1,
+  PRIMARY KEY (`position_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `xf_nf_rosters_position_group` (
+  `position_group_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(50) NOT NULL,
+  `display_order` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`position_group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `xf_nf_rosters_award` (
+  `award_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(150) NOT NULL,
+  `award_image` int(10) unsigned NOT NULL DEFAULT 0,
+  `award_group_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `display_order` int(10) unsigned NOT NULL DEFAULT 0,
+  `materialized_order` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`award_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- NOTE: production carries no secondary index (PRD #112 proposes
+-- idx_relation_id). Do not add one here.
+CREATE TABLE `xf_nf_rosters_user_award` (
+  `record_id` int(11) NOT NULL AUTO_INCREMENT,
+  `relation_id` int(11) NOT NULL,
+  `award_id` int(11) NOT NULL,
+  `from_user_id` int(11) NOT NULL,
+  `details` text NOT NULL,
+  `award_date` int(11) NOT NULL DEFAULT 0,
+  `citation_date` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`record_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- NOTE: production carries no secondary index (PRD #112 proposes
+-- idx_relation_id). Do not add one here.
+CREATE TABLE `xf_nf_rosters_service_record` (
+  `record_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `relation_id` int(10) unsigned NOT NULL,
+  `details` text DEFAULT NULL,
+  `record_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `citation_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `record_type_id` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`record_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `xf_nf_rosters_field_value` (
+  `relation_id` int(10) unsigned NOT NULL,
+  `field_id` varbinary(25) NOT NULL,
+  `field_value` mediumtext NOT NULL,
+  PRIMARY KEY (`relation_id`,`field_id`),
+  KEY `field_id` (`field_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
