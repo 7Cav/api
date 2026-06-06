@@ -258,10 +258,11 @@ func TestFindProfileByGamertag(t *testing.T) {
 
 // OBSERVED behavior, not endorsement: the gamertag lookup feeds raw
 // input to LIKE without escaping (mysql.go), so % and _ act as
-// wildcards — the escape asymmetry with FindProfilesByPosition (which
-// escapes both) is deliberate to pin and explicitly flagged here,
-// frozen as-is pending the #137 verdict. If escaping is added, THIS
-// test should flip to expect ErrRecordNotFound.
+// wildcards — an asymmetry with FindProfilesByPosition, which escapes
+// both. Whether that asymmetry is intended has not been adjudicated;
+// this test pins the observed raw-LIKE behavior so any change is a
+// deliberate one. If escaping ever lands here, flip THIS test to
+// expect ErrRecordNotFound.
 func TestFindProfileByGamertag_WildcardsAreInterpretedNotEscaped(t *testing.T) {
 	ds := openHarnessDatastore(t)
 

@@ -471,8 +471,9 @@ func TestListTicketMessages_HiddenFilteredByDefault(t *testing.T) {
 
 // A perPage=1 cursored walk crosses the hidden gap: the cursor handed
 // back after position 0 points at position 1 (the hidden note), and the
-// next visible-only page must serve position 2 — neither stalling on
-// the hidden row nor skipping past it.
+// next visible-only page must advance past the hidden row and serve
+// position 2 — without stalling on the hidden row and without skipping
+// the next visible message.
 func TestListTicketMessages_CursorWalksAcrossHiddenGap(t *testing.T) {
 	ds, _ := openTicketsHarness(t)
 
