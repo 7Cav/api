@@ -43,10 +43,24 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v6.0.2
-    - name: Test (no harness — integration tests must skip)
+    # The service container is up for the whole job; this step is "no
+    # harness" only in the sense that TESTDB_ADDR is left unset.
+    - name: Test (TESTDB_ADDR unset — integration tests must skip)
       run: go test ./...
+    # `go test ./...` prints identical output whether the integration
+    # tests ran or all skipped, so env-wiring drift would silently turn
+    # the harness suite into a no-op forever. Surface the ./testdb
+    # verdicts verbosely and fail loudly on any skip before running the
+    # full suite.
     - name: Test with MariaDB harness
-      run: go test ./...
+      run: |
+        set -euo pipefail
+        go test -v ./testdb 2>&1 | tee testdb-harness.log
+        if grep -q -- '--- SKIP' testdb-harness.log; then
+          echo "::error::testdb integration tests skipped despite TESTDB_ADDR being set — env wiring has drifted and the harness suite degraded to a no-op"
+          exit 1
+        fi
+        go test ./...
       env:
         TESTDB_ADDR: 127.0.0.1:3310
   lint:
