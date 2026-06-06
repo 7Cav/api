@@ -91,6 +91,8 @@ var implementedCases = []string{
 	"tickets/get_by_id_happy",
 	"tickets/get_by_id_not_found",
 	"tickets/get_by_id_parse_error",
+	"tickets/get_by_ref_happy",
+	"tickets/get_by_ref_not_found",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",

@@ -96,6 +96,7 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	// golden-pinned by tickets/categories).
 	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", listCategories(ds, rc))
 	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", getTicketById(ds, rc))
+	handle(mux, "GET /api/v1/tickets/ref/{ticket_ref}", "read:tickets", getTicketByRef(ds, rc))
 
 	mux.HandleFunc("/", fallback(mux))
 

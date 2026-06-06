@@ -39,6 +39,27 @@ func getTicketById(ds datastores.Datastore, rc datastores.TicketReferenceCache) 
 	})
 }
 
+// getTicketByRef serves GET /api/v1/tickets/ref/{ticket_ref}: the same
+// GetTicketResponse envelope as the by-id binding, addressed by the
+// user-facing alphanumeric reference. Golden-pinned by tickets/get_by_ref_*;
+// the not-found message quotes the ref (frozen from servers/grpc
+// GetTicketByRef).
+func getTicketByRef(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ref := r.PathValue("ticket_ref")
+		ticket, err := ds.GetTicketByRef(r.Context(), rc, ref, "")
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				writeError(w, r, codeNotFound, "ticket %q not found", ref)
+				return
+			}
+			writeError(w, r, codeInternal, "fetch ticket: %v", err)
+			return
+		}
+		writeTicketResponse(w, r, ds, ticket)
+	})
+}
+
 // writeTicketResponse assembles the shared GetTicketResponse envelope (the
 // by-id and by-ref bindings return the same shape): the ticket, its first
 // messages, and the deprecated top-level total that duplicates
