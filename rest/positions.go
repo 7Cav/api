@@ -31,7 +31,9 @@ func getPositionGroups(ds datastores.Datastore) http.Handler {
 // inside the query reach the handler (golden position/search_multi_segment),
 // and the bare trailing-slash form binds the empty query the handler rejects
 // (golden position/search_trailing_slash, message frozen from the old
-// handler, servers/grpc SearchByPosition).
+// handler, servers/grpc SearchByPosition). The slashless /position/search
+// form is registered separately (see routes()) and binds the same empty
+// query — the gateway's ** matched zero segments.
 //
 // DELIBERATE BREAK (PRD #112, issue #128): the query reaches the handler
 // STANDARD-decoded (r.PathValue — net/http's per-segment unescaping), not

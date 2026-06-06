@@ -114,6 +114,11 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	// handler 400) both route here. /position/groups wins over it on
 	// specificity, never by registration order.
 	handle(mux, "GET /api/v1/milpacs/position/search/{position_query...}", "read", searchByPosition(ds))
+	// The slashless form, explicitly: the gateway's ** matched ZERO segments
+	// (httprule OpPushM), so the old stack answered the handler's empty-query
+	// 400 here — without this registration the mux would 307-redirect to the
+	// canonical /search/ instead, a redirect the old stack never sent.
+	handle(mux, "GET /api/v1/milpacs/position/search", "read", searchByPosition(ds))
 	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", getProfileByID(ds))
 	handle(mux, "GET /api/v1/milpacs/profile/username/{username}", "read", getProfileByUsername(ds))
 	// Historical path prefix: singular "milpac" on the connected-account
