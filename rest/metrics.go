@@ -146,10 +146,14 @@ func metricsMiddleware(next http.Handler) http.Handler {
 		// otherwise panic-per-request reads as a flat error rate while the
 		// service burns (#92). A panicked request that never wrote a response
 		// has sw.code == 0, which status() reports as the implied 200; label
-		// it 500 instead (what net/http will actually answer). The panic is
-		// re-raised AFTER recording (the inner defer fires as this deferred
-		// func returns) so net/http — and #132's recovery layer once it lands
-		// outside this one — sees semantics unchanged.
+		// it 500 instead — the conventional label for an aborted request
+		// (net/http recovers the panic itself, logs it, and closes the
+		// connection without writing anything; HTTP/2 resets the stream). A
+		// handler that already committed a status before panicking keeps that
+		// status — it is on the wire. The panic is re-raised AFTER recording
+		// (the inner defer fires as this deferred func returns) so net/http —
+		// and #132's recovery layer once it lands outside this one — sees
+		// semantics unchanged.
 		defer func() {
 			status := sw.status()
 			if p := recover(); p != nil {
