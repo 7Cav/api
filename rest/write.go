@@ -93,8 +93,8 @@ var marshalJSON = json.Marshal
 
 // writeError is the single error choke point of the new stack: every non-401
 // error response is written here — one place to keep the wire shape, the
-// code→HTTP mapping, the ≥500 server-side logging, and (extension point,
-// #132) the 5xx Sentry reports. The plain-text 401 tier deliberately bypasses
+// code→HTTP mapping, the ≥500 server-side logging, and the 5xx Sentry
+// reports (#132, reportServerError). The plain-text 401 tier deliberately bypasses
 // it: the auth middleware writes those itself (two-tier behavior golden-pinned
 // by #106). r supplies the method/path request context for the log lines.
 //
@@ -111,9 +111,10 @@ func writeError(w http.ResponseWriter, r *http.Request, c code, format string, a
 func writeStatusJSON(w http.ResponseWriter, r *http.Request, status int, c code, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if status >= 500 {
-		// Cheap insurance: production 5xx outages stay visible server-side
-		// even if cutover (#134) lands before the Sentry slice (#132).
+		// The log line keeps 5xx outages visible server-side even without a
+		// SENTRY_DSN (local/dev — the report below is then a no-op).
 		Error.Printf("%s %s: %d (code %d): %s", r.Method, r.URL.Path, status, c, msg)
+		reportServerError(r, status)
 	}
 	body, err := marshalJSON(statusBody{
 		Code:    c,

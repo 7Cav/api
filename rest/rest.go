@@ -13,8 +13,13 @@
 //
 // Extension points, outermost first:
 //
-//   - sentryMiddleware (placeholder, #132): panic-recovery at the front of
-//     the chain; 5xx Sentry reports hook the writeError choke point.
+//   - sentryMiddleware (#132, sentry.go): panic recovery at the front of the
+//     chain — catches the metrics layer's re-panic, reports the event, and
+//     writes the contract 500; 5xx Sentry reports hook the writeError choke
+//     point. Env-gated by SENTRY_DSN (rest.SetupSentry): without a client it
+//     is a complete no-op. Its route/key-id tags reach this OUTER layer via
+//     the sentryLabels context holder, filled by the sentryLabel wrapper
+//     inside auth (the same mechanism as metricLabels below).
 //   - metricsMiddleware (#130, metrics.go): Prometheus request counter
 //     (route/method/status/key_id) and latency histogram (route/method).
 //     Outside auth, so rejected requests are counted. The route and key_id
@@ -94,8 +99,9 @@ func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handl
 	return sentryMiddleware(
 		metricsMiddleware(
 			AuthMiddleware(ds,
-				GzipMiddleware(
-					routes(ds, rc)))))
+				sentryLabel(
+					GzipMiddleware(
+						routes(ds, rc))))))
 }
 
 // routes builds the pattern-routing mux: one handle call per public route,
@@ -227,13 +233,3 @@ func lastSegment(path string) string {
 	return path[strings.LastIndexByte(path, '/')+1:]
 }
 
-// sentryMiddleware is the documented extension point for #132 (full Sentry
-// wiring): panic-recovery middleware at the front of the chain, with 5xx
-// reports emitted from the writeError choke point. Pass-through until that
-// slice lands. Note for #132: metricsMiddleware already meters panics as
-// status="500" and re-raises — recovery must stay OUTSIDE metrics: a recovery
-// layer inside it that swallowed a panic without writing a response would
-// meter as the implied 200, flattening error rates.
-func sentryMiddleware(next http.Handler) http.Handler {
-	return next
-}
