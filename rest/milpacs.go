@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -227,6 +229,15 @@ func checkQuerySyntax(r *http.Request) error {
 	return err
 }
 
+// bracketKeyRegexp is the old gateway's bracket-key rewrite, mirrored exactly
+// (grpc-gateway v2.29.0 runtime/query.go valuesKeyRegexp): a query key
+// matching ^(.*)\[(.*)\]$ folds into its base key (match 1) with the bracket
+// CONTENT (match 2) PREPENDED as an extra value — ?user_id[0]=1 is key
+// "user_id", values ["0","1"]. The content is a VALUE, never an index, so a
+// matching bracket key on these singular fields is always the too-many-values
+// 400. Greedy: a[b][c] folds to base "a[b]" — matching no field, ignored.
+var bracketKeyRegexp = regexp.MustCompile(`^(.*)\[(.*)\]$`)
+
 // queryField reads a singular query-bindable message field, accepting both
 // the proto (snake_case) and JSON (camelCase) key spellings — the gateway's
 // dual-spelling leniency (PRD-frozen). It returns every present value, one
@@ -240,18 +251,36 @@ func checkQuerySyntax(r *http.Request) error {
 //     runtime/query.go), so "" still reaches the caller's parser.
 //   - Repetition under ONE key errors with the gateway's deterministic
 //     "too many values" shape (per-key check, that key's values joined).
-//   - Order is deterministic: snake-spelling value first, camelCase last —
-//     so a caller binding last-value-wins lands on the camelCase value. That
-//     precedence is a RULING (converged with #129's query binder), standing
-//     in for the old gateway's map-iteration nondeterminism, not parity.
+//   - Bracket keys whose base (bracketKeyRegexp match 1) is either spelling
+//     FOLD into the field as their own per-key group, bracket content first —
+//     the gateway rewrote the key before binding, and resolved the rewritten
+//     key by text name AND JSON name, so both spellings fold. The fold always
+//     carries ≥2 values on a singular field → the too-many-values 400,
+//     quoting the folded group. Non-matching bracket keys are just unknown
+//     parameters — ignored.
+//   - Order is deterministic: snake-spelling value first, camelCase next,
+//     bracket groups last sorted by raw key — so a caller binding
+//     last-value-wins lands on the camelCase value. That precedence is a
+//     RULING (converged with #129's query binder), standing in for the old
+//     gateway's map-iteration nondeterminism, not parity.
 func queryField(r *http.Request, protoName, jsonName string) (vals []string, err error) {
 	q := r.URL.Query()
-	keys := []string{protoName}
+	groups := [][]string{q[protoName]}
 	if jsonName != protoName {
-		keys = append(keys, jsonName)
+		groups = append(groups, q[jsonName])
 	}
-	for _, key := range keys {
-		kv := q[key]
+	var bracketKeys []string
+	for key := range q {
+		if m := bracketKeyRegexp.FindStringSubmatch(key); len(m) == 3 && (m[1] == protoName || m[1] == jsonName) {
+			bracketKeys = append(bracketKeys, key)
+		}
+	}
+	sort.Strings(bracketKeys)
+	for _, key := range bracketKeys {
+		m := bracketKeyRegexp.FindStringSubmatch(key)
+		groups = append(groups, append([]string{m[2]}, q[key]...))
+	}
+	for _, kv := range groups {
 		if len(kv) > 1 {
 			return nil, fmt.Errorf("too many values for field %q: %s", protoName, strings.Join(kv, ", "))
 		}

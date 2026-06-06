@@ -712,6 +712,51 @@ func TestNewStack_UsernameRoute_RepeatedUserIdQueryIs400(t *testing.T) {
 	}
 }
 
+// --- Bracket-key folding (gateway DefaultQueryParser rewrite, frozen) -------
+//
+// The old gateway rewrote any query key matching ^(.*)\[(.*)\]$ to its base
+// key with the bracket CONTENT prepended as an extra value (grpc-gateway
+// v2.29.0 runtime/query.go valuesKeyRegexp): ?user_id[0]=1 became key
+// "user_id", values ["0","1"] — which then tripped the singular-field
+// too-many-values check. Verified against the real old stack in-process on
+// both routes below. A bracket key whose base matches no bindable field is
+// just another unknown parameter — ignored. Semantics converged with #129's
+// query binder (same fold, implemented per-branch).
+func TestNewStack_ProfileRoutes_BracketKeyFoldsIntoField(t *testing.T) {
+	h := newStack(t)
+
+	t.Run("username_route_user_id_bracket_is_too_many_values", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/username/Jarvis.A?user_id[0]=1", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		// Folded group, bracket content first: ["0","1"].
+		assert.JSONEq(t, `{"code":3,"message":"too many values for field \"user_id\": 0, 1","details":[]}`, rr.Body.String())
+	})
+
+	t.Run("by_id_route_username_bracket_is_too_many_values", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/2?username[x]=y", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		assert.JSONEq(t, `{"code":3,"message":"too many values for field \"username\": x, y","details":[]}`, rr.Body.String())
+	})
+
+	t.Run("unmatched_bracket_key_ignored", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/profile/id/1?junk[0]=x", nil)
+		req.Header.Set("Authorization", "Bearer cav7_readkey")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code, "bracket key folding to a non-bindable base is unknown-param leniency")
+		assert.Contains(t, rr.Body.String(), `"username":"Jarvis.A"`)
+	})
+}
+
 func TestNewStack_ByIdRoute_RepeatedUsernameQueryIs400(t *testing.T) {
 	h := newStack(t)
 
