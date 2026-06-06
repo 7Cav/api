@@ -148,6 +148,23 @@ func notFound(w http.ResponseWriter, r *http.Request) {
 	writeError(w, r, codeNotFound, "Not Found")
 }
 
+// methodNotAllowed answers a wrong-method request on an EXISTING route: 405
+// with Allow naming the supported verbs — today always "GET, HEAD", the whole
+// read surface (HEAD rides along on every GET pattern; when write endpoints
+// arrive their routes advertise their own Allow). Enumerated break (PRD #112,
+// ruled at #125): the old stack answered 501.
+//
+// Code mapping, decided deliberately: the frozen code→HTTP table has no code
+// that yields 405, so the body keeps the OLD stack's wrong-method body
+// verbatim — code 12 (Unimplemented), message "Method Not Allowed" — and only
+// the HTTP status (501→405) and the Allow header change. A consumer matching
+// on the JSON body sees no difference; writeStatusJSON carries the explicit
+// status override.
+func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Allow", "GET, HEAD")
+	writeStatusJSON(w, r, http.StatusMethodNotAllowed, codeUnimplemented, "Method Not Allowed")
+}
+
 // writeJSON writes a 200 application/json response. It marshals BEFORE
 // touching the ResponseWriter so an encoding failure can still surface as a
 // clean Internal error through the choke point instead of a truncated 200.

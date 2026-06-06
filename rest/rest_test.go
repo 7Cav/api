@@ -230,6 +230,90 @@ func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 	assert.JSONEq(t, `{"code":13,"message":"error fetching ranks: unexpected EOF","details":[]}`, rr.Body.String())
 }
 
+// --- Wrong-method contract (human ruling on review Critical 1, #125) -------
+//
+// Wrong-method on an existing route returns 405 Method Not Allowed with an
+// Allow: GET, HEAD header; HEAD stays a supported read verb (works on valid
+// routes, returns no body); 404 is reserved for genuinely unknown routes
+// only.
+//
+// Rationale (ruled, recorded in the PRD #112 enumerated-breaks list): this
+// API is read-only by published contract — no write endpoints exist and the
+// docs say so. Any POST/PATCH/etc. was never a supported call, so there is no
+// legitimate consumer whose error-handling the change can break; the
+// behavior-neutral cutover guarantee covers the GET/HEAD surface actually
+// published, which is untouched. That removes the only reason to shim the old
+// stack's 501 and frees the correct code: 405 (vs the un-pinned new code's
+// 404) preserves the useful "route exists, method doesn't" signal, and Allow
+// gives a mistaken-but-legitimate client the answer in one round trip. Public
+// docs mean 405 leaks nothing. When write endpoints arrive, those routes
+// advertise their own Allow and inherit this default — a forward-compatible
+// pattern, not a one-off.
+//
+// These pins are deliberately NEW-STACK-ONLY (plain tests here, not battery
+// cases): the golden corpus replays against the old stack too, and the old
+// stack answers 501 — a shared case would poison the old-stack suite. The 405
+// is net-new decided behavior, not recorded-from-old-stack behavior.
+
+func TestNewStack_WrongMethodOnKnownRouteIs405WithAllow(t *testing.T) {
+	h := newStack(t)
+
+	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			req := httptest.NewRequest(method, "/api/v1/milpacs/ranks", nil)
+			req.Header.Set("Authorization", "Bearer cav7_readkey")
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+			assert.Equal(t, "GET, HEAD", rr.Header().Get("Allow"),
+				"Allow must answer the client in one round trip")
+			assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+			// Body verbatim from the old stack's wrong-method response (code
+			// 12 Unimplemented): only the HTTP status (501→405) and the Allow
+			// header change — consumers matching on the body see no
+			// difference.
+			assert.JSONEq(t, `{"code":12,"message":"Method Not Allowed","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
+func TestNewStack_WrongMethodOnUnknownRouteStays404(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/does/not/exist", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code, "404 is reserved for genuinely unknown routes")
+	assert.Empty(t, rr.Header().Get("Allow"), "an unknown route has no methods to advertise")
+	assert.JSONEq(t, `{"code":5,"message":"Not Found","details":[]}`, rr.Body.String())
+}
+
+// HEAD is a supported read verb: Go's mux matches HEAD against GET patterns
+// (kept deliberately), and net/http suppresses the response body for HEAD at
+// the server. The body suppression lives in the real server's ResponseWriter
+// — a ResponseRecorder would show a body — so this test observes through a
+// live httptest.Server.
+func TestNewStack_HEADOnKnownRouteIs200WithNoBody(t *testing.T) {
+	srv := httptest.NewServer(rest.New(&fakeDatastore{}))
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodHead, srv.URL+"/api/v1/milpacs/ranks", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	res, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, "application/json", res.Header.Get("Content-Type"))
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Empty(t, body, "net/http suppresses the body on HEAD responses")
+}
+
 // An empty rank catalog must serialize as {"ranks":[]} — the allocation
 // discipline (empty collections are [], never null) the goldens can only
 // witness on populated routes.
