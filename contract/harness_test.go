@@ -1,19 +1,15 @@
 package contract
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/7cav/api/cache"
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/middleware"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/servers/gateway"
 	grpcServices "github.com/7cav/api/servers/grpc"
@@ -42,13 +38,12 @@ var (
 //
 // Differences from production, all behavior-neutral by construction:
 //   - the datastore is the seeded fake (no MySQL),
-//   - Redis is the always-erroring RESP stub (startMissingRedis). The cache
-//     middleware left the chain at Phase 2 de-cache (#123), so nothing
-//     touches it today; the stub stays through the soak so the documented
-//     one-line revert of #123 keeps this corpus runnable (X-Cache was never
-//     a contract header),
 //   - SENTRY_DSN is unset, so both sentry layers are pass-throughs,
 //   - the TicketsService reference cache is nil — the fake never touches it.
+//
+// There is no Redis anywhere: the response cache was deleted at Phase 2
+// de-cache (#123 middleware, #124 package + Redis), so the stack mounts and
+// serves with no cache backend at all — exactly like production.
 func TestMain(m *testing.M) {
 	quietProductionLoggers()
 	stackHandler, stackErr = mountCurrentStack()
@@ -101,15 +96,8 @@ func mountCurrentStack() (http.Handler, error) {
 		grpcServeErr <- srv.Serve(lis)
 	}()
 
-	redisHost, redisPort, err := startMissingRedis()
-	if err != nil {
-		return nil, fmt.Errorf("redis stub: %w", err)
-	}
-	deadRedis := cache.NewRedisCache(redisHost, redisPort, "")
-
 	svc := gateway.Service{
 		Address:   lis.Addr().String(),
-		Cache:     deadRedis,
 		Datastore: ds,
 	}
 	// gateway.Service.Server() dials with grpc.WithBlock() on
@@ -137,43 +125,6 @@ func mountCurrentStack() (http.Handler, error) {
 	return httpSrv.Handler, nil
 }
 
-// startMissingRedis serves a minimal RESP endpoint that answers every command
-// with -ERR. With the cache middleware out of the chain since Phase 2
-// de-cache (#123) nothing dials it, but it stays so the documented one-line
-// revert of #123 keeps the corpus runnable: under the reverted chain every
-// command errors deterministically (a miss), without go-redis's
-// network-error retry backoff. Dies with the cache package at #124. X-Cache
-// is not a contract header.
-func startMissingRedis() (host, port string, err error) {
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", "", err
-	}
-	go func() {
-		for {
-			conn, err := lis.Accept()
-			if err != nil {
-				return
-			}
-			go func(c net.Conn) {
-				defer c.Close()
-				sc := bufio.NewScanner(c)
-				for sc.Scan() {
-					// Each RESP command from a client is an array; the
-					// header line starts with '*'. One error per command.
-					if strings.HasPrefix(sc.Text(), "*") {
-						if _, err := c.Write([]byte("-ERR contract harness: cache always misses\r\n")); err != nil {
-							return
-						}
-					}
-				}
-			}(conn)
-		}
-	}()
-	addr := lis.Addr().(*net.TCPAddr)
-	return addr.IP.String(), fmt.Sprint(addr.Port), nil
-}
-
 // quietProductionLoggers silences the chatty Info/Warn loggers of the stack
 // under test so corpus runs stay readable. Errors stay visible.
 //
@@ -185,8 +136,6 @@ func quietProductionLoggers() {
 	for _, l := range []interface{ SetOutput(io.Writer) }{
 		gateway.Info, gateway.Warn,
 		grpcServices.Info, grpcServices.Warn,
-		middleware.Info, middleware.Warn,
-		cache.Info, cache.Warn,
 		datastores.Info, datastores.Warn,
 	} {
 		l.SetOutput(io.Discard)

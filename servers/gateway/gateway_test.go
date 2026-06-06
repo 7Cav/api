@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBuildAPIHandler_ResponseCacheRemoved pins the Phase 2 de-cache (#123):
-// the response-cache middleware is OUT of the /api chain. Observable contract,
-// driven through the production chain constructor on a cacheable (non-tickets)
-// GET route with a nil *cache.RedisCache:
+// TestBuildAPIHandler_ResponseCacheRemoved pins the Phase 2 de-cache
+// (#123/#124): the response cache is gone — middleware out of the /api chain
+// at #123, the cache package and Redis deleted outright at #124. Observable
+// contract, driven through the production chain constructor on a formerly
+// cacheable (non-tickets) GET route:
 //
 //   - every request reaches the inner handler — nothing is served from a
-//     cache, and the nil RedisCache is never touched (the old chain would
-//     panic dereferencing it on this route);
+//     cache;
 //   - the X-Cache header is gone (the PRD's enumerated break for this slice);
 //   - the response body passes through unbuffered and intact.
 func TestBuildAPIHandler_ResponseCacheRemoved(t *testing.T) {
@@ -26,7 +26,7 @@ func TestBuildAPIHandler_ResponseCacheRemoved(t *testing.T) {
 	}}
 
 	innerCalls := 0
-	h := buildAPIHandler(ds, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := buildAPIHandler(ds, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		innerCalls++
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"roster":"live"}`))

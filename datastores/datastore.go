@@ -26,7 +26,6 @@ import (
 
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
-	"github.com/7cav/api/xenforo"
 )
 
 var (
@@ -79,7 +78,6 @@ type Datastore interface {
 	FindAllRanks() ([]*proto.RankExpanded, error)
 	FindAllPositionGroups() ([]*proto.PositionGroup, error)
 	FindAwol() ([]*proto.Awol, error)
-	GetTableUpdates() ([]xenforo.TableInfo, error)
 	FindProfileByGamertag(gamertag string) (*proto.Profile, error)
 	ValidateApiKey(rawKey string) (*ApiKeyResult, error)
 
