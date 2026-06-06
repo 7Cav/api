@@ -87,6 +87,57 @@ func TestFixtures_MemberRelationsResolve(t *testing.T) {
 	}
 }
 
+// API-key fixtures must support both sides of bearer auth: the
+// well-known raw key resolves to active scopes through the same
+// UNHEX(SHA2(...)) shape the datastore uses, and revoked/inactive
+// material exists for the negative paths.
+func TestFixtures_ApiKeysResolveScopes(t *testing.T) {
+	db, _ := testdb.Open(t)
+
+	rows, err := db.Query(
+		`SELECT sd.scope_name
+		 FROM   xf_cav7_api_key k
+		 JOIN   xf_cav7_api_key_scope ks     ON ks.key_id   = k.key_id
+		 JOIN   xf_cav7_api_key_scope_def sd ON sd.scope_id = ks.scope_id
+		 WHERE  k.key_hash   = UNHEX(SHA2(?, 256))
+		   AND  k.is_active  = 1
+		   AND  sd.is_active = 1`, testdb.ActiveAPIKey)
+	if err != nil {
+		t.Fatalf("resolving scopes for active key: %v", err)
+	}
+	defer rows.Close()
+	scopes := map[string]bool{}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatalf("scanning scope: %v", err)
+		}
+		scopes[s] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterating scopes: %v", err)
+	}
+	if len(scopes) < 2 {
+		t.Errorf("active key should carry at least 2 active scopes, got %v", scopes)
+	}
+	if scopes["admin"] {
+		t.Error("inactive scope 'admin' must not surface for the active key")
+	}
+
+	for _, neg := range []struct{ label, sql string }{
+		{"inactive key", `SELECT COUNT(*) FROM xf_cav7_api_key WHERE is_active = 0`},
+		{"inactive scope def", `SELECT COUNT(*) FROM xf_cav7_api_key_scope_def WHERE is_active = 0`},
+	} {
+		var n int
+		if err := db.QueryRow(neg.sql).Scan(&n); err != nil {
+			t.Fatalf("counting %s: %v", neg.label, err)
+		}
+		if n == 0 {
+			t.Errorf("expected at least one %s for negative-path tests", neg.label)
+		}
+	}
+}
+
 // The harness schema must not pre-create the four indexes proposed by
 // PRD #112 — their absence is what keeps the "red" EXPLAIN plans of the
 // index slice reproducible.

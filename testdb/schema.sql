@@ -380,3 +380,41 @@ CREATE TABLE `xf_phrase` (
   UNIQUE KEY `title` (`title`,`language_id`),
   KEY `language_id_global_cache` (`language_id`,`global_cache`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+-- Cav7 ApiKeyManager add-on
+-- ---------------------------------------------------------------------
+
+CREATE TABLE `xf_cav7_api_key` (
+  `key_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL,
+  `key_hash` varbinary(32) NOT NULL,
+  `key_prefix` varchar(12) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `last_used_date` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`key_id`),
+  UNIQUE KEY `key_hash` (`key_hash`),
+  UNIQUE KEY `user_id` (`user_id`),
+  KEY `is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `xf_cav7_api_key_scope` (
+  `key_id` int(10) unsigned NOT NULL,
+  `scope_id` int(10) unsigned NOT NULL,
+  PRIMARY KEY (`key_id`,`scope_id`),
+  KEY `scope_id` (`scope_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `xf_cav7_api_key_scope_def` (
+  `scope_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `scope_name` varchar(50) NOT NULL,
+  `title` varchar(100) NOT NULL,
+  `description` text NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `display_order` int(10) unsigned NOT NULL DEFAULT 0,
+  `user_group_ids` varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (`scope_id`),
+  UNIQUE KEY `scope_name` (`scope_name`),
+  KEY `is_active_display_order` (`is_active`,`display_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

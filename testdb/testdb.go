@@ -37,6 +37,14 @@ import (
 // guards nothing: the server only ever holds disposable fixture data.
 const rootPassword = "harness"
 
+// ActiveAPIKey is the raw bearer key seeded with active scopes
+// ("read", "read:tickets"); its hash lives in xf_cav7_api_key.
+// RevokedAPIKey is seeded inactive and must fail validation.
+const (
+	ActiveAPIKey  = "cav7_harness_active"
+	RevokedAPIKey = "cav7_harness_revoked"
+)
+
 //go:embed schema.sql
 var schemaSQL string
 
