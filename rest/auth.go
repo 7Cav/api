@@ -44,16 +44,34 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 		}
 
 		key, err := ds.ValidateApiKey(token)
-		if err != nil || key == nil {
+		if err != nil {
+			// Datastore failure is a server fault, not a credential
+			// rejection: a 401 here would tell a legitimate client its key
+			// went bad in the middle of an outage. Unavailable (503) signals
+			// retryable, through the JSON choke point like every non-401
+			// error. Log the cause with request context — the goldens cannot
+			// witness this branch — but NEVER the token.
+			Error.Printf("validating API key for %s %s: %v", r.Method, r.URL.Path, err)
+			writeError(w, r, codeUnavailable, "service unavailable")
+			return
+		}
+		if key == nil {
+			// Zero rows: an unknown/expired key. The generic 401 tier —
+			// leaks nothing about whether a key exists, is expired, or
+			// lacks scopes (golden-pinned, #106).
 			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		// Attach the validated key to the request ctx so downstream
-		// consumers — per-route scope checks, Sentry key-id tagging (#132),
-		// the metrics key-id label (#130) — can identify the caller without
-		// ever seeing the bearer token.
+		// Attach the validated key to the request ctx so INNER consumers can
+		// identify the caller without ever seeing the bearer token: the
+		// per-route scope checks (requireScope) and, until cutover deletes
+		// it, the legacy gateway's Sentry key-id tagging (its sentry layer
+		// sits inside auth). The new stack's sentry/metrics middlewares are
+		// UPSTREAM (outer) of auth — r.WithContext clones the request, so
+		// their request never carries this value; key-id reaches them via
+		// the context label-holder mechanism (#130), not this key.
 		next.ServeHTTP(w, r.WithContext(ContextWithKey(r.Context(), key)))
 	})
 }

@@ -110,15 +110,30 @@ func TestAuthMiddleware_ValidKey_CallsNextWithKeyOnContext(t *testing.T) {
 		"the validated key must reach the handler via the request context")
 }
 
-func TestAuthMiddleware_ValidateError_GenericUnauthorized(t *testing.T) {
+// A datastore failure during key validation is a server fault, not a
+// credential rejection: it must NOT masquerade as the 401 tier (telling a
+// legitimate client its key went bad mid-outage), and it must be Error-logged
+// with request context — the goldens structurally cannot witness this branch,
+// so this test is the only thing keeping the outage visible. The bearer token
+// must never reach the log.
+func TestAuthMiddleware_DatastoreError_Is503AndLogged(t *testing.T) {
+	buf := captureErrorLog(t)
 	ds := &fakeAuthDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
 		return nil, io.ErrUnexpectedEOF
 	}}
-	rr, nextCalled, _ := callMiddleware(t, ds, "Bearer cav7_anykey")
+	rr, nextCalled, _ := callMiddleware(t, ds, "Bearer cav7_secrettoken")
 
-	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 	assert.False(t, nextCalled)
-	assert.Equal(t, "Unauthorized", strings.TrimSpace(rr.Body.String()))
+	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{"code":14,"message":"service unavailable","details":[]}`, rr.Body.String(),
+		"Unavailable JSON via the choke point, leaking nothing about the key")
+
+	logged := buf.String()
+	assert.Contains(t, logged, "unexpected EOF")
+	assert.Contains(t, logged, "GET")
+	assert.Contains(t, logged, "/api/v1/whatever")
+	assert.NotContains(t, logged, "cav7_secrettoken", "the bearer token must NEVER be logged")
 }
 
 // requireScope is the per-route authorization gate (ADR 0004: scope checks
