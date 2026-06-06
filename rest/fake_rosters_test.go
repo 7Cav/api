@@ -40,13 +40,15 @@ func (f *fakeDatastore) FindS1UniformsRosterByType(t proto.RosterType) (*proto.S
 	if f.findS1UniformsRosterByType != nil {
 		return f.findS1UniformsRosterByType(t)
 	}
-	if t != proto.RosterType_ROSTER_TYPE_COMBAT {
+	switch t {
+	case proto.RosterType_ROSTER_TYPE_COMBAT:
+		return &proto.S1UniformsRoster{Profiles: map[uint64]*proto.S1UniformsProfile{
+			1: seedJarvisS1Uniforms(),
+			2: seedDoeS1Uniforms(),
+		}}, nil
+	default:
 		return &proto.S1UniformsRoster{Profiles: map[uint64]*proto.S1UniformsProfile{}}, nil
 	}
-	return &proto.S1UniformsRoster{Profiles: map[uint64]*proto.S1UniformsProfile{
-		1: seedJarvisS1Uniforms(),
-		2: seedDoeS1Uniforms(),
-	}}, nil
 }
 
 // seedJarvisLite mirrors the recording seed's lite view of the rich profile:
