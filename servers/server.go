@@ -124,7 +124,7 @@ func (server *MicroServer) Start() {
 		flushSentryOnShutdown()
 	}
 
-	//create TLS listener for TCP connections
+	// plain-TCP listeners (no TLS — nginx terminates; see the creds note below)
 	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
 	if err != nil {
 		Error.Fatalf("Failed to listen on 0.0.0.0:10000: %v", err)

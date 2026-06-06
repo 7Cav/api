@@ -53,8 +53,9 @@ func TestBuildAPIHandler_ResponseCacheRemoved(t *testing.T) {
 
 // TestBuildAPIHandler_GzipRoundTrip pins the compression layer, live on every
 // /api route since the Phase 2 de-cache (#123) — before that, the cache
-// middleware stripped Accept-Encoding and gzipped responses itself, so this
-// path never ran in production. The assertion is a real round-trip — the body
+// middleware stripped Accept-Encoding and gzipped responses itself, so on
+// cacheable routes this path never ran in production (only the tickets
+// bypass reached it). The assertion is a real round-trip — the body
 // must decompress back to the original payload through an intact gzip trailer
 // — because the failure mode this guards (gzipResponseWriter.Write dropping
 // the stale uncompressed Content-Length too late or not at all) corrupts the
@@ -81,8 +82,12 @@ func TestBuildAPIHandler_GzipRoundTrip(t *testing.T) {
 	h.ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "gzip", rr.Header().Get("Content-Encoding"))
-	assert.Empty(t, rr.Header().Get("Content-Length"),
+	// Assert on Result().Header — the snapshot taken when the response was
+	// committed, i.e. what the client actually received — not the recorder's
+	// live header map, which would also reflect a Del that happened too late
+	// to make it onto the wire.
+	assert.Equal(t, "gzip", rr.Result().Header.Get("Content-Encoding"))
+	assert.Empty(t, rr.Result().Header.Get("Content-Length"),
 		"stale uncompressed Content-Length must be stripped")
 
 	zr, err := gzip.NewReader(rr.Body)
