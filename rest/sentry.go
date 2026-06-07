@@ -36,6 +36,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -312,9 +313,24 @@ func (w *commitWriter) Write(b []byte) (int, error) {
 // the type doc for the blind spot this closes. Delegating through a fresh
 // ResponseController keeps the downstream search semantics identical
 // (http.ErrNotSupported surfaces naturally when nothing below can flush).
+//
+// If the delegated flush reports http.ErrNotSupported, no layer below could
+// flush — nothing reached the wire — and the latch this call set is rolled
+// back (#164; mirror of cacheControlWriter's rollback): leaving it would lie
+// committed=true on an untouched wire, sending a later handler panic down the
+// re-panic path (connection abort) instead of the contract 500 the recovery
+// can still honestly write. The latch only rolls back when this call was the
+// first to set it — after a prior Write/WriteHeader bytes are genuinely on
+// the wire and the state keeps. A genuine I/O error also keeps it: by then
+// the delegate really flushed, so the commit happened.
 func (w *commitWriter) FlushError() error {
+	latched := !w.committed
 	w.committed = true
-	return http.NewResponseController(w.ResponseWriter).Flush()
+	err := http.NewResponseController(w.ResponseWriter).Flush()
+	if latched && errors.Is(err, http.ErrNotSupported) {
+		w.committed = false
+	}
+	return err
 }
 
 func (w *commitWriter) Unwrap() http.ResponseWriter {
