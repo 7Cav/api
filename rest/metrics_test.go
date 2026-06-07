@@ -1,9 +1,13 @@
 package rest_test
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 
@@ -23,18 +27,30 @@ import (
 func scrapeMetrics(t *testing.T) map[string]*dto.MetricFamily {
 	t.Helper()
 
+	families, err := gatherFamilies()
+	require.NoError(t, err, "exposition must scrape and parse as Prometheus text format")
+	return families
+}
+
+// gatherFamilies is scrapeMetrics without the *testing.T: one real scrape of
+// the internal-only mount, parsed into families. Separate so the post-run
+// route="" sweep in TestMain — which has no *testing.T — shares the exact
+// same wire-faithful observation path.
+func gatherFamilies() (map[string]*dto.MetricFamily, error) {
 	srv := httptest.NewServer(rest.MetricsHandler())
 	defer srv.Close()
 
 	res, err := srv.Client().Get(srv.URL + "/metrics")
-	require.NoError(t, err)
+	if err != nil {
+		return nil, err
+	}
 	defer res.Body.Close()
-	require.Equal(t, http.StatusOK, res.StatusCode)
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metrics scrape: status %d", res.StatusCode)
+	}
 
 	parser := expfmt.NewTextParser(model.LegacyValidation)
-	families, err := parser.TextToMetricFamilies(res.Body)
-	require.NoError(t, err, "exposition must parse as Prometheus text format")
-	return families
+	return parser.TextToMetricFamilies(res.Body)
 }
 
 // counterValue returns the current value of the named counter child whose
@@ -649,6 +665,150 @@ func TestMetrics_BearerMaterialAbsentFromExposition(t *testing.T) {
 		"bearer material leaked into the exposition — key_id is the only permitted key-derived value")
 	assert.Contains(t, string(raw), `key_id="101"`,
 		"the validated key id (not the token) is how consumers are attributed")
+}
+
+// muxWildcard matches one mux pattern wildcard — "{name}" or "{name...}".
+var muxWildcard = regexp.MustCompile(`\{[^}]+\}`)
+
+// pathForPattern synthesizes a concrete request path from a registration
+// pattern: drop the method qualifier, substitute "x" for every wildcard. The
+// response tier does not matter to the sweep (a 400/404 routed exactly like a
+// 200 — it meters under the matched pattern either way); what matters is that
+// every registered pattern sees authenticated traffic.
+func pathForPattern(pattern string) string {
+	p := pattern
+	if _, after, ok := strings.Cut(p, " "); ok {
+		p = after
+	}
+	return muxWildcard.ReplaceAllString(p, "x")
+}
+
+// emptyRouteWithValidatedKeyChildren returns every request-counter child that
+// pairs route="" with a non-empty key_id — the combination the exposition
+// must never contain: route="" means the request never reached routing, but a
+// validated key means auth passed, and routing follows auth.
+func emptyRouteWithValidatedKeyChildren(families map[string]*dto.MetricFamily) []string {
+	mf, ok := families["api_http_requests_total"]
+	if !ok {
+		return nil
+	}
+	var violations []string
+	for _, m := range mf.GetMetric() {
+		var route, keyID string
+		for _, lp := range m.GetLabel() {
+			switch lp.GetName() {
+			case "route":
+				route = lp.GetValue()
+			case "key_id":
+				keyID = lp.GetValue()
+			}
+		}
+		if route == "" && keyID != "" {
+			violations = append(violations, m.String())
+		}
+	}
+	return violations
+}
+
+// The route="" ⇔ never-routed sweep (#173, ruling: option 1). #166 pinned the
+// direct registrations point-wise; this guard is mechanical: drive
+// authenticated traffic at a synthesized path for EVERY pattern in the real
+// registration table (handle() and handleRaw registrations alike — zero
+// per-route bookkeeping, the derive-from-reality philosophy of the scope-loop
+// guard, #128 ruling 2), then assert no exposition child pairs route="" with
+// a non-empty key_id. A registration missing its routeLabel wrap — a bare
+// mux.Handle, or routeLabel dropped from the helpers — meters its
+// authenticated traffic under route="" and goes red here. TestMain re-runs
+// the same assertion AFTER the whole package, so a registration that bypasses
+// the table too is caught the moment any test drives its traffic.
+func TestMetrics_SweepNoChildPairsEmptyRouteWithValidatedKey(t *testing.T) {
+	// One key with every scope, so the sweep reaches past each scope gate
+	// into the handlers (a 403 would still meter under its route — this just
+	// exercises more of each chain).
+	ds := &fakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		return &datastores.ApiKeyResult{
+			KeyId:  104,
+			UserId: 3,
+			Scopes: map[string]struct{}{"read": {}, "read:tickets": {}},
+		}, nil
+	}}
+	h := rest.New(ds, &stubReferenceCache{})
+
+	_, patterns := rest.RoutesForTest(ds, &stubReferenceCache{})
+	// Non-vacuousness: the catch-all proves the direct registrations feed the
+	// table — without them this sweep would silently cover only the
+	// handle()-gated routes.
+	require.Contains(t, patterns, "/",
+		"registration table is missing the direct registrations — the sweep cannot witness them")
+
+	for _, pattern := range patterns {
+		do(h, http.MethodGet, pathForPattern(pattern), "cav7_sweepkey")
+	}
+
+	families := scrapeMetrics(t)
+
+	assert.Empty(t, emptyRouteWithValidatedKeyChildren(families),
+		`exposition child pairs route="" with a validated key — a registration is missing its routeLabel wrap (bare mux.Handle instead of handleRaw?)`)
+
+	// Non-vacuousness: the sweep's own traffic must have metered under a
+	// route label (the "/" registration's synthesized path is the
+	// authenticated 404) — otherwise a rotted driver passes the sweep with
+	// zero witnesses.
+	assert.GreaterOrEqual(t,
+		counterValue(t, families, "api_http_requests_total",
+			map[string]string{"route": "/", "method": "GET", "status": "404", "key_id": "104"}),
+		1.0, "sweep traffic never metered under its route label — the driver (or routeLabel itself) rotted")
+}
+
+// TestMain re-asserts the sweep's invariant AFTER every test in the package
+// has run, over the same process-global exposition. This is the
+// order-guaranteed half of the #173 guard: a future direct mux.Handle that
+// bypasses handleRaw never enters the registration table, so the sweep test
+// cannot drive its traffic — but the new route's own tests will, and their
+// authenticated requests meter under route="" the moment routeLabel is
+// missing. Running after m.Run() sees that traffic no matter where in the
+// package those tests live.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if code == 0 {
+		if err := sweepExpositionForEmptyRouteWithValidatedKey(); err != nil {
+			fmt.Fprintf(os.Stderr, "post-run route=\"\" sweep (#173): %v\n", err)
+			code = 1
+		}
+	}
+	os.Exit(code)
+}
+
+func sweepExpositionForEmptyRouteWithValidatedKey() error {
+	families, err := gatherFamilies()
+	if err != nil {
+		return fmt.Errorf("scraping exposition: %w", err)
+	}
+	if v := emptyRouteWithValidatedKeyChildren(families); len(v) > 0 {
+		return fmt.Errorf(`exposition children pair route="" with a validated key — a registration is missing its routeLabel wrap (bare mux.Handle instead of handleRaw?): %s`,
+			strings.Join(v, "; "))
+	}
+	return nil
+}
+
+// The registration-completeness seam sees EVERY registration (#173): the
+// direct registrations handle() cannot express — the ref/messages parity
+// shim, the {ticket_id}/{sub} dispatcher, and the catch-all — flow through
+// the same table as the scope-gated routes. Before #173 the table
+// deliberately excluded them, so a future direct registration added without
+// routeLabel was invisible to every guard that derives its expectations from
+// the table (the route="" sweep below included).
+func TestRoutesForTest_TableIncludesDirectRegistrations(t *testing.T) {
+	_, patterns := rest.RoutesForTest(&fakeDatastore{}, &stubReferenceCache{})
+
+	for _, direct := range []string{
+		"GET /api/v1/tickets/ref/messages",
+		"GET /api/v1/tickets/{ticket_id}/{sub}",
+		"/",
+	} {
+		assert.Contains(t, patterns, direct,
+			"direct registration %q missing from the registration table — register it through handleRaw, not bare mux.Handle", direct)
+	}
 }
 
 // The exposition is served on its OWN listener only (#130: a port the
