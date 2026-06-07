@@ -9,7 +9,7 @@
 //
 // # Middleware chain (PRD order — assembled in New)
 //
-//	sentry → metrics → auth (→ sentryLabel) → gzip → mux
+//	sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 → mux
 //
 // Extension points, outermost first:
 //
@@ -36,6 +36,11 @@
 //   - GzipMiddleware: response compression. Inside auth (401s are never
 //     gzipped), outside the mux (every routed response, including the JSON
 //     404, compresses).
+//   - cleanPathRedirect (redirect.go): the mux's clean-path 307 answered in
+//     front of the mux with the contract JSON body and the bounded catch-all
+//     metering label (ruled, #128 round 3 — enumerated deliberate break).
+//     Inside gzip, so the redirect body compresses like every routed
+//     response; clean paths pass through untouched.
 //   - mux: the Go 1.22+ pattern-routing http.ServeMux.
 //
 // # Adding a route (the fan-out recipe, #126–#129)
@@ -79,7 +84,8 @@ var (
 )
 
 // New assembles the new stack: the route mux wrapped in the PRD middleware
-// chain (sentry → metrics → auth (→ sentryLabel) → gzip → mux). The returned handler serves
+// chain (sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 →
+// mux). The returned handler serves
 // the /api surface; non-API paths (the docs UI) are the cutover slice's
 // concern (#134) and 404 here until then.
 //
@@ -102,7 +108,8 @@ func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handl
 			AuthMiddleware(ds,
 				sentryLabel(
 					GzipMiddleware(
-						routes(ds, rc))))))
+						cleanPathRedirect(
+							routes(ds, rc)))))))
 }
 
 // routes builds the pattern-routing mux: one handle call per public route,
@@ -114,12 +121,28 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 
 	// --- milpacs (scope: read) -------------------------------------------
 	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
+	handle(mux, "GET /api/v1/milpacs/position/groups", "read", getPositionGroups(ds))
+	handle(mux, "GET /api/v1/milpacs/awol", "read", getAwol(ds))
+	// The "..." wildcard is the legacy gateway's {position_query=**} glob:
+	// multi-segment queries and the bare trailing-slash form (empty query,
+	// handler 400) both route here.
+	handle(mux, "GET /api/v1/milpacs/position/search/{position_query...}", "read", searchByPosition(ds))
+	// The slashless form, explicitly: the gateway's ** matched ZERO segments
+	// (httprule OpPushM), so the old stack answered the handler's empty-query
+	// 400 here — without this registration the mux would 307-redirect to the
+	// canonical /search/ instead, a redirect the old stack never sent.
+	handle(mux, "GET /api/v1/milpacs/position/search", "read", searchByPosition(ds))
 	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", getProfileByID(ds))
 	handle(mux, "GET /api/v1/milpacs/profile/username/{username}", "read", getProfileByUsername(ds))
 	// Historical path prefix: singular "milpac" on the connected-account
 	// lookups, plural "milpacs" everywhere else. Frozen by the corpus.
 	handle(mux, "GET /api/v1/milpac/discord/{discord_id}", "read", getProfileByDiscordID(ds))
 	handle(mux, "GET /api/v1/milpac/gamertag/{gamertag}", "read", getProfileByGamertag(ds))
+	// Roster routes (#127): one member set, three profile shapes. {roster}
+	// binds the RosterType enum by name OR number (see types.ParseRosterType).
+	handle(mux, "GET /api/v1/roster/{roster}", "read", getRoster(ds))
+	handle(mux, "GET /api/v1/roster/{roster}/lite", "read", getLiteRoster(ds))
+	handle(mux, "GET /api/v1/s1/uniforms/{roster}", "read", getS1UniformsRoster(ds))
 
 	// --- tickets (scope: read:tickets) -----------------------------------
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
@@ -190,8 +213,18 @@ func knownTicketSub(sub string) bool { return sub == "messages" }
 // fully-scoped key. routeLabel wraps OUTSIDE the scope gate so even a 403
 // meters under the route it was denied on.
 func handle(mux *http.ServeMux, pattern, scope string, h http.Handler) {
+	if onHandle != nil {
+		onHandle(pattern)
+	}
 	mux.Handle(pattern, routeLabel(requireScope(scope, h)))
 }
+
+// onHandle observes each handle() registration. Nil in production; swapped
+// only by tests (RoutesForTest, export_test.go) so registration-completeness
+// guards — e.g. the scope-403 loop coverage guard (#128 round 3, ruling 2) —
+// derive their expected route sets from the REAL registration table instead
+// of a second hand-maintained list that could rot alongside the first.
+var onHandle func(pattern string)
 
 // fallback serves every request no route pattern matched, splitting two
 // surfaces the catch-all would otherwise conflate:

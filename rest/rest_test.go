@@ -44,6 +44,12 @@ type fakeDatastore struct {
 	findProfileByDiscordID func(discordId string) (*proto.Profile, error)
 	findProfileByGamertag  func(gamertag string) (*proto.Profile, error)
 
+	// Positions/AWOL overrides (#128; seeded defaults live in
+	// fake_positions_test.go); a test sets one to inject an outage.
+	findAllPositionGroups  func() ([]*proto.PositionGroup, error)
+	findProfilesByPosition func(positionQuery string) (*proto.LiteRoster, error)
+	findAwol               func() ([]*proto.Awol, error)
+
 	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
 	// test sets one to inject an outage or observe the bound filter.
 	listTickets            func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
@@ -52,6 +58,11 @@ type fakeDatastore struct {
 	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error)
 	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error)
 	listCategories         func() ([]*proto.Category, error)
+
+	// Roster overrides (seeded defaults live in fake_rosters_test.go).
+	findRosterByType           func(proto.RosterType) (*proto.Roster, error)
+	findLiteRosterByType       func(proto.RosterType) (*proto.LiteRoster, error)
+	findS1UniformsRosterByType func(proto.RosterType) (*proto.S1UniformsRoster, error)
 
 	// lastRC records the TicketReferenceCache the handlers handed the most
 	// recent rc-consuming datastore call — the identity pin asserts it IS the
@@ -251,6 +262,12 @@ func newStack(t *testing.T) http.Handler {
 // including ones whose routes don't exist yet.
 var implementedCases = []string{
 	"milpacs/ranks",
+	"milpacs/position_groups",
+	"milpacs/awol",
+	"position/search_happy",
+	"position/search_empty_result",
+	"position/search_multi_segment",
+	"position/search_trailing_slash",
 	"milpacs/profile_by_id_happy",
 	"milpacs/profile_by_id_sparse",
 	"milpacs/profile_by_id_not_found",
@@ -287,6 +304,21 @@ var implementedCases = []string{
 	"tickets/messages_invalid_cursor_snake",
 	"tickets/messages_unknown_ticket",
 	"tickets/messages_parse_error",
+	"roster/combat_by_name",
+	"roster/combat_by_number",
+	"roster/reserve_empty",
+	"roster/unspecified_by_name",
+	"roster/unspecified_by_number",
+	"roster/bogus_enum",
+	"roster/internal_error",
+	"roster/unknown_query_param_ignored",
+	"roster/lite_combat_by_name",
+	"roster/lite_combat_by_number",
+	"roster/lite_reserve_empty",
+	"roster/lite_unspecified",
+	"s1/uniforms_combat_by_name",
+	"s1/uniforms_combat_by_number",
+	"s1/uniforms_unspecified",
 	"auth/milpacs_missing_header",
 	"auth/milpacs_raw_key",
 	"auth/milpacs_invalid_key",
