@@ -100,15 +100,22 @@ func (w *cacheControlWriter) Write(b []byte) (int, error) {
 // map. Delegating through a fresh ResponseController keeps the downstream
 // search semantics identical.
 //
-// If the delegated flush reports http.ErrNotSupported, no layer below could
-// flush — nothing reached the wire, so nothing committed — and the stamp
-// this call made is rolled back. Leaving it would poison the live header map
-// and lie committed=true: a handler reacting to the failed flush by writing
-// an error would commit a non-200 carrying max-age, the exact leak class the
-// type doc forbids. Worst on the gzip chain, where gzipResponseWriter
-// supports no flush at all, so the delegated flush ALWAYS fails this way. A
-// genuine I/O error keeps the state: by then net/http has already
-// snapshotted the headers onto the wire, so the commit really happened.
+// If the delegated flush reports http.ErrNotSupported, the stamp this call
+// made is rolled back. Leaving it would poison the live header map and lie
+// committed=true: a handler reacting to the failed flush by writing an
+// error would commit a non-200 carrying max-age, the exact leak class the
+// type doc forbids. The rollback's premise — nothing reached the wire, so
+// nothing committed — holds for wrappers that fail before writing anything:
+// an unflushable wrapper ABOVE gzip, or a chain with no flushable bottom and
+// no gzip in between. It is NOT universal: gzip's FlushError (rest/gzip.go)
+// pushes its header and sync block downstream BEFORE the delegated flush can
+// fail, so a future unflushable wrapper BELOW gzip would surface
+// ErrNotSupported here after bytes had already latched a Write-committing
+// base — a commit this rollback would wrongly undo. Unreachable today
+// (everything below gzip is flushable); noted so such a wrapper isn't added
+// casually. A genuine I/O error keeps the state: by then net/http has
+// already snapshotted the headers onto the wire, so the commit really
+// happened.
 func (w *cacheControlWriter) FlushError() error {
 	stamped := false
 	if !w.committed {

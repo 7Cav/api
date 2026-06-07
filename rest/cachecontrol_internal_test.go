@@ -80,9 +80,9 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		assert.Empty(t, rr.Header().Get("Cache-Control"))
 	})
 
-	// Regression pin (#163 R1): on a gzip-shaped chain — a plain
-	// ResponseWriter with no FlushError/Flusher/Unwrap, exactly
-	// gzipResponseWriter's shape — the delegated flush ALWAYS returns
+	// Regression pin (#163 R1): on an unflushable chain — a plain
+	// ResponseWriter with no FlushError/Flusher/Unwrap, the shape
+	// gzipResponseWriter had before #167 — the delegated flush ALWAYS returns
 	// http.ErrNotSupported: nothing reached the wire. The stamp and
 	// committed=true must roll back, or a handler reacting to the failed
 	// flush by writing an error commits a non-200 carrying max-age (the leak
@@ -93,7 +93,7 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 
 		err := http.NewResponseController(w).Flush()
 		require.ErrorIs(t, err, http.ErrNotSupported,
-			"a gzip-shaped writer supports no flush — nothing was sent")
+			"an unflushable writer supports no flush — nothing was sent")
 
 		w.WriteHeader(http.StatusNotFound)
 		assert.Empty(t, rr.Result().Header.Get("Cache-Control"),
@@ -101,9 +101,9 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 	})
 }
 
-// noFlushWriter hides the recorder's Flusher — gzipResponseWriter's shape
-// (no FlushError, no Flusher, no Unwrap), where a delegated flush always
-// fails with http.ErrNotSupported.
+// noFlushWriter hides the recorder's Flusher — the shape gzipResponseWriter
+// had before #167 (no FlushError, no Flusher, no Unwrap), where a delegated
+// flush always fails with http.ErrNotSupported.
 type noFlushWriter struct {
 	rr *httptest.ResponseRecorder
 }
