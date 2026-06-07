@@ -259,8 +259,8 @@ func TestMetrics_ExoticMethodClampsToOther(t *testing.T) {
 // request still increments the counter — as status="500" when nothing was
 // written (the dashboard-honesty case: panic-per-request must not flatline
 // error rates while the service burns, #92). The panic itself must propagate
-// unchanged so net/http (and later #132's recovery layer) sees identical
-// semantics.
+// unchanged so the sentry recovery layer outside this one (#132) — and
+// net/http when sentry is disabled, as here — sees identical semantics.
 func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
 	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
 		panic("datastore exploded")
