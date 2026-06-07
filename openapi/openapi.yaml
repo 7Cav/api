@@ -534,8 +534,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: never cached by the retired response
-                cache; always served live (stale immediately).
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
               schema:
                 type: string
                 const: max-age=0
@@ -574,8 +574,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: never cached by the retired response
-                cache; always served live (stale immediately).
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
               schema:
                 type: string
                 const: max-age=0
@@ -612,8 +612,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: never cached by the retired response
-                cache; always served live (stale immediately).
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
               schema:
                 type: string
                 const: max-age=0
@@ -669,8 +669,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: never cached by the retired response
-                cache; always served live (stale immediately).
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
               schema:
                 type: string
                 const: max-age=0
@@ -699,8 +699,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: never cached by the retired response
-                cache; always served live (stale immediately).
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
               schema:
                 type: string
                 const: max-age=0
