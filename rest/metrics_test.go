@@ -380,6 +380,97 @@ func TestMetrics_CleanPath307MetersUnderCatchAllWithKeyId(t *testing.T) {
 	assert.Equal(t, before+1, after, "clean-path 307s must meter under the catch-all pattern with the key id")
 }
 
+// The one registration handle() cannot serve — the {ticket_id}/{sub}
+// dispatcher (ticketSubResource) — carries the same routeLabel wrap as every
+// handle()-registered route: a messages 200 meters under its registration
+// pattern. Before #166 this route's traffic metered under route="", conflating
+// a real route with "rejected before routing ever happened".
+func TestMetrics_TicketMessagesMetersUnderSubResourcePattern(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/tickets/{ticket_id}/{sub}",
+		"method": "GET",
+		"status": "200",
+		"key_id": "102",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/tickets/42/messages", "cav7_ticketskey")
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "messages 200s must meter under the sub-resource registration pattern, never route=\"\"")
+}
+
+// Wrap order on the sub-resource registration: routeLabel sits OUTSIDE the
+// scope gate (same order handle() applies), so a wrong-scope 403 on the
+// messages route still meters under the route it was denied on, with the
+// denied key's id — per-key error attribution, like every handle()-registered
+// route.
+func TestMetrics_TicketMessagesScopeDenialMetersUnderSubResourcePattern(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/tickets/{ticket_id}/{sub}",
+		"method": "GET",
+		"status": "403",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/tickets/42/messages", "cav7_readkey") // read ≠ read:tickets
+	require.Equal(t, http.StatusForbidden, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "messages scope 403s must meter under the denied route with the key id")
+}
+
+// The dispatcher's own 404 (a {sub} that is not "messages") ROUTED — the mux
+// matched the {ticket_id}/{sub} registration — so it meters under that bounded
+// pattern, not the catch-all "/" (which never matched) and never route=""
+// (which means the request never reached routing at all).
+func TestMetrics_TicketUnknownSub404MetersUnderSubResourcePattern(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/tickets/{ticket_id}/{sub}",
+		"method": "GET",
+		"status": "404",
+		"key_id": "102",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/tickets/42/attachments", "cav7_ticketskey")
+	require.Equal(t, http.StatusNotFound, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "unknown-sub 404s must meter under the sub-resource registration pattern")
+}
+
+// The other direct mux.Handle registration — the scope-independent
+// /tickets/ref/messages parity shim — is route-labeled too: its frozen 400
+// meters under its literal pattern (a bounded label), never route="". With
+// both direct registrations wrapped, route="" means exactly one thing across
+// the whole table: the request never reached routing (#166).
+func TestMetrics_TicketsRefMessagesFrozen400MetersUnderItsPattern(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "GET /api/v1/tickets/ref/messages",
+		"method": "GET",
+		"status": "400",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/tickets/ref/messages", "cav7_readkey")
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "the ref/messages frozen 400 must meter under its literal pattern")
+}
+
 // counterFamilyTotal sums every child of the named counter family — the
 // family-wide request count, label-set independent.
 func counterFamilyTotal(families map[string]*dto.MetricFamily, name string) float64 {

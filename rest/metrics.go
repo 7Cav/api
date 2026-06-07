@@ -102,7 +102,11 @@ func MetricsHandler() http.Handler {
 // validation, and the route slot is filled from r.Pattern inside the mux,
 // where the matched pattern is actually set.
 type metricLabels struct {
-	route string // mux pattern, e.g. "GET /api/v1/milpacs/ranks"; "" if never routed
+	// route is the matched mux pattern, e.g. "GET /api/v1/milpacs/ranks".
+	// "" means exactly one thing: the request never reached routing (the
+	// auth 401/503 tiers) — EVERY registration fills the slot, including the
+	// direct mux.Handle ones outside handle() (#166).
+	route string
 	keyID string // decimal key id, e.g. "101"; "" if no key validated
 }
 

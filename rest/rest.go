@@ -161,9 +161,13 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	// lookup. Deliberately NOT scope-gated: the old 400 fired in the gateway
 	// before the RPC, so RequireScope never ran. No cacheControl wrap either:
 	// the shim answers nothing but the frozen 400, and only 200s carry the
-	// freshness signal.
-	mux.Handle("GET /api/v1/tickets/ref/messages", refMessagesParity())
-	mux.Handle(ticketSubPattern, ticketSubResource(ds))
+	// freshness signal. routeLabel DOES wrap it: the frozen 400 routed, so it
+	// meters under this literal pattern, never route="" (#166).
+	mux.Handle("GET /api/v1/tickets/ref/messages", routeLabel(refMessagesParity()))
+	// routeLabel OUTSIDE the dispatcher, mirroring handle()'s wrap order:
+	// everything the {ticket_id}/{sub} registration answers — the messages
+	// 200s, the scope 403s, the unknown-sub 404s — meters under its pattern.
+	mux.Handle(ticketSubPattern, routeLabel(ticketSubResource(ds)))
 
 	// The catch-all is route-labeled like every registered pattern: 404s and
 	// 405s meter under its "/" pattern — bounded, and distinct from "" (a
@@ -200,8 +204,9 @@ const ticketSubPattern = "GET /api/v1/tickets/{ticket_id}/{sub}"
 func ticketSubResource(ds datastores.Datastore) http.Handler {
 	// requireScope and cacheControl applied HERE because handle() cannot
 	// register this route — the two wraps stay explicit at the registration
-	// site. handle()'s third wrap, routeLabel, is absent (known pre-existing
-	// gap: messages meters under route="").
+	// site. handle()'s third wrap, routeLabel, wraps this dispatcher at its
+	// mux.Handle call in routes() — OUTSIDE the scope gate, the same order
+	// handle() applies, so even a 403 meters under this route (#166).
 	messages := requireScope("read:tickets", cacheControl(maxAgeTickets, listTicketMessages(ds)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !knownTicketSub(r.PathValue("sub")) {
