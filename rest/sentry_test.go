@@ -636,12 +636,14 @@ func TestSentry_PanicAfterFlushRepanicsInsteadOfRewriting(t *testing.T) {
 // The reachable trigger is a BASE writer below sentryMiddleware with no flush
 // support: test harnesses today (noFlushWriter here), plausibly a cutover-era
 // wrapper like http.TimeoutHandler later — production net/http's base writer
-// always supports flush. The production gzip chain never reaches this code:
-// on a gzipped request ResponseController's walk stops AT gzipResponseWriter
-// (no FlushError, no Flusher, no Unwrap — #167) and mints ErrNotSupported
-// there, above commitWriter, so that flush never sets the latch; and a
-// gzipped panic re-panics regardless — GzipMiddleware's deferred Close
-// commits stream bytes through commitWriter during unwind
+// always supports flush. The production gzip chain cannot trigger this
+// rollback in either era: before #167's flush support, ResponseController's
+// walk dead-ended at the gzip layer, above commitWriter, so a gzipped flush
+// never set the latch; with #167's gzipResponseWriter.FlushError, the gzip
+// header and sync block go through commitWriter.Write BEFORE the delegated
+// flush can fail, so the latch is genuinely Write's — never the flush's to
+// roll back. And a gzipped panic re-panics regardless — GzipMiddleware's
+// deferred Close commits stream bytes through commitWriter during unwind
 // (TestSentry_GzippedPanicReportsAndRepanics).
 func TestSentry_PanicAfterFailedFirstFlushWritesContract500(t *testing.T) {
 	tr := enableSentry(t)
@@ -650,14 +652,15 @@ func TestSentry_PanicAfterFailedFirstFlushWritesContract500(t *testing.T) {
 	h := sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := http.NewResponseController(w).Flush()
 		require.ErrorIs(t, err, http.ErrNotSupported,
-			"a gzip-shaped base writer supports no flush — nothing was sent")
+			"an unflushable base writer refuses the flush — nothing was sent")
 		panic("exploded after the failed flush")
 	}))
 
 	rr := httptest.NewRecorder()
 	require.NotPanics(t, func() {
-		// noFlushWriter (cachecontrol_internal_test.go): gzipResponseWriter's
-		// shape — no FlushError, no Flusher, no Unwrap.
+		// noFlushWriter (cachecontrol_internal_test.go): the shape
+		// gzipResponseWriter had before #167 — no FlushError, no Flusher,
+		// no Unwrap.
 		h.ServeHTTP(&noFlushWriter{rr: rr}, httptest.NewRequest(http.MethodGet, "/flush-fail-boom", nil))
 	}, "nothing reached the wire — recovery must write the contract 500, not re-panic into a connection abort")
 
@@ -706,7 +709,7 @@ func TestSentry_FailedFlushAfterCommitKeepsRepanicSemantics(t *testing.T) {
 				tc.commit(w)
 				err := http.NewResponseController(w).Flush()
 				require.ErrorIs(t, err, http.ErrNotSupported,
-					"a gzip-shaped base writer supports no flush")
+					"an unflushable base writer refuses the flush")
 				panic("exploded after the failed flush")
 			}))
 
