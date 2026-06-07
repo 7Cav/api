@@ -29,30 +29,6 @@ func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error) 
 	}, nil
 }
 
-// seedJarvisLite mirrors the recording seed's lite cut of the rich profile:
-// no records/awards arrays, the flattened awardDate/recordDate stamps, and
-// the deliberately-set KeycloakId the mapper must drop.
-func seedJarvisLite() *proto.LiteProfile {
-	j := seedJarvis()
-	return &proto.LiteProfile{
-		User:              j.User,
-		Rank:              j.Rank,
-		RealName:          j.RealName,
-		UniformUrl:        j.UniformUrl,
-		Roster:            j.Roster,
-		Primary:           j.Primary,
-		Secondaries:       j.Secondaries,
-		JoinDate:          j.JoinDate,
-		PromotionDate:     j.PromotionDate,
-		KeycloakId:        j.KeycloakId,
-		DiscordId:         j.DiscordId,
-		AwardDate:         "2021-03-01",
-		RecordDate:        "2020-10-17",
-		LastForumPostDate: j.LastForumPostDate,
-		Mos:               j.Mos,
-	}
-}
-
 func (f *fakeDatastore) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error) {
 	if f.findProfilesByPosition != nil {
 		return f.findProfilesByPosition(positionQuery)
