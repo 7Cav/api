@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -630,10 +631,18 @@ func TestSentry_PanicAfterFlushRepanicsInsteadOfRewriting(t *testing.T) {
 // latch FlushError itself set must roll back (mirror of cacheControlWriter's
 // #163 R1 rollback: latch-was-ours + errors.Is), or a later handler panic
 // takes the committed re-panic path and aborts the connection instead of
-// writing the contract 500 over a genuinely untouched wire. gzip-shaped
-// chains hit this on EVERY flush — gzipResponseWriter supports no flush at
-// all (#167) — so without the rollback a flush-attempting handler that then
-// panics can never produce the contract 500 on a gzipped request.
+// writing the contract 500 over a genuinely untouched wire.
+//
+// The reachable trigger is a BASE writer below sentryMiddleware with no flush
+// support: test harnesses today (noFlushWriter here), plausibly a cutover-era
+// wrapper like http.TimeoutHandler later — production net/http's base writer
+// always supports flush. The production gzip chain never reaches this code:
+// on a gzipped request ResponseController's walk stops AT gzipResponseWriter
+// (no FlushError, no Flusher, no Unwrap — #167) and mints ErrNotSupported
+// there, above commitWriter, so that flush never sets the latch; and a
+// gzipped panic re-panics regardless — GzipMiddleware's deferred Close
+// commits stream bytes through commitWriter during unwind
+// (TestSentry_GzippedPanicReportsAndRepanics).
 func TestSentry_PanicAfterFailedFirstFlushWritesContract500(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t)
@@ -713,6 +722,72 @@ func TestSentry_FailedFlushAfterCommitKeepsRepanicSemantics(t *testing.T) {
 			res := rr.Result()
 			assert.Equal(t, tc.wantStatus, res.StatusCode, "the committed status stays untouched")
 			assert.Equal(t, tc.wantBody, rr.Body.String(), "no contract 500 body behind the committed response")
+			require.Len(t, tr.Events(), 1, "the panic is still captured even when the response cannot be rewritten")
+		})
+	}
+}
+
+// flushErrorWriter is a base writer whose flush genuinely FAILS rather than
+// being refused: FlushError returns the injected error, never
+// http.ErrNotSupported. The real-server analogue is a conn write error — the
+// implied 200 commits to the wire BEFORE the error returns to the handler.
+type flushErrorWriter struct {
+	rr  *httptest.ResponseRecorder
+	err error
+}
+
+func (w *flushErrorWriter) Header() http.Header         { return w.rr.Header() }
+func (w *flushErrorWriter) Write(b []byte) (int, error) { return w.rr.Write(b) }
+func (w *flushErrorWriter) WriteHeader(code int)        { w.rr.WriteHeader(code) }
+func (w *flushErrorWriter) FlushError() error           { return w.err }
+
+// The errors.Is discriminator on the #164 rollback: ONLY the delegate's
+// refusal (http.ErrNotSupported — nothing sent) may clear the latch. A first
+// flush failing with a genuine I/O error is the opposite world: the delegate
+// really flushed, so on a real server the implied 200 commits to the wire
+// before the conn-write error returns, and the latch must KEEP — the later
+// panic takes the committed path (re-panic, wire untouched by recovery, one
+// event). Broadening the discriminator to any non-nil error would roll the
+// latch back and let the recovery write a contract 500 behind a sent 200 —
+// the exact corruption commitWriter exists to prevent. Mirror image of
+// TestSentry_PanicAfterFailedFirstFlushWritesContract500, opposite outcome.
+func TestSentry_PanicAfterGenuineFlushErrorKeepsRepanicSemantics(t *testing.T) {
+	errConnReset := errors.New("conn reset")
+	cases := []struct {
+		name     string
+		flushErr error // what the base writer's FlushError returns
+		want     error // the sentinel the handler's premise guard must see through the chain
+	}{
+		{name: "plain error", flushErr: errConnReset, want: errConnReset},
+		{name: "wrapped sentinel", flushErr: fmt.Errorf("flush tcp conn: %w", io.ErrClosedPipe), want: io.ErrClosedPipe},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := enableSentry(t)
+			captureErrorLog(t)
+
+			h := sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				err := http.NewResponseController(w).Flush()
+				require.ErrorIs(t, err, tc.want,
+					"the base writer's genuine flush error must surface to the handler")
+				require.NotErrorIs(t, err, http.ErrNotSupported,
+					"premise: a real flush failure, not the delegate's refusal")
+				panic("exploded after the genuine flush error")
+			}))
+
+			rr := httptest.NewRecorder()
+			panicked := func() (p any) {
+				defer func() { p = recover() }()
+				h.ServeHTTP(&flushErrorWriter{rr: rr, err: tc.flushErr},
+					httptest.NewRequest(http.MethodGet, "/genuine-flush-error-boom", nil))
+				return nil
+			}()
+			require.Equal(t, "exploded after the genuine flush error", panicked,
+				"a genuinely failed flush really committed — the latch must keep and the panic re-raise")
+
+			res := rr.Result()
+			assert.Empty(t, res.Header.Get("Content-Type"), "no contract 500 headers behind the kept latch")
+			assert.Zero(t, rr.Body.Len(), "recovery must not write a contract 500 behind a flush that reached the wire")
 			require.Len(t, tr.Events(), 1, "the panic is still captured even when the response cannot be rewritten")
 		})
 	}
