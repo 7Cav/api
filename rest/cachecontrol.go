@@ -105,10 +105,12 @@ func (w *cacheControlWriter) Write(b []byte) (int, error) {
 // this call made is rolled back. Leaving it would poison the live header map
 // and lie committed=true: a handler reacting to the failed flush by writing
 // an error would commit a non-200 carrying max-age, the exact leak class the
-// type doc forbids. Worst on the gzip chain, where gzipResponseWriter
-// supports no flush at all, so the delegated flush ALWAYS fails this way. A
-// genuine I/O error keeps the state: by then net/http has already
-// snapshotted the headers onto the wire, so the commit really happened.
+// type doc forbids. (Before #167 gzipResponseWriter supported no flush at
+// all, so on the gzip chain the delegated flush ALWAYS failed this way; its
+// FlushError closed that hole, but any future unflushable wrapper reopens
+// it, so the rollback stays.) A genuine I/O error keeps the state: by then
+// net/http has already snapshotted the headers onto the wire, so the commit
+// really happened.
 func (w *cacheControlWriter) FlushError() error {
 	stamped := false
 	if !w.committed {
