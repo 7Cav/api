@@ -356,6 +356,30 @@ func TestMetrics_WrongMethod405MetersUnderCatchAll(t *testing.T) {
 	assert.Equal(t, before+1, after, "wrong-method 405s must meter under the catch-all pattern")
 }
 
+// The clean-path 307 (ruled, #128 round 3) meters like the fallback's
+// 404s/405s: the bounded catch-all "/" route label — never the raw unclean
+// path (attacker-controlled cardinality) and never "" (the label documented
+// as "auth rejected before routing": this request authenticated, so its key
+// id attributes the redirect). Before the ruling fix the redirect bypassed
+// routeLabel and metered under that empty label.
+func TestMetrics_CleanPath307MetersUnderCatchAllWithKeyId(t *testing.T) {
+	h := newStack(t)
+	labels := map[string]string{
+		"route":  "/",
+		"method": "GET",
+		"status": "307",
+		"key_id": "101",
+	}
+
+	before := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+
+	rr := do(h, http.MethodGet, "/api/v1/milpacs/position/search/A//B", "cav7_readkey")
+	require.Equal(t, http.StatusTemporaryRedirect, rr.Code)
+
+	after := counterValue(t, scrapeMetrics(t), "api_http_requests_total", labels)
+	assert.Equal(t, before+1, after, "clean-path 307s must meter under the catch-all pattern with the key id")
+}
+
 // counterFamilyTotal sums every child of the named counter family — the
 // family-wide request count, label-set independent.
 func counterFamilyTotal(families map[string]*dto.MetricFamily, name string) float64 {

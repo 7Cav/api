@@ -208,6 +208,20 @@ func TestNewStack_WrongMethodOnSearchWildcardIs405WithAllow(t *testing.T) {
 	assert.JSONEq(t, `{"code":12,"message":"Method Not Allowed","details":[]}`, rr.Body.String())
 }
 
+// positionFamilyScopePaths is THE path list of the #128 route family — five
+// forms witnessing its four registrations (the search wildcard is witnessed
+// twice: a multi-segmentable query and the bare trailing-slash empty-query
+// form). ONE list, shared by the scope-403 loop below and the
+// registration-completeness guard that follows: a family route can't be
+// scope-tested without being guard-probed, or vice versa.
+var positionFamilyScopePaths = []string{
+	"/api/v1/milpacs/position/groups",
+	"/api/v1/milpacs/position/search/Rifleman",
+	"/api/v1/milpacs/position/search/",
+	"/api/v1/milpacs/position/search",
+	"/api/v1/milpacs/awol",
+}
+
 // The scope gate is witnessed PER route: a ticket-scoped key (read:tickets,
 // not read) must 403 with the frozen body on each #128 route — the golden
 // tier only witnesses one milpacs path, so this loop proves no route was
@@ -217,18 +231,83 @@ func TestNewStack_WrongMethodOnSearchWildcardIs405WithAllow(t *testing.T) {
 func TestNewStack_PositionAndAwolRoutes403UnderTicketScopedKey(t *testing.T) {
 	h := newStack(t)
 
-	for _, path := range []string{
-		"/api/v1/milpacs/position/groups",
-		"/api/v1/milpacs/position/search/Rifleman",
-		"/api/v1/milpacs/position/search/",
-		"/api/v1/milpacs/position/search",
-		"/api/v1/milpacs/awol",
-	} {
+	for _, path := range positionFamilyScopePaths {
 		t.Run(path, func(t *testing.T) {
 			rr := positionsGet(t, h, path, "cav7_ticketskey")
 
 			require.Equal(t, http.StatusForbidden, rr.Code)
 			assert.JSONEq(t, `{"code":7,"message":"scope required: read","details":[]}`, rr.Body.String())
+		})
+	}
+}
+
+// The completeness guard (#128 round 3, ruling 2): the round-2 slashless
+// omission was an authz hole — the scope loop silently lost a registered
+// route. This guard makes the loop's coverage self-checking: the EXPECTED set
+// is every handle() registration in the position/awol family, derived from
+// the real registration table (rest.RoutesForTest); the WITNESSED set is the
+// patterns positionFamilyScopePaths actually matches, probed through
+// mux.Handler. Deleting a loop entry (the slashless one included) — or
+// registering another family route without adding its loop path — leaves a
+// family pattern unwitnessed and goes red.
+func TestNewStack_ScopeLoopCoversEveryPositionFamilyRegistration(t *testing.T) {
+	mux, patterns := rest.RoutesForTest(&fakeDatastore{}, &stubReferenceCache{})
+
+	// The family namespace: every position route plus the awol route — the
+	// #128 registrations and any future sibling under the same prefixes.
+	isFamily := func(pattern string) bool {
+		p := strings.TrimPrefix(pattern, "GET ")
+		return strings.HasPrefix(p, "/api/v1/milpacs/position") || p == "/api/v1/milpacs/awol"
+	}
+
+	witnessed := map[string]bool{}
+	for _, path := range positionFamilyScopePaths {
+		_, pattern := mux.Handler(httptest.NewRequest(http.MethodGet, path, nil))
+		require.NotEqual(t, "/", pattern,
+			"scope-loop path %s falls through to the catch-all — it witnesses no registered route", path)
+		require.True(t, isFamily(pattern),
+			"scope-loop path %s matched %q, outside the family it claims to witness", path, pattern)
+		witnessed[pattern] = true
+	}
+
+	var family int
+	for _, pattern := range patterns {
+		if !isFamily(pattern) {
+			continue
+		}
+		family++
+		assert.True(t, witnessed[pattern],
+			"registered family route %q has no witness in positionFamilyScopePaths — add its path to the scope-403 loop", pattern)
+	}
+	// Non-vacuousness: the family filter must see the four #128 registrations
+	// (groups, search wildcard, slashless search, awol); fewer means the
+	// filter — or the registration table seam — rotted.
+	require.GreaterOrEqual(t, family, 4, "family filter saw %d registrations, expected the four #128 ones", family)
+}
+
+// The path-cleaning 307, pinned (ruled, #128 round 3 — enumerated deliberate
+// break alongside percent-decoding, see searchByPosition): an UNCLEAN search
+// path the old ** glob served as a 200 redirects exactly as the mux computes
+// it — 307, Location the cleaned path — but carries the contract JSON body
+// (shape + content type), never net/http's default HTML.
+func TestNewStack_SearchUncleanPathIs307WithJSONBody(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		path         string
+		wantLocation string
+	}{
+		{"/api/v1/milpacs/position/search/A//B", "/api/v1/milpacs/position/search/A/B"},
+		{"/api/v1/milpacs/position/search/A/../B", "/api/v1/milpacs/position/search/B"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			rr := positionsGet(t, h, tc.path, "cav7_readkey")
+
+			require.Equal(t, http.StatusTemporaryRedirect, rr.Code)
+			assert.Equal(t, tc.wantLocation, rr.Header().Get("Location"))
+			assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+			assert.JSONEq(t, `{"code":2,"message":"Temporary Redirect","details":[]}`, rr.Body.String())
 		})
 	}
 }
