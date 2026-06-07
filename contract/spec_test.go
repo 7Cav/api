@@ -888,6 +888,16 @@ func TestSpec_EveryOperationHasGolden(t *testing.T) {
 // observation in rest/spec_test.go (TestNewStack_SpecValidation's
 // lite_roster_500_outage / s1_uniforms_500_outage subtests), with the frozen
 // bodies pinned by TestNewStack_LiteAndS1OutagesAreInternalJSON.
+//
+// CONSTRAINT (ratified at the #127 review): every entry in this map MUST
+// name a live witness that (a) drives the status through the real stack
+// (rest.New + contract.RunCase, not a replayed golden) and (b) validates
+// the observed response via validateObserved, whose explicit-status rule
+// makes the spec line load-bearing — deleting the declared status turns
+// the witness red. The coupling is asymmetric: deleting the WITNESS fails
+// nothing automatically, so an entry whose witness is removed must be
+// removed with it. An entry without an asserting witness is a spec bug,
+// not a carve-out — carve-outs are never grandfathered.
 var liveWitnessedStatuses = map[string]map[string]bool{
 	"GET /api/v1/roster/{roster}/lite": {"500": true},
 	"GET /api/v1/s1/uniforms/{roster}": {"500": true},
