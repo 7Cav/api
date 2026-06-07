@@ -9,7 +9,7 @@
 //
 // # Middleware chain (PRD order — assembled in New)
 //
-//	sentry → metrics → auth → gzip → mux
+//	sentry → metrics → auth → gzip → clean-path 307 → mux
 //
 // Extension points, outermost first:
 //
@@ -31,6 +31,11 @@
 //   - GzipMiddleware: response compression. Inside auth (401s are never
 //     gzipped), outside the mux (every routed response, including the JSON
 //     404, compresses).
+//   - cleanPathRedirect (redirect.go): the mux's clean-path 307 answered in
+//     front of the mux with the contract JSON body and the bounded catch-all
+//     metering label (ruled, #128 round 3 — enumerated deliberate break).
+//     Inside gzip, so the redirect body compresses like every routed
+//     response; clean paths pass through untouched.
 //   - mux: the Go 1.22+ pattern-routing http.ServeMux.
 //
 // # Adding a route (the fan-out recipe, #126–#129)
@@ -74,7 +79,8 @@ var (
 )
 
 // New assembles the new stack: the route mux wrapped in the PRD middleware
-// chain (sentry → metrics → auth → gzip → mux). The returned handler serves
+// chain (sentry → metrics → auth → gzip → clean-path 307 → mux). The returned
+// handler serves
 // the /api surface; non-API paths (the docs UI) are the cutover slice's
 // concern (#134) and 404 here until then.
 //
@@ -95,7 +101,8 @@ func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handl
 		metricsMiddleware(
 			AuthMiddleware(ds,
 				GzipMiddleware(
-					routes(ds, rc)))))
+					cleanPathRedirect(
+						routes(ds, rc))))))
 }
 
 // routes builds the pattern-routing mux: one handle call per public route,
@@ -194,8 +201,18 @@ func knownTicketSub(sub string) bool { return sub == "messages" }
 // fully-scoped key. routeLabel wraps OUTSIDE the scope gate so even a 403
 // meters under the route it was denied on.
 func handle(mux *http.ServeMux, pattern, scope string, h http.Handler) {
+	if onHandle != nil {
+		onHandle(pattern)
+	}
 	mux.Handle(pattern, routeLabel(requireScope(scope, h)))
 }
+
+// onHandle observes each handle() registration. Nil in production; swapped
+// only by tests (RoutesForTest, export_test.go) so registration-completeness
+// guards — e.g. the scope-403 loop coverage guard (#128 round 3, ruling 2) —
+// derive their expected route sets from the REAL registration table instead
+// of a second hand-maintained list that could rot alongside the first.
+var onHandle func(pattern string)
 
 // fallback serves every request no route pattern matched, splitting two
 // surfaces the catch-all would otherwise conflate:

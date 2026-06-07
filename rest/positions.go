@@ -38,7 +38,12 @@ func getPositionGroups(ds datastores.Datastore) http.Handler {
 // DELIBERATE BREAK (PRD #112, issue #128): the query reaches the handler
 // STANDARD-decoded (r.PathValue — net/http's per-segment unescaping), not
 // through the legacy gateway's own ** percent-decoding. The recorded forms
-// (%20 → space) decode identically; only exotic encodings diverge.
+// (%20 → space) decode identically; only exotic encodings diverge. PATH
+// CLEANING is the same break's second face (ruled, #128 round 3): the
+// ServeMux cleans paths before matching, so an UNCLEAN query form the old
+// glob served as a 200 (A//B, A/../B) is now a 307 to the cleaned path —
+// answered in front of the mux with the contract JSON body by
+// cleanPathRedirect (redirect.go); it never reaches this handler.
 //
 // Empty-result behavior is FROZEN AS-IS: plausible queries with no rows are
 // {"profiles":{}} with 200, never 404 (golden position/search_empty_result;
