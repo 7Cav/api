@@ -7,17 +7,16 @@ import (
 )
 
 // RoutesForTest builds the bare route mux (no middleware) and returns it
-// together with every pattern registered through handle() — the scope-gated
-// registration table. The scope-loop completeness guard (#128 round 3,
-// ruling 2; positions_test.go) derives its expected route set from this table
-// and probes the mux for what its path list actually witnesses, so the guard
-// cannot rot into a second hand-maintained list.
-//
-// Deliberately ABSENT from the table: the direct mux.Handle registrations —
-// the refMessagesParity shim (scope-independent by ruling), the
-// {ticket_id}/{sub} dispatcher (scope gate applied inside, see
-// ticketSubResource) and the catch-all. They are not handle()-gated and carry
-// their own pinned coverage.
+// together with the COMPLETE registration table: every pattern registered
+// through handle() AND the direct handleRaw registrations handle() cannot
+// express — the refMessagesParity shim, the {ticket_id}/{sub} dispatcher,
+// the catch-all (#173; before that the table deliberately excluded them, so
+// the completeness machinery never saw a direct registration). Guards derive
+// their expected route sets from this table instead of a second
+// hand-maintained list that could rot alongside the first: the scope-loop
+// completeness guard (#128 round 3, ruling 2; positions_test.go) filters it
+// to the position/awol family, and the route="" sweep (#173;
+// metrics_test.go) drives traffic at every pattern in it.
 func RoutesForTest(ds datastores.Datastore, rc datastores.TicketReferenceCache) (*http.ServeMux, []string) {
 	var patterns []string
 	onHandle = func(pattern string) { patterns = append(patterns, pattern) }

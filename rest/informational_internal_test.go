@@ -54,9 +54,13 @@ func TestWriterWrappers_Informational1xxDoesNotLatch(t *testing.T) {
 	// Event accessor the sentry row shares between build and assert.
 	var sentryEvents func() []*sentry.Event
 	meter := func(status string) float64 {
-		// Route is "" (no routeLabel in this chain), method clamps to GET,
-		// no key validated — the deferred recording's exact label set.
-		return testutil.ToFloat64(requestsTotal.WithLabelValues("", http.MethodGet, status, ""))
+		// Route is the probe's route-labeled pattern (mounted like every
+		// registration in the assembled stack — an unlabeled probe would
+		// violate the registry's never-routed contract, route="" ⇒ auth tiers
+		// or pre-routing panic, swept post-run by TestMain, #173), method
+		// clamps to GET, no key validated — the deferred recording's exact
+		// label set.
+		return testutil.ToFloat64(requestsTotal.WithLabelValues("GET /", http.MethodGet, status, ""))
 	}
 
 	cases := []struct {
@@ -73,7 +77,9 @@ func TestWriterWrappers_Informational1xxDoesNotLatch(t *testing.T) {
 			build: func(t *testing.T, next http.Handler) http.Handler {
 				meter200Before = meter("200")
 				meter103Before = meter("103")
-				return metricsMiddleware(next)
+				mux := http.NewServeMux()
+				mux.Handle("GET /", routeLabel(next))
+				return metricsMiddleware(mux)
 			},
 			finish: func(w http.ResponseWriter) {
 				w.WriteHeader(http.StatusOK)
@@ -219,7 +225,8 @@ func TestWriterWrappers_101Latches(t *testing.T) {
 	var meter101Before, meter500Before float64
 	var sentryEvents func() []*sentry.Event
 	meter := func(status string) float64 {
-		return testutil.ToFloat64(requestsTotal.WithLabelValues("", http.MethodGet, status, ""))
+		// Route-labeled probe, same rationale as the table above (#173).
+		return testutil.ToFloat64(requestsTotal.WithLabelValues("GET /", http.MethodGet, status, ""))
 	}
 
 	cases := []struct {
@@ -254,7 +261,9 @@ func TestWriterWrappers_101Latches(t *testing.T) {
 			build: func(t *testing.T, next http.Handler) http.Handler {
 				meter101Before = meter("101")
 				meter500Before = meter("500")
-				return metricsMiddleware(next)
+				mux := http.NewServeMux()
+				mux.Handle("GET /", routeLabel(next))
+				return metricsMiddleware(mux)
 			},
 			finish: func(_ *testing.T, w http.ResponseWriter) {
 				panic("exploded after the 101")
