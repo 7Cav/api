@@ -105,7 +105,7 @@ type metricLabels struct {
 	// route is the matched mux pattern, e.g. "GET /api/v1/milpacs/ranks".
 	// "" means exactly one thing: the request never reached routing (the
 	// auth 401/503 tiers, or a pre-routing panic) — EVERY registration fills
-	// the slot, including the direct mux.Handle ones outside handle() (#166).
+	// the slot: handleRaw applies routeLabel structurally (#166, #173).
 	route string
 	keyID string // decimal key id, e.g. "101"; "" if no key validated
 }

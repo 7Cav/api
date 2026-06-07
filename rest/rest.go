@@ -117,10 +117,12 @@ func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handl
 							routes(ds, rc)))))))
 }
 
-// routes builds the pattern-routing mux: one handle call per public route,
-// each gated on its scope. Everything no route pattern matches falls through
-// to fallback (the JSON 404, or the 405+Allow for a known path under an
-// unsupported method).
+// routes builds the pattern-routing mux. Every route registers through
+// handle() — scope-gated, cache-controlled — except the three handleRaw call
+// sites: the ref/messages parity shim and the catch-all (ungated by ruling)
+// and the {ticket_id}/{sub} dispatcher (gates inside itself). Everything no
+// route pattern matches falls through to fallback (the JSON 404, or the
+// 405+Allow for a known path under an unsupported method).
 func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -206,9 +208,9 @@ const ticketSubPattern = "GET /api/v1/tickets/{ticket_id}/{sub}"
 func ticketSubResource(ds datastores.Datastore) http.Handler {
 	// requireScope and cacheControl applied HERE because handle() cannot
 	// register this route — the two wraps stay explicit at the registration
-	// site. handle()'s third wrap, routeLabel, wraps this dispatcher at its
-	// handleRaw registration in routes() — OUTSIDE the scope gate, the same
-	// order handle() applies, so even a 403 meters under this route (#166).
+	// site. handleRaw's wrap, routeLabel, wraps this dispatcher at its
+	// registration in routes() — OUTSIDE the scope gate, the same order
+	// handle() applies, so even a 403 meters under this route (#166).
 	messages := requireScope("read:tickets", cacheControl(maxAgeTickets, listTicketMessages(ds)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !knownTicketSub(r.PathValue("sub")) {
@@ -258,7 +260,9 @@ func handle(mux *http.ServeMux, pattern, scope string, maxAgeSeconds int, h http
 // Adding a route? Use handle(). Only a route whose scope gate cannot be
 // expressed as one requireScope wrap belongs here — and then the per-route
 // wraps it skips (scope, cache-control) must be applied explicitly inside the
-// handler, the way ticketSubResource does.
+// handler where they apply (the way ticketSubResource does), or their absence
+// ruled and documented (the parity shim and the catch-all carry neither, by
+// ruling).
 func handleRaw(mux *http.ServeMux, pattern string, h http.Handler) {
 	if onHandle != nil {
 		onHandle(pattern)

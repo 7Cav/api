@@ -407,11 +407,15 @@ func TestSentry_PanicAfterCommittedResponseReportsAndRepanics(t *testing.T) {
 	captureErrorLog(t)
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /boom", sentryLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// routeLabel: the committed 200 meters under the route, keeping the
+	// registry's never-routed contract (route="" ⇒ auth tiers or pre-routing
+	// panic, swept post-run by TestMain, #173) — an unlabeled probe would
+	// mint route="" 200.
+	mux.Handle("GET /boom", routeLabel(sentryLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("partial body before the panic"))
 		panic("exploded after the 200")
-	})))
+	}))))
 	h := sentryMiddleware(metricsMiddleware(mux))
 
 	rr := httptest.NewRecorder()
@@ -554,9 +558,12 @@ func TestSentry_ErrAbortHandlerRepanicsUnreported(t *testing.T) {
 	tr := enableSentry(t)
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /abort", sentryLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// routeLabel: keeps the probe inside the registry's never-routed
+	// contract (#173) — unlabeled, its relabeled 500 would meter as
+	// route="", conflating this routed abort with a pre-routing panic.
+	mux.Handle("GET /abort", routeLabel(sentryLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		panic(http.ErrAbortHandler)
-	})))
+	}))))
 	h := sentryMiddleware(metricsMiddleware(mux))
 
 	rr := httptest.NewRecorder()

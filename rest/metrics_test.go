@@ -465,12 +465,12 @@ func TestMetrics_TicketUnknownSub404MetersUnderSubResourcePattern(t *testing.T) 
 	assert.Equal(t, before+1, after, "unknown-sub 404s must meter under the sub-resource registration pattern")
 }
 
-// The other direct mux.Handle registration #166 wrapped — the scope-independent
-// /tickets/ref/messages parity shim — is route-labeled too: its frozen 400
-// meters under its literal pattern (a bounded label), never route="". With
-// both #166 registrations wrapped (the catch-all was already labeled),
-// route="" means exactly one thing across the whole table: the request never
-// reached routing.
+// The other direct mux.Handle registration #166 wrapped (since #173 a
+// handleRaw call site) — the scope-independent /tickets/ref/messages parity
+// shim — is route-labeled too: its frozen 400 meters under its literal
+// pattern (a bounded label), never route="". With both #166 registrations
+// wrapped (the catch-all was already labeled), route="" means exactly one
+// thing across the whole table: the request never reached routing.
 func TestMetrics_TicketsRefMessagesFrozen400MetersUnderItsPattern(t *testing.T) {
 	h := newStack(t)
 	labels := map[string]string{
@@ -710,17 +710,55 @@ func emptyRouteWithValidatedKeyChildren(families map[string]*dto.MetricFamily) [
 	return violations
 }
 
-// The route="" ⇔ never-routed sweep (#173, ruling: option 1). #166 pinned the
-// direct registrations point-wise; this guard is mechanical: drive
-// authenticated traffic at a synthesized path for EVERY pattern in the real
-// registration table (handle() and handleRaw registrations alike — zero
-// per-route bookkeeping, the derive-from-reality philosophy of the scope-loop
-// guard, #128 ruling 2), then assert no exposition child pairs route="" with
-// a non-empty key_id. A registration missing its routeLabel wrap — a bare
-// mux.Handle, or routeLabel dropped from the helpers — meters its
-// authenticated traffic under route="" and goes red here. TestMain re-runs
-// the same assertion AFTER the whole package, so a registration that bypasses
-// the table too is caught the moment any test drives its traffic.
+// neverRoutedStatusViolations returns every request-counter child whose
+// route="" status falls outside the enumerated never-routed outcomes: the
+// auth 401/503 tiers and the pre-routing-panic 500 (the counter help text's
+// exhaustive list). The pair-predicate above cannot see an UNAUTHENTICATED
+// unlabeled mount — key_id stays empty, exactly the #134 docs-UI shape
+// (handlers mounted outside auth) — but this derived contract can: such a
+// mount's 200s mint route="" with a status no never-routed request produces.
+func neverRoutedStatusViolations(families map[string]*dto.MetricFamily) []string {
+	mf, ok := families["api_http_requests_total"]
+	if !ok {
+		return nil
+	}
+	allowed := map[string]bool{"401": true, "500": true, "503": true}
+	var violations []string
+	for _, m := range mf.GetMetric() {
+		var route, status string
+		for _, lp := range m.GetLabel() {
+			switch lp.GetName() {
+			case "route":
+				route = lp.GetValue()
+			case "status":
+				status = lp.GetValue()
+			}
+		}
+		if route == "" && !allowed[status] {
+			violations = append(violations, m.String())
+		}
+	}
+	return violations
+}
+
+// The route="" ⇔ never-routed sweep (#173, ruling: do both — this sweep is
+// the option-1 half; handleRaw is option 2). #166 pinned the direct
+// registrations point-wise; this guard is mechanical: drive authenticated
+// traffic at a synthesized path for EVERY pattern in the real registration
+// table (handle() and handleRaw registrations alike — zero per-route
+// bookkeeping, the derive-from-reality philosophy of the scope-loop guard,
+// #128 ruling 2), then assert the never-routed contract over the exposition:
+// no child pairs route="" with a non-empty key_id, and every route="" child
+// carries a status the never-routed tiers can actually produce (401/503 from
+// auth, 500 from a pre-routing panic — the counter help text's enumerated
+// outcomes). routeLabel dropped from the helpers meters the sweep's own
+// authenticated traffic under route="" and goes red here; a bare mux.Handle
+// never enters the registration table, so this sweep cannot drive its
+// traffic — that escape belongs to the TestMain half below, the status
+// predicate, and the source-scan guard (TestMuxHandle_OnlyCallSiteIsHandleRaw).
+// TestMain re-runs the same assertions AFTER the whole package, so a
+// registration that bypasses the table too is caught the moment any test
+// drives its traffic.
 func TestMetrics_SweepNoChildPairsEmptyRouteWithValidatedKey(t *testing.T) {
 	// One key with every scope, so the sweep reaches past each scope gate
 	// into the handlers (a 403 would still meter under its route — this just
@@ -750,6 +788,9 @@ func TestMetrics_SweepNoChildPairsEmptyRouteWithValidatedKey(t *testing.T) {
 	assert.Empty(t, emptyRouteWithValidatedKeyChildren(families),
 		`exposition child pairs route="" with a validated key — a registration is missing its routeLabel wrap (bare mux.Handle instead of handleRaw?)`)
 
+	assert.Empty(t, neverRoutedStatusViolations(families),
+		`exposition child pairs route="" with a status outside the never-routed set {401, 500, 503} — an unlabeled mount is serving traffic outside routing (a handler mounted outside auth, the #134 docs-UI shape?)`)
+
 	// Non-vacuousness: the sweep's own traffic must have metered under a
 	// route label (the "/" registration's synthesized path is the
 	// authenticated 404) — otherwise a rotted driver passes the sweep with
@@ -760,18 +801,21 @@ func TestMetrics_SweepNoChildPairsEmptyRouteWithValidatedKey(t *testing.T) {
 		1.0, "sweep traffic never metered under its route label — the driver (or routeLabel itself) rotted")
 }
 
-// TestMain re-asserts the sweep's invariant AFTER every test in the package
+// TestMain re-asserts the sweep's invariants AFTER every test in the package
 // has run, over the same process-global exposition. This is the
 // order-guaranteed half of the #173 guard: a future direct mux.Handle that
 // bypasses handleRaw never enters the registration table, so the sweep test
 // cannot drive its traffic — but the new route's own tests will, and their
 // authenticated requests meter under route="" the moment routeLabel is
 // missing. Running after m.Run() sees that traffic no matter where in the
-// package those tests live.
+// package those tests live. Reach limit: this sweep sees ONE test binary's
+// traffic — #134's cutover package is a second binary whose requests never
+// touch this process's exposition, so the cutover slice must re-assert the
+// contract there (or this package exports the sweep helper then).
 func TestMain(m *testing.M) {
 	code := m.Run()
 	if code == 0 {
-		if err := sweepExpositionForEmptyRouteWithValidatedKey(); err != nil {
+		if err := sweepExpositionForNeverRoutedContract(); err != nil {
 			fmt.Fprintf(os.Stderr, "post-run route=\"\" sweep (#173): %v\n", err)
 			code = 1
 		}
@@ -779,13 +823,17 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func sweepExpositionForEmptyRouteWithValidatedKey() error {
+func sweepExpositionForNeverRoutedContract() error {
 	families, err := gatherFamilies()
 	if err != nil {
 		return fmt.Errorf("scraping exposition: %w", err)
 	}
 	if v := emptyRouteWithValidatedKeyChildren(families); len(v) > 0 {
 		return fmt.Errorf(`exposition children pair route="" with a validated key — a registration is missing its routeLabel wrap (bare mux.Handle instead of handleRaw?): %s`,
+			strings.Join(v, "; "))
+	}
+	if v := neverRoutedStatusViolations(families); len(v) > 0 {
+		return fmt.Errorf(`exposition children pair route="" with a status outside the never-routed set {401, 500, 503} — an unlabeled mount is serving traffic outside routing (a handler mounted outside auth, the #134 docs-UI shape?): %s`,
 			strings.Join(v, "; "))
 	}
 	return nil
@@ -797,7 +845,7 @@ func sweepExpositionForEmptyRouteWithValidatedKey() error {
 // the same table as the scope-gated routes. Before #173 the table
 // deliberately excluded them, so a future direct registration added without
 // routeLabel was invisible to every guard that derives its expectations from
-// the table (the route="" sweep below included).
+// the table (the route="" sweep in this file included).
 func TestRoutesForTest_TableIncludesDirectRegistrations(t *testing.T) {
 	_, patterns := rest.RoutesForTest(&fakeDatastore{}, &stubReferenceCache{})
 
@@ -809,6 +857,54 @@ func TestRoutesForTest_TableIncludesDirectRegistrations(t *testing.T) {
 		assert.Contains(t, patterns, direct,
 			"direct registration %q missing from the registration table — register it through handleRaw, not bare mux.Handle", direct)
 	}
+}
+
+// handleRaw's "ONLY way a handler reaches the mux" claim, mechanically
+// enforced (#173). The dynamic guards have a demonstrated escape: a bare
+// mux.Handle on a route with no tests driving authenticated traffic passes
+// the entire suite — it never enters the registration table (invisible to the
+// sweep), and with no traffic the TestMain re-assertion sees nothing either.
+// Close it at the source level: the rest package's non-test sources must
+// contain exactly one mux.Handle call — the one inside handleRaw (rest.go).
+// mux.Handler (the fallback's 405 probe) is a lookup, not a registration, and
+// does not match the scanned token.
+func TestMuxHandle_OnlyCallSiteIsHandleRaw(t *testing.T) {
+	entries, err := os.ReadDir(".") // the test binary runs in the package dir
+	require.NoError(t, err)
+
+	var hits []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(name)
+		require.NoError(t, err)
+		for i, line := range strings.Split(string(src), "\n") {
+			if strings.Contains(line, "mux.Handle(") {
+				hits = append(hits, fmt.Sprintf("%s:%d: %s", name, i+1, strings.TrimSpace(line)))
+			}
+		}
+	}
+
+	require.Len(t, hits, 1,
+		"exactly one mux.Handle call site is allowed in the rest package — handleRaw's. Register routes through handle()/handleRaw, never bare mux.Handle. Found: %s",
+		strings.Join(hits, "; "))
+	assert.True(t, strings.HasPrefix(hits[0], "rest.go:"),
+		"the single mux.Handle call site moved out of rest.go: %s", hits[0])
+
+	// The one call must sit inside handleRaw itself — the function whose doc
+	// claims to be the only path to the mux.
+	src, err := os.ReadFile("rest.go")
+	require.NoError(t, err)
+	fnStart := strings.Index(string(src), "\nfunc handleRaw(")
+	require.GreaterOrEqual(t, fnStart, 0, "func handleRaw not found in rest.go")
+	body := string(src)[fnStart+1:]
+	if end := strings.Index(body, "\nfunc "); end >= 0 {
+		body = body[:end]
+	}
+	assert.Contains(t, body, "mux.Handle(",
+		"the single mux.Handle call site is not inside handleRaw")
 }
 
 // The exposition is served on its OWN listener only (#130: a port the
