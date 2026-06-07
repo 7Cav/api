@@ -17,7 +17,8 @@ import "net/http"
 // post-101 panic re-panics instead of "writing" a contract 500 the stdlib
 // would swallow. Every writer wrapper in the new-stack rest chain with
 // commit-time state (statusWriter's status capture, commitWriter's commit
-// latch, cacheControlWriter's header stamp) must mirror that: forward a
+// latch, cacheControlWriter's header stamp, gzipResponseWriter's
+// Content-Length strip and status latch — #175) must mirror that: forward a
 // non-latching 1xx WriteHeader to the delegate and latch nothing, so the
 // subsequent final WriteHeader behaves exactly as a first call (#165). The
 // legacy gateway's statusRecorder still latches on all 1xx — known, tracked
