@@ -87,6 +87,12 @@ type Case struct {
 //     no challenge header. RunCase skips empty headers, so goldens carry no
 //     WWW-Authenticate key; a rewrite whose auth middleware adds one shows
 //     up in CompareGolden as ""-vs-set — a red diff.
+//
+// Cache-Control (#131) must stay OFF this list: it is a deliberate
+// new-stack-only addition (the old stack sends none), so recording it would
+// pin its ABSENCE the same way WWW-Authenticate's is — poisoning the new
+// stack's replay. Its pins live in rest/cachecontrol_test.go and the spec
+// coupling in rest/spec_test.go instead.
 var contractHeaders = []string{"Content-Type", "X-Content-Type-Options", "WWW-Authenticate"}
 
 // Golden is the recorded contract for one case: status, allowlisted headers,

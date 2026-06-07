@@ -191,6 +191,8 @@ func TestSentry_PanicCompletesAs500AndReportsTaggedEvent(t *testing.T) {
 	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 	assert.JSONEq(t, `{"code":13,"message":"Internal Server Error","details":[]}`, rr.Body.String(),
 		"the panic 500 must keep the contract error shape")
+	assert.Empty(t, rr.Header().Get("Cache-Control"),
+		"the contract 500 after a panic carries no freshness signal — the exact leak cacheControlWriter's commit-time design exists to prevent")
 
 	events := tr.Events()
 	require.Len(t, events, 1, "one panic = one event; the choke-point 5xx report must not double-report")

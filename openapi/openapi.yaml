@@ -71,6 +71,15 @@ paths:
       responses:
         "200":
           description: The full milpac profile.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -109,6 +118,15 @@ paths:
       responses:
         "200":
           description: The full milpac profile.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -135,6 +153,15 @@ paths:
       responses:
         "200":
           description: The full milpac profile.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -161,6 +188,15 @@ paths:
       responses:
         "200":
           description: The full milpac profile.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -183,6 +219,15 @@ paths:
       responses:
         "200":
           description: Profiles keyed by milpac relation id.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -209,6 +254,15 @@ paths:
       responses:
         "200":
           description: Lite profiles keyed by milpac relation id.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -233,6 +287,15 @@ paths:
       responses:
         "200":
           description: S1 uniforms profiles keyed by milpac relation id.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -270,6 +333,15 @@ paths:
           description: >-
             Matching lite profiles keyed by milpac relation id; {} when
             nothing matches (200, never 404).
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -290,6 +362,15 @@ paths:
       responses:
         "200":
           description: Rank reference list.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -310,6 +391,15 @@ paths:
       responses:
         "200":
           description: Position group reference tree.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -328,6 +418,15 @@ paths:
       responses:
         "200":
           description: AWOL list.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -432,6 +531,14 @@ paths:
       responses:
         "200":
           description: One page of tickets.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
+              schema:
+                type: string
+                const: max-age=0
           content:
             application/json:
               schema:
@@ -464,6 +571,14 @@ paths:
       responses:
         "200":
           description: The ticket with its first messages.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
+              schema:
+                type: string
+                const: max-age=0
           content:
             application/json:
               schema:
@@ -494,6 +609,14 @@ paths:
       responses:
         "200":
           description: The ticket with its first messages.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
+              schema:
+                type: string
+                const: max-age=0
           content:
             application/json:
               schema:
@@ -543,6 +666,14 @@ paths:
       responses:
         "200":
           description: One page of the message thread.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
+              schema:
+                type: string
+                const: max-age=0
           content:
             application/json:
               schema:
@@ -565,6 +696,14 @@ paths:
       responses:
         "200":
           description: Category reference tree.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: always served live — responses are
+                stale immediately; do not cache.
+              schema:
+                type: string
+                const: max-age=0
           content:
             application/json:
               schema:

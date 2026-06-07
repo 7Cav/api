@@ -733,6 +733,15 @@ func mutateSpec(t *testing.T, find, replace string) (libopenapi.Document, *v3.Do
 func TestSpec_MutationCanary(t *testing.T) {
 	const ranks200Block = `        "200":
           description: Rank reference list.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
           content:
             application/json:
               schema:
@@ -824,6 +833,95 @@ func TestSpec_MutationCanary(t *testing.T) {
 			assert.Contains(t, joined, m.wantOp, "failure must name the operation")
 		})
 	}
+}
+
+// TestSpec_Every200DeclaresCacheControl pins the Cache-Control freshness
+// signal (#131) at the spec layer, both directions:
+//
+//   - every operation's explicitly declared 2xx response MUST declare a
+//     Cache-Control header (deliberately optional — see the required-header
+//     note in the body) whose schema is a string const of the form
+//     "max-age=N" — the spec is where the per-route-group values are
+//     recorded for consumers, and a new operation cannot land without
+//     declaring its freshness bound;
+//   - no non-2xx response (operation-declared, default, or shared
+//     components.responses) may declare one — errors are always served
+//     live, exactly as the retired response cache (200s-only) behaved.
+//
+// The VALUES the new stack actually sends are asserted against these
+// declarations in rest/spec_test.go (observed-equals-declared), so the spec
+// and the registration table cannot drift apart silently. The frozen golden
+// corpus deliberately records no Cache-Control (the old stack sends none —
+// a recorded key would pin the header's absence), which is why this is a
+// structural net plus a live coupling test, not a golden field.
+func TestSpec_Every200DeclaresCacheControl(t *testing.T) {
+	_, model := loadSpec(t)
+
+	cacheControlConst := regexp.MustCompile(`^max-age=[0-9]+$`)
+
+	checkResponse := func(where, code string, r *v3.Response) {
+		if r == nil {
+			return
+		}
+		var hdr *v3.Header
+		if r.Headers != nil {
+			hdr = r.Headers.GetOrZero("Cache-Control")
+		}
+		if !strings.HasPrefix(code, "2") {
+			assert.Nil(t, hdr,
+				"%s: response %s declares Cache-Control — errors are served live, only 2xx carries the freshness signal", where, code)
+			return
+		}
+		require.NotNil(t, hdr,
+			"%s: 2xx response declares no Cache-Control header — every read endpoint records its freshness bound in the spec (#131)", where)
+		// Deliberately NOT required: the validator enforces required response
+		// headers, and the frozen golden corpus (recorded from the old stack,
+		// which sends none — and allowlist-filtered besides) replays against
+		// this document, so required: true breaks TestSpec_GoldenReplay
+		// permanently. The new stack's always-sent-on-200 guarantee is pinned
+		// live instead (rest/cachecontrol_test.go and the observed-equals-
+		// declared coupling in rest/spec_test.go).
+		assert.False(t, hdr.Required,
+			"%s: Cache-Control must stay optional — required: true fails the frozen-corpus replay (goldens record no Cache-Control)", where)
+		require.NotNil(t, hdr.Schema, "%s: Cache-Control header declares no schema", where)
+		s := hdr.Schema.Schema()
+		require.NotNil(t, s, "%s: Cache-Control header schema does not build", where)
+		assert.Equal(t, []string{"string"}, s.Type, "%s: Cache-Control schema must be a string", where)
+		require.NotNil(t, s.Const,
+			"%s: Cache-Control schema must pin its exact value with const — the declaration IS the recorded per-route-group value", where)
+		assert.Regexp(t, cacheControlConst, s.Const.Value,
+			"%s: Cache-Control const must be of the form max-age=N", where)
+	}
+
+	if model.Components != nil {
+		for pair := orderedmap.First(model.Components.Responses); pair != nil; pair = pair.Next() {
+			// Shared components.responses are the error tier (Unauthorized,
+			// Error) — never 2xx, so they must declare no Cache-Control.
+			checkResponse("components.responses."+pair.Key(), "default", pair.Value())
+		}
+	}
+
+	two00s := 0
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		route := pair.Key()
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			opPath := strings.ToUpper(method) + " " + route
+			if op.Responses == nil {
+				continue // absence of responses is the replay loop's failure to report
+			}
+			for rp := orderedmap.First(op.Responses.Codes); rp != nil; rp = rp.Next() {
+				if strings.HasPrefix(rp.Key(), "2") {
+					two00s++
+				}
+				checkResponse(opPath+".responses."+rp.Key(), rp.Key(), rp.Value())
+			}
+			checkResponse(opPath+".responses.default", "default", op.Responses.Default)
+		}
+	}
+	// Non-vacuousness: the surface declares a 2xx on every operation
+	// (TestSpec_EveryOperationHasGolden demands a 2xx golden per operation,
+	// and the replay loop demands the status be declared).
+	assert.GreaterOrEqual(t, two00s, 16, "expected a 2xx declaration per public operation, saw %d", two00s)
 }
 
 // TestSpec_EveryOperationHasGolden is coverage direction A: every operation

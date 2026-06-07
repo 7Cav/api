@@ -55,11 +55,16 @@
 //     req.ParseForm() parse strictly via bindListQuery instead of
 //     r.URL.Query().
 //  3. Register in routes(): handle(mux, "GET /api/v1/...", "<scope>",
-//     handler) — the scope gate is a required argument, not a wrapping
-//     convention. Path parameters via r.PathValue. Wrong-method and unknown
-//     paths are already covered by the mux fallback (405+Allow / JSON 404).
+//     <max-age>, handler) — the scope gate and the route group's
+//     Cache-Control max-age (#131, cachecontrol.go) are required arguments,
+//     not wrapping conventions. Path parameters via r.PathValue.
+//     Wrong-method and unknown paths are already covered by the mux fallback
+//     (405+Allow / JSON 404).
 //  4. Spec operation block in openapi/openapi.yaml (CI-enforced two-way
-//     coverage, contract/spec_test.go).
+//     coverage, contract/spec_test.go) — its 200 response must declare the
+//     Cache-Control const matching the registered max-age (structural guard
+//     in contract/spec_test.go, observed-equals-declared in
+//     rest/spec_test.go).
 //  5. Goldens green: add the route's battery case names to implementedCases
 //     in rest_test.go — the replay harness does the rest.
 //  6. Classify every new case's request path in specRoutes
@@ -119,42 +124,44 @@ func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handl
 func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// --- milpacs (scope: read) -------------------------------------------
-	handle(mux, "GET /api/v1/milpacs/ranks", "read", getAllRanks(ds))
-	handle(mux, "GET /api/v1/milpacs/position/groups", "read", getPositionGroups(ds))
-	handle(mux, "GET /api/v1/milpacs/awol", "read", getAwol(ds))
+	// --- milpacs (scope: read, max-age 600) --------------------------------
+	handle(mux, "GET /api/v1/milpacs/ranks", "read", maxAgeRosterFamily, getAllRanks(ds))
+	handle(mux, "GET /api/v1/milpacs/position/groups", "read", maxAgeRosterFamily, getPositionGroups(ds))
+	handle(mux, "GET /api/v1/milpacs/awol", "read", maxAgeRosterFamily, getAwol(ds))
 	// The "..." wildcard is the legacy gateway's {position_query=**} glob:
 	// multi-segment queries and the bare trailing-slash form (empty query,
 	// handler 400) both route here.
-	handle(mux, "GET /api/v1/milpacs/position/search/{position_query...}", "read", searchByPosition(ds))
+	handle(mux, "GET /api/v1/milpacs/position/search/{position_query...}", "read", maxAgeRosterFamily, searchByPosition(ds))
 	// The slashless form, explicitly: the gateway's ** matched ZERO segments
 	// (httprule OpPushM), so the old stack answered the handler's empty-query
 	// 400 here — without this registration the mux would 307-redirect to the
 	// canonical /search/ instead, a redirect the old stack never sent.
-	handle(mux, "GET /api/v1/milpacs/position/search", "read", searchByPosition(ds))
-	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", getProfileByID(ds))
-	handle(mux, "GET /api/v1/milpacs/profile/username/{username}", "read", getProfileByUsername(ds))
+	handle(mux, "GET /api/v1/milpacs/position/search", "read", maxAgeRosterFamily, searchByPosition(ds))
+	handle(mux, "GET /api/v1/milpacs/profile/id/{user_id}", "read", maxAgeRosterFamily, getProfileByID(ds))
+	handle(mux, "GET /api/v1/milpacs/profile/username/{username}", "read", maxAgeRosterFamily, getProfileByUsername(ds))
 	// Historical path prefix: singular "milpac" on the connected-account
 	// lookups, plural "milpacs" everywhere else. Frozen by the corpus.
-	handle(mux, "GET /api/v1/milpac/discord/{discord_id}", "read", getProfileByDiscordID(ds))
-	handle(mux, "GET /api/v1/milpac/gamertag/{gamertag}", "read", getProfileByGamertag(ds))
+	handle(mux, "GET /api/v1/milpac/discord/{discord_id}", "read", maxAgeRosterFamily, getProfileByDiscordID(ds))
+	handle(mux, "GET /api/v1/milpac/gamertag/{gamertag}", "read", maxAgeRosterFamily, getProfileByGamertag(ds))
 	// Roster routes (#127): one member set, three profile shapes. {roster}
 	// binds the RosterType enum by name OR number (see types.ParseRosterType).
-	handle(mux, "GET /api/v1/roster/{roster}", "read", getRoster(ds))
-	handle(mux, "GET /api/v1/roster/{roster}/lite", "read", getLiteRoster(ds))
-	handle(mux, "GET /api/v1/s1/uniforms/{roster}", "read", getS1UniformsRoster(ds))
+	handle(mux, "GET /api/v1/roster/{roster}", "read", maxAgeRosterFamily, getRoster(ds))
+	handle(mux, "GET /api/v1/roster/{roster}/lite", "read", maxAgeRosterFamily, getLiteRoster(ds))
+	handle(mux, "GET /api/v1/s1/uniforms/{roster}", "read", maxAgeRosterFamily, getS1UniformsRoster(ds))
 
-	// --- tickets (scope: read:tickets) -----------------------------------
+	// --- tickets (scope: read:tickets, max-age 0 — never cached, live) -----
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
 	// golden-pinned by tickets/categories).
-	handle(mux, "GET /api/v1/tickets", "read:tickets", listTickets(ds, rc))
-	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", listCategories(ds, rc))
-	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", getTicketById(ds, rc))
-	handle(mux, "GET /api/v1/tickets/ref/{ticket_ref}", "read:tickets", getTicketByRef(ds, rc))
+	handle(mux, "GET /api/v1/tickets", "read:tickets", maxAgeTickets, listTickets(ds, rc))
+	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", maxAgeTickets, listCategories(ds, rc))
+	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", maxAgeTickets, getTicketById(ds, rc))
+	handle(mux, "GET /api/v1/tickets/ref/{ticket_ref}", "read:tickets", maxAgeTickets, getTicketByRef(ds, rc))
 	// Exact pattern beats ref/{ticket_ref} in ServeMux precedence — see
 	// refMessagesParity for why this path is a frozen 400, not a by-ref
 	// lookup. Deliberately NOT scope-gated: the old 400 fired in the gateway
-	// before the RPC, so RequireScope never ran.
+	// before the RPC, so RequireScope never ran. No cacheControl wrap either:
+	// the shim answers nothing but the frozen 400, and only 200s carry the
+	// freshness signal.
 	mux.Handle("GET /api/v1/tickets/ref/messages", refMessagesParity())
 	mux.Handle(ticketSubPattern, ticketSubResource(ds))
 
@@ -183,14 +190,19 @@ const ticketSubPattern = "GET /api/v1/tickets/{ticket_id}/{sub}"
 // in routes() restores that). This dispatcher then narrows the wildcard
 // itself:
 //
-//   - sub == "messages" → the scope-gated messages handler (requireScope
-//     applied HERE because handle() cannot register this route — the scope
-//     gate stays explicit at the registration site);
+//   - sub == "messages" → the scope-gated, freshness-signaled messages
+//     handler (requireScope AND cacheControl applied HERE because handle()
+//     cannot register this route — the per-route wraps stay explicit at the
+//     registration site);
 //   - anything else → the JSON 404, scope-INDEPENDENT, exactly like the mux
 //     fallback for paths no route pattern matches (the old stack 404s these
 //     without consulting scopes either).
 func ticketSubResource(ds datastores.Datastore) http.Handler {
-	messages := requireScope("read:tickets", listTicketMessages(ds))
+	// requireScope and cacheControl applied HERE because handle() cannot
+	// register this route — the two wraps stay explicit at the registration
+	// site. handle()'s third wrap, routeLabel, is absent (known pre-existing
+	// gap: messages meters under route="").
+	messages := requireScope("read:tickets", cacheControl(maxAgeTickets, listTicketMessages(ds)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !knownTicketSub(r.PathValue("sub")) {
 			notFound(w, r)
@@ -207,16 +219,21 @@ func ticketSubResource(ds datastores.Datastore) http.Handler {
 func knownTicketSub(sub string) bool { return sub == "messages" }
 
 // handle registers one public route: a method-qualified mux pattern, the
-// route's required scope, and its handler. The scope is a required positional
-// argument — gating by wrapping convention is how a scope check gets
+// route's required scope, the route group's Cache-Control max-age (seconds —
+// see cachecontrol.go for the reviewed per-group values), and its handler.
+// Scope and max-age are required positional arguments — gating by wrapping
+// convention is how a scope check (or a route's freshness signal) gets
 // forgotten, and a forgotten check is invisible to every test that uses a
 // fully-scoped key. routeLabel wraps OUTSIDE the scope gate so even a 403
-// meters under the route it was denied on.
-func handle(mux *http.ServeMux, pattern, scope string, h http.Handler) {
+// meters under the route it was denied on; cacheControl wraps INSIDE it so
+// the freshness signal belongs to the route handler's own responses (it
+// stamps 200s only, so the order is semantics-neutral — this one just reads
+// truest).
+func handle(mux *http.ServeMux, pattern, scope string, maxAgeSeconds int, h http.Handler) {
 	if onHandle != nil {
 		onHandle(pattern)
 	}
-	mux.Handle(pattern, routeLabel(requireScope(scope, h)))
+	mux.Handle(pattern, routeLabel(requireScope(scope, cacheControl(maxAgeSeconds, h))))
 }
 
 // onHandle observes each handle() registration. Nil in production; swapped
