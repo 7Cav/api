@@ -9,11 +9,12 @@ package rest_test
 //     parity with the retired cache's consumer-visible freshness bound: its
 //     10-minute update_time poller (cache/manager.go @ 92afba5^, ADR 0003)
 //     meant consumers already tolerated up-to-10-minute staleness there.
-//   - tickets routes: max-age=0 — tickets are a query-variant surface the
-//     retired cache's path-only key could not cache, so its middleware
-//     bypassed the entire /api/v1/tickets prefix wholesale; tickets were
-//     NEVER cached, always served live. max-age=0 is the honest signal for
-//     that (stale immediately).
+//   - tickets routes: max-age=0 — the retired cache's middleware bypassed
+//     the entire /api/v1/tickets prefix wholesale (middleware/cache.go @
+//     92afba5^) — sensible, since tickets are a query-variant surface
+//     (filters, cursors) a path-only key could not have cached correctly —
+//     so tickets were NEVER cached, always served live. max-age=0 is the
+//     honest signal for that (stale immediately).
 //
 // ERROR responses carry NO Cache-Control — also parity: the retired cache
 // stored 200s only ("[CACHE] Non-200 response: %d, not caching"), so errors

@@ -22,13 +22,15 @@ import (
 //     information_schema.tables.update_time over its 9 monitored tables
 //     every 10 minutes and flushed on any change, so consumers already
 //     tolerated up-to-10-minute staleness on every roster-family route.
-//   - maxAgeTickets (0): also parity, not a judgment about the data. Tickets
-//     are a query-variant surface (filters, cursors) that the retired
-//     cache's path-only key could not cache, so its middleware bypassed the
-//     entire /api/v1/tickets prefix wholesale (middleware/cache.go @
-//     92afba5^) — every tickets response was served live. max-age=0 (stale
-//     immediately) is the honest signal for that; anything larger would
-//     invent a freshness bound that never existed.
+//   - maxAgeTickets (0): also parity, not a judgment about the data. The
+//     retired cache's middleware bypassed the entire /api/v1/tickets prefix
+//     wholesale (middleware/cache.go @ 92afba5^) — every tickets response
+//     was served live. The middleware records no rationale for the bypass —
+//     sensible, since tickets are a query-variant surface (filters, cursors)
+//     a path-only key could not have cached correctly — but the bypass
+//     itself is the verifiable fact. max-age=0 (stale immediately) is the
+//     honest signal for never-cached; anything larger would invent a
+//     freshness bound that never existed.
 //
 // The header goes on 200s ONLY — also parity: the retired cache stored 200s
 // and nothing else ("[CACHE] Non-200 response: %d, not caching"), so error
