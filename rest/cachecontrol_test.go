@@ -9,13 +9,15 @@ package rest_test
 //     parity with the retired cache's consumer-visible freshness bound: its
 //     10-minute update_time poller (cache/manager.go @ 92afba5^, ADR 0003)
 //     meant consumers already tolerated up-to-10-minute staleness there.
-//   - tickets routes: max-age=0 — the old cache was keyed by path only, so
-//     the per-user tickets surface was NEVER cached; always served live.
-//     max-age=0 is the honest signal for that (stale immediately).
+//   - tickets routes: max-age=0 — tickets are a query-variant surface the
+//     retired cache's path-only key could not cache, so its middleware
+//     bypassed the entire /api/v1/tickets prefix wholesale; tickets were
+//     NEVER cached, always served live. max-age=0 is the honest signal for
+//     that (stale immediately).
 //
 // ERROR responses carry NO Cache-Control — also parity: the retired cache
-// stored 200s only ("Non-200 response: not caching"), so errors were always
-// recomputed live on both surfaces.
+// stored 200s only ("[CACHE] Non-200 response: %d, not caching"), so errors
+// were always recomputed live on both surfaces.
 //
 // These pins are deliberately NEW-STACK-ONLY (same precedent as the 405 and
 // %2F families): the golden corpus replays against the old stack too, and
@@ -37,12 +39,47 @@ import (
 // the contract harness deliberately filters out: contract.RunCase records only
 // the contractHeaders allowlist (Cache-Control must stay OFF that list — the
 // goldens replay against the old stack, which sends none). After each request
-// *last holds the full header map of the response just served.
+// *last holds the header map AS OF COMMIT TIME — a recorder's live map keeps
+// accepting writes after commit, but a real server drops a header stamped
+// after the first body byte, so cloning the live map after ServeHTTP would
+// pass a wire-invisible late stamp. commitSnapshot is the wire-faithful
+// observer.
 func captureHeader(h http.Handler, last *http.Header) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h.ServeHTTP(w, r)
-		*last = w.Header().Clone()
+		*last = nil
+		h.ServeHTTP(&commitSnapshot{ResponseWriter: w, last: last}, r)
 	})
+}
+
+// commitSnapshot clones the header map at commit time — the first
+// WriteHeader, Write, or flush (FlushError, for symmetry with the production
+// writers) — which is exactly when a real server snapshots headers onto the
+// wire. Anything set afterwards is invisible to clients and must stay
+// invisible to the battery.
+type commitSnapshot struct {
+	http.ResponseWriter
+	last *http.Header
+}
+
+func (w *commitSnapshot) snap() {
+	if *w.last == nil {
+		*w.last = w.Header().Clone()
+	}
+}
+
+func (w *commitSnapshot) WriteHeader(code int) {
+	w.snap()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *commitSnapshot) Write(b []byte) (int, error) {
+	w.snap()
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *commitSnapshot) FlushError() error {
+	w.snap()
+	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 // wantCacheControl is the expected freshness signal for one observed
@@ -66,7 +103,9 @@ func wantCacheControl(status int, path string) string {
 // — the 401 tiers, scope 403s, binding 400s, not-found 404s, injected-outage
 // 500s — carries NO Cache-Control at all. Because the loop derives from
 // implementedCases, a future route's battery cases are covered the moment
-// they are implemented; no second hand-maintained list.
+// they are implemented; no second hand-maintained CASE list (the group split
+// in wantCacheControl is the one hand-maintained predicate, deliberately
+// verbatim from the retired bypass).
 func TestNewStack_CacheControlAcrossBattery(t *testing.T) {
 	var last http.Header
 	h := captureHeader(newStack(t), &last)
@@ -118,20 +157,32 @@ func TestNewStack_RanksCarriesRosterFamilyCacheControl(t *testing.T) {
 
 // HEAD rides every GET pattern (read surface), and its 200 carries the same
 // freshness signal — net/http suppresses the body, not the headers. Observed
-// through a live httptest.Server like the HEAD body-suppression pin.
+// through a live httptest.Server like the HEAD body-suppression pin. One
+// witness per route group: the mechanism is route-agnostic, but the witness
+// is cheap and the groups carry different values.
 func TestNewStack_HEADCarriesCacheControl(t *testing.T) {
 	srv := httptest.NewServer(newStack(t))
 	defer srv.Close()
 
-	req, err := http.NewRequest(http.MethodHead, srv.URL+"/api/v1/milpacs/ranks", nil)
-	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer cav7_readkey")
-	res, err := srv.Client().Do(req)
-	require.NoError(t, err)
-	defer res.Body.Close()
+	cases := []struct {
+		name, path, key, want string
+	}{
+		{"roster_family", "/api/v1/milpacs/ranks", "cav7_readkey", "max-age=600"},
+		{"tickets", "/api/v1/tickets/categories", "cav7_ticketskey", "max-age=0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodHead, srv.URL+tc.path, nil)
+			require.NoError(t, err)
+			req.Header.Set("Authorization", "Bearer "+tc.key)
+			res, err := srv.Client().Do(req)
+			require.NoError(t, err)
+			defer res.Body.Close()
 
-	require.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, "max-age=600", res.Header.Get("Cache-Control"))
+			require.Equal(t, http.StatusOK, res.StatusCode)
+			assert.Equal(t, tc.want, res.Header.Get("Cache-Control"))
+		})
+	}
 }
 
 // A gzipped 200 keeps the freshness signal: the cacheControl writer sits
