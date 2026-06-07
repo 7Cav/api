@@ -190,13 +190,16 @@ func TestGzip_FirstWriteStripsStaleContentLength(t *testing.T) {
 // Content-Encoding: gzip and the wire corrupts in one of two shapes, both
 // ending in client unexpected EOF mid-stream: compression that EXPANDS the
 // payload (the small body here) overruns the declared length — net/http cuts
-// the stream mid-write and only the deferred-Close log ever hears of it —
-// while compression that SHRINKS the payload (the compressible #134
-// file-serving shape) lands the complete stream UNDER the declared length and
-// net/http closes the connection short of it, gz.Close succeeding: fully
-// silent server-side. WriteHeader returns nothing and the handler's writes
-// all return nil in both shapes — so neither a quiet close log nor a large
-// compressible probe makes the strip unnecessary. Latent until #134 mounts
+// the stream mid-write, and for a body this size, buffered whole in flate,
+// only the deferred-Close log ever hears of it (a LARGE incompressible body
+// forces block emission mid-handler and hands the overrun back as
+// ErrContentLength from the handler's own Write) — while compression that
+// SHRINKS the payload (the compressible #134 file-serving shape) lands the
+// complete stream UNDER the declared length and net/http closes the
+// connection short of it, gz.Close succeeding: fully silent server-side.
+// WriteHeader returns nothing, and in both of these flate-buffered shapes
+// the handler's writes all return nil — so neither a quiet close log nor a
+// large compressible probe makes the strip unnecessary. Latent until #134 mounts
 // file-serving handlers (http.FileServer/ServeContent set Content-Length)
 // behind this middleware.
 func TestGzip_WriteHeaderStripsStaleContentLength(t *testing.T) {

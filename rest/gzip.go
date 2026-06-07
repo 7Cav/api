@@ -3,6 +3,7 @@ package rest
 import (
 	"compress/gzip"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -24,29 +25,42 @@ func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			w.Header().Set("Content-Encoding", "gzip")
-			gz := gzip.NewWriter(w)
+			wire := &countingWriter{w: w}
+			gz := gzip.NewWriter(wire)
 			gzw := &gzipResponseWriter{ResponseWriter: w, Writer: gz}
 			defer func() {
 				// A handler that set the stale uncompressed Content-Length and
 				// returned without writing reaches here uncommitted — Close's
 				// direct downstream writes (gzip header + empty-stream trailer)
 				// are then the commit, and they bypass the wrapper's strips
-				// entirely (gz writes to w, not through gzipResponseWriter), so
+				// entirely (gz writes below the wrapper, not through it), so
 				// the stale length must go HERE before they latch it (#175,
 				// fourth variant). On every committed response this Del mutates
 				// a dead map — net/http snapshotted the headers at commit.
 				w.Header().Del("Content-Length")
-				if !gzw.wroteGzip && !bodyAllowedForStatus(gzw.status) {
+				if wire.bytesOut == 0 && !bodyAllowedForStatus(gzw.status) {
 					// The handler committed a bodyless final status (204/304;
-					// 101 rides along — see bodyAllowedForStatus) and nothing
-					// ever went through the gzip layer: no stream started,
-					// none owed — the same reasoning as the no-output hijack
-					// below. gz.Close()'s empty-stream header+trailer writes
-					// would only hit net/http's ErrBodyNotAllowed and make
-					// the close log cry "truncated" on every conditional-GET
-					// 304 (#134 mints them per cache hit), so skip them
-					// entirely. The per-request gzip.Writer holds no
-					// resources beyond memory — not closing it leaks nothing.
+					// 101 rides along — see bodyAllowedForStatus) and net/http
+					// accepted no gzip byte behind it: the wire carries the
+					// bare status, no stream started, none owed. gz.Close()'s
+					// empty-stream header+trailer writes would only hit
+					// net/http's ErrBodyNotAllowed and make the close log cry
+					// "truncated" on every conditional-GET 304 (#134 mints
+					// them per cache hit), so skip them entirely. Keyed on
+					// bytesOut, NOT the attempt latches: a handler that wrote
+					// or flushed against the bodyless status was rejected
+					// wholesale downstream (zero bytes accepted), so the wire
+					// is exactly as clean and the write/flush already handed
+					// ErrBodyNotAllowed back to its caller. A rejected FLUSH
+					// stays quiet — a flush-happy wrapper around ServeContent
+					// lands here once per #134 cache hit — but a body WRITE is
+					// a handler bug worth one accurate line, naming the real
+					// shape and never claiming truncation (#175). The
+					// per-request gzip.Writer holds no resources beyond
+					// memory — not closing it leaks nothing.
+					if gzw.wroteBody {
+						Error.Printf("gzip body written behind bodyless %d for %s %s — net/http rejected every byte; the client received the bare status (handler bug, wire intact)", gzw.status, r.Method, r.URL.Path)
+					}
 					return
 				}
 				if !gzw.wroteGzip && r.Method == http.MethodHead {
@@ -67,33 +81,67 @@ func GzipMiddleware(next http.Handler) http.Handler {
 				}
 				if err := gz.Close(); err != nil {
 					if errors.Is(err, http.ErrHijacked) {
-						if !gzw.wroteGzip {
-							// A deliberate takeover (ResponseController.Hijack
-							// via the wrapper's Unwrap) with NOTHING through the
-							// gzip layer first: no gzip stream ever started, so
-							// neither header nor trailer was owed to the client
-							// — the connection belongs to the handler and the
-							// wire carries exactly what the hijacker wrote.
-							// Logging "truncated" here would cry wolf on every
+						if gzw.status == 0 && wire.bytesOut == 0 {
+							// A pristine takeover (ResponseController.Hijack via
+							// the wrapper's Unwrap): nothing committed — the
+							// status never latched, and gzip bytes, which would
+							// have committed an implicit 200, never got
+							// downstream — so net/http flushed nothing before
+							// handing over the connection and the wire carries
+							// ONLY what the hijacker wrote. No stream was owed;
+							// logging "truncated" here would cry wolf on every
 							// clean hijack — and the close log is the only
 							// server-side signal of the real corruption class,
-							// so it must stay trustworthy (#175).
+							// so it must stay trustworthy (#175). A stray Write
+							// through this dead wrapper after the takeover lands
+							// here too (rejected wholesale, zero bytes accepted,
+							// an intact wire): the stdlib already logs
+							// "response.Write on hijacked connection" for that
+							// misuse.
 							return
 						}
-						// Output DID go through the gzip layer before the
-						// hijack: a stream started (gzip header downstream,
-						// payload in the flate buffer or a flushed prefix on
-						// the wire) and was never terminated — the client got
-						// Content-Encoding: gzip with a body that dies
-						// mid-decode, while every handler call returned nil.
-						// The carve-out's "nothing was owed" premise only holds
-						// for the no-output case above (#175).
+						if wire.bytesOut == 0 {
+							// Committed, then hijacked, with no gzip output. The
+							// status is necessarily body-allowed — the bodyless
+							// arm above peeled off the rest — and net/http's
+							// Hijack FLUSHES committed headers before handing
+							// over the connection (server.go: "if w.wroteHeader
+							// { w.cw.flush() }"): the client holds a flushed
+							// status with Content-Encoding: gzip and chunked
+							// framing that never carries a stream, and anything
+							// the hijacker writes lands AFTER those flushed
+							// bytes, inside that framing. Not a truncation — no
+							// stream ever started — but corruption all the same,
+							// and every handler call returned nil, so this line
+							// is its only witness (#175).
+							Error.Printf("gzip-advertised %d committed and flushed before hijack with no gzip output for %s %s — client received Content-Encoding: gzip with no stream: %v", gzw.status, r.Method, r.URL.Path, err)
+							return
+						}
+						// Gzip output reached net/http before the hijack: a
+						// stream started (header downstream, payload in the
+						// flate buffer or a flushed prefix on the wire) and was
+						// never terminated — the client got Content-Encoding:
+						// gzip with a body that dies mid-decode, while every
+						// handler call returned nil. Keyed on bytesOut: only
+						// bytes net/http actually accepted can have been
+						// truncated (#175).
 						Error.Printf("gzip stream abandoned by hijack after output for %s %s — client received a truncated body: %v", r.Method, r.URL.Path, err)
 						return
 					}
-					// A Close failure means the gzip trailer never reached the
-					// client — a corrupt body behind an already-written status,
-					// invisible to the sentry layer outside this one.
+					if wire.bytesOut == 0 {
+						// A genuine close failure before a single gzip byte was
+						// accepted downstream (the first write rejected — torn
+						// connection, write timeout): the client got no part of
+						// the stream, so "truncated" would overstate it, but the
+						// failure still needs its line — it is invisible
+						// everywhere else (#175).
+						Error.Printf("gzip close failed for %s %s before any gzip byte reached the client: %v", r.Method, r.URL.Path, err)
+						return
+					}
+					// A Close failure after output means the gzip trailer never
+					// reached the client — a corrupt body behind an
+					// already-written status, invisible to the sentry layer
+					// outside this one.
 					Error.Printf("gzip close failed for %s %s (response likely truncated): %v", r.Method, r.URL.Path, err)
 				}
 			}()
@@ -104,17 +152,43 @@ func GzipMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// countingWriter sits between the gzip.Writer and the real ResponseWriter
+// and counts the bytes net/http ACCEPTED from the gzip layer — the n of each
+// delegated Write, error or not. The wrapper's latches record what the
+// handler ATTEMPTED; bytesOut records what got past net/http, and the two
+// diverge exactly when net/http rejects the push wholesale (ErrHijacked
+// after a takeover, ErrBodyNotAllowed behind a 204/304: n is 0 both ways).
+// The middleware's deferred close keys every wire claim — truncated,
+// abandoned, clean — on bytesOut, because only accepted bytes can have been
+// lost (#175).
+type countingWriter struct {
+	w        io.Writer
+	bytesOut int
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.w.Write(p)
+	cw.bytesOut += n
+	return n, err
+}
+
 type gzipResponseWriter struct {
 	http.ResponseWriter
 	Writer *gzip.Writer
-	// wroteGzip latches when gzip-layer output heads downstream: Write (the
-	// gzip.Writer emits its lazy 10-byte header on the first call, even for a
-	// zero-length p) or FlushError (header + sync block). WriteHeader alone
-	// does NOT count — it commits the response but writes no gzip bytes, so a
-	// stream that never started still owes the client nothing (#175). The
-	// middleware's deferred close consults this to tell a clean takeover from
-	// an abandoned stream.
+	// wroteGzip latches when the handler ATTEMPTS gzip-layer output: Write
+	// (the gzip.Writer emits its lazy 10-byte header on the first call, even
+	// for a zero-length p) or FlushError (header + sync block). It records
+	// the attempt only — whether those bytes were ACCEPTED downstream is the
+	// countingWriter's bytesOut, and the deferred close must consult bytesOut
+	// for any claim about the wire (#175). WriteHeader alone does NOT latch —
+	// it commits the response but writes no gzip bytes.
 	wroteGzip bool
+	// wroteBody latches on Write only: the handler claimed to have body
+	// bytes. The deferred close uses it to name the body-behind-bodyless-
+	// status handler bug, where a FLUSH in the same square (the ServeContent-
+	// behind-a-flush-happy-wrapper shape, once per #134 conditional-GET hit)
+	// stays quiet (#175).
+	wroteBody bool
 	// status latches the FIRST committing WriteHeader code (informational
 	// forwards latch nothing, mirroring net/http — see the informational
 	// predicate, #165); 0 when the handler never called WriteHeader — then
@@ -127,7 +201,8 @@ type gzipResponseWriter struct {
 }
 
 func (w *gzipResponseWriter) Write(b []byte) (int, error) {
-	w.wroteGzip = true               // the gzip stream starts here even if b is empty — the lazy header goes downstream
+	w.wroteGzip = true // the gzip stream starts here even if b is empty — the lazy header goes downstream
+	w.wroteBody = true
 	w.Header().Del("Content-Length") // This is necessary as otherwise it will have the uncompressed length
 	return w.Writer.Write(b)
 }
@@ -139,12 +214,15 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // (unexpected EOF mid-stream), different server-side visibility. When
 // compression EXPANDS the payload (small or incompressible bodies) the
 // compressed stream overruns the declared length and net/http cuts it
-// mid-write — the overrun surfaces only at the deferred gz.Close. When
-// compression SHRINKS it (the compressible #134 file-serving shape) the
+// mid-write — for a body that stays buffered in flate the overrun surfaces
+// only at the deferred gz.Close, while a LARGE incompressible body (tens of
+// KB — enough to force block emission mid-handler) hands it back as
+// ErrContentLength from the handler's own Write, which most handlers ignore.
+// When compression SHRINKS it (the compressible #134 file-serving shape) the
 // COMPLETE compressed stream lands under the declared length and net/http
 // closes the connection short of it — gz.Close SUCCEEDS and the server is
-// fully silent, not even the close log. Every handler call returns nil either
-// way, so neither shape makes the strip optional. Same staleness Write and
+// fully silent, not even the close log; handler calls return nil at any
+// size. So neither shape makes the strip optional. Same staleness Write and
 // FlushError strip on their own commit paths. A forwarded informational WriteHeader
 // (1xx minus 101 — rationale on the informational predicate) strips nothing
 // (#165): it commits no response (the stdlib excludes Content-Length from
@@ -161,9 +239,15 @@ func (w *gzipResponseWriter) WriteHeader(code int) {
 				// advertise an encoding that does not exist — on a 304 it
 				// would misdescribe the stored representation the client is
 				// revalidating (stdlib precedent: writeNotModified deletes
-				// Content-Encoding for exactly this). Strip it before the
-				// status commits the header map (#175). On a superfluous
-				// WriteHeader after a real commit this mutates a dead map.
+				// Content-Encoding for exactly this; the precedent is
+				// 304-only — the 204 strip stands on the same reasoning by
+				// analogy, since this middleware never encoded anything).
+				// Strip it before the status commits the header map (#175).
+				// The Del is not scoped to the middleware's own stamp: a
+				// Content-Encoding the HANDLER set goes with it — behind a
+				// bodyless status no encoding claim survives, whoever made
+				// it. On a superfluous WriteHeader after a real commit this
+				// mutates a dead map.
 				w.Header().Del("Content-Encoding")
 			}
 		}
@@ -227,15 +311,18 @@ func (w *gzipResponseWriter) FlushError() error {
 // deliberately supported set (EnableFullDuplex rides along harmlessly).
 // Hijack is NOT like hijacking past other wrappers here: the middleware's
 // deferred gz.Close() still fires after the hijack and fails with
-// http.ErrHijacked — quiet in the close log above ONLY when nothing went
-// through the gzip layer first (#175): a clean takeover owes the client no
-// stream, but a hijack AFTER output abandons a started stream and logs as
-// such — and Content-Encoding: gzip is already on the header map (a hijacker
-// building its raw response from that map would advertise compression it
-// does not perform). Flush can
-// never take this route: the controller's method search prefers the
-// explicit FlushError above, which is what keeps flushes from bypassing the
-// gzip buffer and corrupting the stream.
+// http.ErrHijacked — quiet in the close log above ONLY when the takeover was
+// pristine, nothing committed AND no gzip byte accepted downstream (#175).
+// Only then does the wire carry the hijacker's bytes alone; after a commit,
+// net/http's Hijack flushes the committed headers before handing over the
+// connection, so the hijacker's bytes land AFTER whatever net/http already
+// flushed — inside the committed framing — and the close log says so, as it
+// does for a hijack that abandons a started stream. Content-Encoding: gzip
+// is already on the header map either way (a hijacker building its raw
+// response from that map would advertise compression it does not perform).
+// Flush can never take this route: the controller's method search prefers
+// the explicit FlushError above, which is what keeps flushes from bypassing
+// the gzip buffer and corrupting the stream.
 func (w *gzipResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
