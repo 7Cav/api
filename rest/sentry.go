@@ -284,8 +284,13 @@ func reportServerError(r *http.Request, status int) {
 	})
 }
 
-// commitWriter tracks whether anything reached the wire, so the panic
-// recovery knows whether the contract 500 can still be written. Created by
+// commitWriter tracks whether the FINAL response started on the wire, so the
+// panic recovery knows whether the contract 500 can still be written. A
+// forwarded informational WriteHeader (1xx minus 101 — rationale on the
+// informational predicate) latches nothing (#165): those precede the final
+// response and leave it rewritable, exactly as net/http's own writer treats
+// them (101 is the exception: the stdlib commits on it, and so does this
+// latch). Created by
 // the OUTERMOST middleware but the INNERMOST wrapper in write delegation —
 // writes run gzipWriter → statusWriter → commitWriter → the server's writer
 // (metrics builds its statusWriter around this one). Unwrap keeps
@@ -300,6 +305,15 @@ type commitWriter struct {
 }
 
 func (w *commitWriter) WriteHeader(code int) {
+	if informational(code) {
+		// A non-latching 1xx (the predicate excludes 101) never commits —
+		// forward and keep the latch for the final status (#165; rationale
+		// on the informational predicate): an informational response leaves
+		// the wire rewritable, so the recovery can still honestly write the
+		// contract 500.
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
 	w.committed = true
 	w.ResponseWriter.WriteHeader(code)
 }
@@ -315,14 +329,20 @@ func (w *commitWriter) Write(b []byte) (int, error) {
 // (http.ErrNotSupported surfaces naturally when nothing below can flush).
 //
 // If the delegated flush reports http.ErrNotSupported, no layer below could
-// flush — nothing reached the wire — and the latch this call set is rolled
-// back (#164; mirror of cacheControlWriter's rollback): leaving it would lie
-// committed=true on an untouched wire, sending a later handler panic down the
+// flush — nothing of the final response reached the wire — and the latch this
+// call set is rolled back (#164; mirror of cacheControlWriter's rollback):
+// leaving it would lie committed=true on a wire the final response never
+// touched, sending a later handler panic down the
 // re-panic path (connection abort) instead of the contract 500 the recovery
 // can still honestly write. The latch only rolls back when this call was the
-// first to set it — after a prior Write/WriteHeader bytes are genuinely on
-// the wire and the state keeps. A genuine I/O error also keeps it: by then
-// the delegate really flushed, so the commit happened.
+// first to set it — after a prior Write or a prior latching WriteHeader (a
+// final status, or the 101 carve-out — see the informational predicate) the
+// commit already happened and the state keeps: bytes or the final status
+// line are genuinely out, or the stdlib latched on the 101 itself. (A
+// forwarded non-latching 1xx sets no latch at all (#165); a 101 latches like
+// a final status, so a flush after it correctly finds the latch already set
+// and never rolls back.) A genuine I/O error also
+// keeps it: by then the delegate really flushed, so the commit happened.
 func (w *commitWriter) FlushError() error {
 	latched := !w.committed
 	w.committed = true

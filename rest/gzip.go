@@ -14,6 +14,10 @@ import (
 //
 // Exported because the legacy gateway chain reuses it until cutover deletes
 // that stack.
+//
+// A handler-sent 1xx on a gzip-negotiated request carries Content-Encoding:
+// gzip in the interim response — the stdlib sends the live header map per
+// RFC 8297 — pre-existing, adjacent to the holes tracked in #175.
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
@@ -64,8 +68,8 @@ func (w *gzipResponseWriter) FlushError() error {
 	// uncompressed Content-Length must go here too — same staleness Write
 	// handles above; left in place it truncates the compressed stream. An
 	// explicit WriteHeader still commits it (net/http latches the length at
-	// WriteHeader) — pre-existing hole, reachable on develop without any
-	// flush, tracked separately.
+	// a final WriteHeader) — pre-existing hole, reachable on develop without
+	// any flush, tracked separately.
 	w.Header().Del("Content-Length")
 	if err := w.Writer.Flush(); err != nil {
 		return err

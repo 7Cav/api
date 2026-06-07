@@ -33,7 +33,7 @@ var (
 	requestsTotal = promauto.With(metricsRegistry).NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "api_http_requests_total",
-			Help: "API requests by mux route pattern, method, HTTP status, and validated key id. " +
+			Help: "API requests by mux route pattern, method, final HTTP status, and validated key id. " +
 				"route is empty when the request never reached routing (the auth 401/503 tiers, or a pre-routing panic); " +
 				"\"/\" is the catch-all (unknown path / wrong method / clean-path 307). " +
 				"key_id is empty when no key validated.",
@@ -149,13 +149,22 @@ func metricsMiddleware(next http.Handler) http.Handler {
 
 		// Recording is DEFERRED so a panicking handler still meters —
 		// otherwise panic-per-request reads as a flat error rate while the
-		// service burns (#92). A panicked request that never wrote a response
-		// has sw.code == 0, which status() reports as the implied 200; label
-		// it 500 instead — the conventional label for an aborted request
-		// (net/http recovers the panic itself, logs it, and closes the
-		// connection without writing anything; HTTP/2 resets the stream). A
+		// service burns (#92). A panicked request that never wrote a final
+		// response has sw.code == 0, which status() reports as the implied
+		// 200; label it 500 instead — the conventional label for an aborted
+		// request (net/http recovers the panic itself, logs it, and closes
+		// the connection without writing a response; HTTP/2 resets the
+		// stream). A forwarded non-latching 1xx (the predicate excludes 101)
+		// captures nothing (#165), so a 103-then-panic relabels 500 like any
+		// other unwritten case — but a 101-then-panic keeps the captured 101:
+		// the stdlib committed on it, so that status, not the relabel, is the
+		// honest one. A
 		// handler that already committed a status before panicking keeps that
-		// status — it is on the wire. The panic is re-raised AFTER recording
+		// status — it is on the wire. One gap: statusWriter has no FlushError,
+		// so a flush-committed implied 200 is invisible to this capture — a
+		// 103-then-flush-then-panic meters 500 against a 200 already committed
+		// on the wire. Pre-existing blind spot, tracked in #174.
+		// The panic is re-raised AFTER recording
 		// (the inner defer fires as this deferred func returns) so the sentry
 		// recovery layer outside this one (#132) — and net/http when sentry
 		// is disabled — sees semantics unchanged.
@@ -198,13 +207,25 @@ func methodLabel(m string) string {
 
 // statusWriter captures the response status for the counter's status label.
 // A handler that writes a body without an explicit WriteHeader gets the
-// net/http implied 200.
+// net/http implied 200. Non-latching informational WriteHeaders (1xx minus
+// 101 — rationale on the informational predicate) capture nothing (#165):
+// those are never the final status, so the label belongs to whatever final
+// write follows. A 101 IS captured, like a final status — the stdlib commits
+// on it — so it meters as status="101" (the carve-out's consequence here,
+// symmetric with commitWriter's latch and cacheControlWriter's commit).
 type statusWriter struct {
 	http.ResponseWriter
 	code int
 }
 
 func (w *statusWriter) WriteHeader(code int) {
+	if informational(code) {
+		// A non-latching 1xx (the predicate excludes 101) never commits —
+		// forward and keep the capture for the final status (#165;
+		// rationale on the informational predicate).
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
 	if w.code == 0 {
 		w.code = code
 	}
@@ -225,8 +246,8 @@ func (w *statusWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-// status returns the captured status; a handler that never wrote anything is
-// the implied 200, same as net/http reports it.
+// status returns the captured status; a handler that never wrote a final
+// response is the implied 200, same as net/http reports it.
 func (w *statusWriter) status() int {
 	if w.code == 0 {
 		return http.StatusOK

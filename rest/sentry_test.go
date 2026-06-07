@@ -626,12 +626,13 @@ func TestSentry_PanicAfterFlushRepanicsInsteadOfRewriting(t *testing.T) {
 	require.Len(t, tr.Events(), 1, "the panic is still captured even when the response cannot be rewritten")
 }
 
-// A first flush the delegate fails with http.ErrNotSupported sent NOTHING —
-// no layer below could flush, so the wire is untouched (#164). The committed
-// latch FlushError itself set must roll back (mirror of cacheControlWriter's
-// #163 R1 rollback: latch-was-ours + errors.Is), or a later handler panic
-// takes the committed re-panic path and aborts the connection instead of
-// writing the contract 500 over a genuinely untouched wire.
+// A first flush the delegate fails with http.ErrNotSupported sent NOTHING of
+// the final response — no layer below could flush, so the wire the final
+// response would land on is untouched (#164). The committed latch FlushError
+// itself set must roll back (mirror of cacheControlWriter's #163 R1 rollback:
+// latch-was-ours + errors.Is), or a later handler panic takes the committed
+// re-panic path and aborts the connection instead of writing the contract
+// 500 over a wire the final response genuinely never touched.
 //
 // The reachable trigger is a BASE writer below sentryMiddleware with no flush
 // support: test harnesses today (noFlushWriter here), plausibly a cutover-era
@@ -674,8 +675,11 @@ func TestSentry_PanicAfterFailedFirstFlushWritesContract500(t *testing.T) {
 }
 
 // The latch-was-ours guard on the #164 rollback: a failed flush AFTER a prior
-// Write or WriteHeader must NOT reset the latch — bytes (or the status line)
-// are genuinely on the wire, so the only honest panic semantics left are the
+// Write or a prior latching WriteHeader (a final status, or the 101
+// carve-out — see the informational predicate) must NOT reset the latch —
+// the commit already happened (bytes or the final status line genuinely out,
+// or the stdlib's own 101 latch set), so the only
+// honest panic semantics left are the
 // committed path's re-panic and connection abort. A rollback here would write
 // a contract 500 behind a response already started — the exact corruption
 // commitWriter exists to prevent.
