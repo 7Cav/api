@@ -21,7 +21,11 @@ import (
 // at WriteHeader (a flush implies one), so a stamp set after delegating
 // would be wire-invisible and must fail here. Stamp-ABSENCE assertions read
 // the live rr.Header() map, the stronger check there: not even a
-// post-snapshot late stamp is tolerated.
+// post-snapshot late stamp is tolerated. Exception (#172 battery): when the
+// delegate intercepts the flush without committing to the recorder (no
+// WriteHeader reached it), there is no snapshot yet — the live map is the
+// only valid pre-404 observation. rr.Result() also memoizes, so calling it
+// early would blind a later snapshot read to the cached pre-404 state.
 func TestCacheControlWriter_CommitDecision(t *testing.T) {
 	wrap := func() (*cacheControlWriter, *httptest.ResponseRecorder) {
 		rr := httptest.NewRecorder()
@@ -151,6 +155,11 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 			require.NotErrorIs(t, err, http.ErrNotSupported,
 				"premise: a real flush failure, not the delegate's refusal")
 
+			// LIVE map here (not the Result snapshot): flushErrorWriter
+			// intercepts the flush before any WriteHeader reaches the recorder,
+			// so no snapshot exists yet — and rr.Result() memoizes, so reading
+			// it now would blind the post-404 snapshot check below to the
+			// cached pre-404 state, making the cannot-reopen pin vacuous.
 			assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
 				"a genuinely failed flush really committed — the stamp must keep")
 
