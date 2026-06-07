@@ -466,8 +466,9 @@ func TestSentry_ConcurrentRequestsKeepIsolatedTags(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t)
 
-	var inside sync.WaitGroup
-	inside.Add(2)
+	// inside is swapped per round; the swap is sequenced by wg.Wait, so the
+	// fakes' reads never race the assignment.
+	var inside *sync.WaitGroup
 	gate := func() {
 		inside.Done()
 		inside.Wait() // releases only once BOTH requests are inside the chain
@@ -500,26 +501,45 @@ func TestSentry_ConcurrentRequestsKeepIsolatedTags(t *testing.T) {
 		return rr
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-	var rrA, rrB *httptest.ResponseRecorder
-	go func() { defer wg.Done(); rrA = send("/api/v1/milpacs/ranks", "cav7_key_a") }()
-	go func() { defer wg.Done(); rrB = send("/api/v1/milpacs/profile/id/5", "cav7_key_b") }()
-	wg.Wait()
+	// One interleaved pair is a weak witness: with a shared global hub the
+	// two reports can still serialize into the right tags by scheduling
+	// luck (red-validation caught the CurrentHub()-no-Clone mutation only
+	// at -count=20). Repeating the gated pair raises a single plain run to
+	// ~80% red under that mutation (measured: 4/5 at 300 rounds — the two
+	// reports usually serialize even with both requests gated into the
+	// chain, so per-round contamination odds are low); under -race the
+	// mutation is a straight data race on the shared scope and fails
+	// deterministically. CI runs plain `go test ./...` — the branch gate's
+	// -race pass is the reliable guard until CI grows one.
+	const rounds = 300
+	for i := 0; i < rounds; i++ {
+		inside = &sync.WaitGroup{}
+		inside.Add(2)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		var rrA, rrB *httptest.ResponseRecorder
+		go func() { defer wg.Done(); rrA = send("/api/v1/milpacs/ranks", "cav7_key_a") }()
+		go func() { defer wg.Done(); rrB = send("/api/v1/milpacs/profile/id/5", "cav7_key_b") }()
+		wg.Wait()
 
-	require.Equal(t, http.StatusInternalServerError, rrA.Code)
-	require.Equal(t, http.StatusInternalServerError, rrB.Code)
+		require.Equal(t, http.StatusInternalServerError, rrA.Code)
+		require.Equal(t, http.StatusInternalServerError, rrB.Code)
+	}
 
 	events := tr.Events()
-	require.Len(t, events, 2, "two failing requests = two events")
-	routeByKey := map[string]string{}
-	for _, ev := range events {
-		routeByKey[ev.Tags["key_id"]] = ev.Tags["route"]
-	}
-	assert.Equal(t, map[string]string{
+	require.Len(t, events, 2*rounds, "every failing request = one event")
+	want := map[string]string{
 		"11": "GET /api/v1/milpacs/ranks",
 		"22": "GET /api/v1/milpacs/profile/id/{user_id}",
-	}, routeByKey, "each event must carry its OWN request's key_id and route — per-request hub.Clone() isolation")
+	}
+	seen := map[string]int{}
+	for _, ev := range events {
+		require.Equal(t, want[ev.Tags["key_id"]], ev.Tags["route"],
+			"each event must carry its OWN request's key_id and route — per-request hub.Clone() isolation")
+		seen[ev.Tags["key_id"]]++
+	}
+	assert.Equal(t, map[string]int{"11": rounds, "22": rounds}, seen,
+		"event count per key must match the rounds — no dropped or doubled reports")
 }
 
 // http.ErrAbortHandler is the stdlib's sentinel for a DELIBERATE abort —
