@@ -209,6 +209,74 @@ func validateObserved(t *testing.T, model *v3.Document, rv responses.ResponseBod
 	}
 }
 
+// TestNewStack_CacheControlMatchesSpecDeclaration couples the freshness
+// signal's two recording sites (#131): the per-route-group max-age constants
+// the registration table wires (rest/cachecontrol.go) and the per-operation
+// Cache-Control const the spec declares for consumers (openapi/openapi.yaml).
+// Every implemented battery case observing a 200 must carry EXACTLY the
+// value its spec operation declares — change either side alone and this goes
+// red. The closing loop is the per-endpoint completeness direction: every
+// spec operation declaring the header must be witnessed by at least one
+// observed 200, so "every read endpoint sends Cache-Control" cannot rot
+// route by route. (The spec declaration itself is structurally enforced for
+// every 2xx by contract's TestSpec_Every200DeclaresCacheControl; observation
+// happens via captureHeader because the contract harness deliberately
+// filters Cache-Control out of goldens — the corpus replays the old stack,
+// which sends none.)
+func TestNewStack_CacheControlMatchesSpecDeclaration(t *testing.T) {
+	model := loadSpecModel(t)
+	var last http.Header
+	h := captureHeader(newStack(t), &last)
+
+	declaredFor := func(tmpl string) string {
+		pathItem := model.Paths.PathItems.GetOrZero(tmpl)
+		require.NotNil(t, pathItem, "spec is missing path %s", tmpl)
+		op := pathItem.Get
+		require.NotNil(t, op, "spec path %s has no GET operation", tmpl)
+		resp := op.Responses.Codes.GetOrZero("200")
+		require.NotNil(t, resp, "spec path %s declares no 200", tmpl)
+		require.NotNil(t, resp.Headers, "spec path %s: 200 declares no headers", tmpl)
+		hdr := resp.Headers.GetOrZero("Cache-Control")
+		require.NotNil(t, hdr, "spec path %s: 200 declares no Cache-Control header", tmpl)
+		require.NotNil(t, hdr.Schema, "spec path %s: Cache-Control declares no schema", tmpl)
+		s := hdr.Schema.Schema()
+		require.NotNil(t, s, "spec path %s: Cache-Control schema does not build", tmpl)
+		require.NotNil(t, s.Const, "spec path %s: Cache-Control schema pins no const", tmpl)
+		return s.Const.Value
+	}
+
+	known := map[string]contract.Case{}
+	for _, c := range contract.Cases() {
+		known[c.Name] = c
+	}
+
+	witnessed := map[string]bool{}
+	for _, name := range implementedCases {
+		c, ok := known[name]
+		require.True(t, ok, "implementedCases entry %q names no battery case", name)
+		g, _, err := contract.RunCase(h, c)
+		require.NoError(t, err)
+		if g.Status != http.StatusOK {
+			continue // error responses carry no Cache-Control (pinned in cachecontrol_test.go)
+		}
+		base := c.Path
+		if i := strings.IndexByte(base, '?'); i >= 0 {
+			base = base[:i]
+		}
+		tmpl, ok := specRoutes[base]
+		require.True(t, ok, "path %s missing from specRoutes — classify it (recipe step 6)", base)
+		require.NotEmpty(t, tmpl, "case %s observed a 200 on an off-spec path", name)
+		assert.Equal(t, declaredFor(tmpl), last.Get("Cache-Control"),
+			"case %s: observed Cache-Control diverges from the spec's declared const for %s", name, tmpl)
+		witnessed[tmpl] = true
+	}
+
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		assert.True(t, witnessed[pair.Key()],
+			"spec operation GET %s: declared Cache-Control const witnessed by no observed 200 — every read endpoint must demonstrably send its freshness bound", pair.Key())
+	}
+}
+
 // TestNewStack_SpecValidation replays every implemented battery case against
 // the new stack and validates the OBSERVED response against the spec.
 func TestNewStack_SpecValidation(t *testing.T) {

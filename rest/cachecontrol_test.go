@@ -115,3 +115,69 @@ func TestNewStack_RanksCarriesRosterFamilyCacheControl(t *testing.T) {
 	assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
 		"roster-family 200s carry the retired cache's 10-minute freshness bound (ADR 0003 parity)")
 }
+
+// HEAD rides every GET pattern (read surface), and its 200 carries the same
+// freshness signal — net/http suppresses the body, not the headers. Observed
+// through a live httptest.Server like the HEAD body-suppression pin.
+func TestNewStack_HEADCarriesCacheControl(t *testing.T) {
+	srv := httptest.NewServer(newStack(t))
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodHead, srv.URL+"/api/v1/milpacs/ranks", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	res, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, "max-age=600", res.Header.Get("Cache-Control"))
+}
+
+// A gzipped 200 keeps the freshness signal: the cacheControl writer sits
+// inside the gzip layer and stamps the shared header map before the first
+// body byte commits the response.
+func TestNewStack_GzippedResponseKeepsCacheControl(t *testing.T) {
+	h := newStack(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/milpacs/ranks", nil)
+	req.Header.Set("Authorization", "Bearer cav7_readkey")
+	req.Header.Set("Accept-Encoding", "gzip")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "gzip", rr.Result().Header.Get("Content-Encoding"))
+	assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"))
+}
+
+// The non-route surfaces stay unsignaled — they are not read endpoints, and
+// none of them is a 200: the clean-path 307 (answered in front of the mux),
+// the wrong-method 405, and the {ticket_id}/{sub} dispatcher's 404 for an
+// unknown sub-resource.
+func TestNewStack_NonRouteSurfacesCarryNoCacheControl(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		name       string
+		method     string
+		path       string
+		key        string
+		wantStatus int
+	}{
+		{"clean_path_307", http.MethodGet, "/api/v1/milpacs/position/search/A//B", "cav7_readkey", http.StatusTemporaryRedirect},
+		{"wrong_method_405", http.MethodPost, "/api/v1/milpacs/ranks", "cav7_readkey", http.StatusMethodNotAllowed},
+		{"unknown_ticket_sub_404", http.MethodGet, "/api/v1/tickets/42/bogus", "cav7_ticketskey", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer "+tc.key)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			require.Equal(t, tc.wantStatus, rr.Code)
+			assert.Empty(t, rr.Header().Get("Cache-Control"))
+		})
+	}
+}
