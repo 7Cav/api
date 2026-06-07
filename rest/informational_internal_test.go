@@ -125,6 +125,30 @@ func TestWriterWrappers_Informational1xxDoesNotLatch(t *testing.T) {
 					"the 103 must not burn the commit — the real 200 carries the freshness signal")
 			},
 		},
+		{
+			// gzipResponseWriter's WriteHeader behavior (#175) is a strip, not
+			// a latch, but the decision is the same shape: it belongs to the
+			// latching WriteHeader. A guard drifted to strip on the
+			// informational set instead would leave the stale uncompressed
+			// Content-Length to commit with the real 200, truncating the
+			// compressed stream — the table's shared body read fails on the
+			// transport's transparent gunzip (no Accept-Encoding is set, so
+			// the client auto-negotiates and auto-decodes).
+			name: "gzipResponseWriter strips the stale Content-Length at the real 200",
+			build: func(t *testing.T, next http.Handler) http.Handler {
+				return GzipMiddleware(next)
+			},
+			finish: func(w http.ResponseWriter) {
+				w.Header().Set("Content-Length", "2") // stale: the UNCOMPRESSED length
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("{}"))
+			},
+			assert: func(t *testing.T, res *http.Response, body string) {
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				assert.Equal(t, "{}", body,
+					"the compressed stream must arrive whole and decode to the handler output — the strip belongs to the final WriteHeader, after the forwarded 1xx")
+			},
+		},
 	}
 
 	for _, tc := range cases {

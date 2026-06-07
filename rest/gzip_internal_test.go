@@ -11,9 +11,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,6 +75,67 @@ func TestGzipResponseWriter_FlushOrdersGzipBeforeUnderlying(t *testing.T) {
 	_, err = io.ReadFull(zr, prefix)
 	require.NoError(t, err, "snapshot must contain the complete sync block for the pre-flush writes")
 	assert.Equal(t, part1, string(prefix))
+}
+
+// A deliberate connection takeover must not poison the close log (#175):
+// after a hijack (reachable through the wrapper's Unwrap), the middleware's
+// deferred gz.Close() inevitably fails with http.ErrHijacked — its trailer
+// writes land on a connection the handler now owns — but nothing was
+// truncated: the client got exactly the bytes the hijacker wrote. Logging
+// "response likely truncated" there would cry wolf on every hijack, and that
+// log line is the ONLY server-side signal of the real corruption class (the
+// stale-Content-Length truncations are silent everywhere else), so it has to
+// stay trustworthy. Internal (package rest) for captureErrorLog; a real
+// server because only a real connection can be hijacked.
+func TestGzipMiddleware_HijackKeepsCloseLogQuiet(t *testing.T) {
+	logged := captureErrorLog(t)
+
+	hijackErr := make(chan error, 1) // handler runs on the server goroutine
+	inner := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, bufrw, err := http.NewResponseController(w).Hijack()
+		hijackErr <- err
+		if err != nil {
+			return
+		}
+		// The takeover speaks raw HTTP itself — the gzip layer is out of
+		// the loop from here.
+		_, _ = bufrw.WriteString("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+		_ = bufrw.Flush()
+		_ = conn.Close()
+	}))
+	// On a hijacked connection neither the client response (the hijacker
+	// wrote it directly) nor srv.Close (httptest forgets hijacked conns)
+	// orders the middleware's deferred gz.Close before the assertions — only
+	// the middleware's own return does. closed is that barrier.
+	closed := make(chan struct{})
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner.ServeHTTP(w, r) // the deferred gz.Close runs before this returns
+		close(closed)
+	})
+
+	srv := httptest.NewUnstartedServer(h)
+	// gz.Close's doomed trailer writes make the stdlib log "response.Write on
+	// hijacked connection" — expected here, keep it out of test output.
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
+	srv.Start()
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	require.NoError(t, res.Body.Close())
+
+	require.NoError(t, <-hijackErr, "the hijack must reach the connection through the gzip wrapper")
+	require.Equal(t, http.StatusNoContent, res.StatusCode, "the client must see the hijacker's raw response")
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("middleware never returned after the hijacked request")
+	}
+	assert.NotContains(t, logged.String(), "gzip close failed",
+		"a deliberate hijack is not a truncation — the close log must stay trustworthy")
 }
 
 // noFlushUnderlying is a writer the controller cannot flush — no FlushError,

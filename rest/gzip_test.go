@@ -1,8 +1,10 @@
 package rest_test
 
-// Behavioral tests for the gzip layer's ResponseController support (#167):
-// a handler behind GzipMiddleware must be able to flush mid-body without
-// corrupting the compressed stream. Driven over real server connections
+// Behavioral tests for the gzip layer's ResponseController support (#167)
+// and the stale-Content-Length strips at every header-committing event
+// (#175): a handler behind GzipMiddleware must be able to flush mid-body
+// without corrupting the compressed stream, and a handler-set uncompressed
+// Content-Length must never commit. Driven over real server connections
 // (httptest.NewServer) because a recorder cannot carry these tests:
 // incremental mid-body delivery is unobservable on a recorder (one buffer,
 // no wire timing), the deadline test needs a real connection to set a
@@ -134,6 +136,90 @@ func TestGzip_FlushBeforeFirstWriteStripsStaleContentLength(t *testing.T) {
 	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
 	assert.Equal(t, payload, string(decoded),
 		"body must decompress byte-identically to the handler output")
+}
+
+// An explicit WriteHeader is the other header-committing event (#175):
+// net/http latches Content-Length at the final WriteHeader, so the wrapper
+// must strip a stale uncompressed Content-Length there exactly as Write and
+// FlushError do. Without the strip the stale length commits alongside
+// Content-Encoding: gzip, net/http truncates the longer compressed stream at
+// that length, and the client hits unexpected EOF mid-stream — while
+// WriteHeader returns nothing and the handler's writes all return nil, so
+// the corruption is silent server-side bar the deferred-Close log. Latent
+// until #134 mounts file-serving handlers (http.FileServer/ServeContent set
+// Content-Length) behind this middleware.
+func TestGzip_WriteHeaderStripsStaleContentLength(t *testing.T) {
+	const payload = `{"roster":"live","unit":"7th Cavalry","status":"active"}`
+
+	writeErr := make(chan error, 1) // handler runs on the server goroutine
+	h := rest.GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A length-aware handler (the http.ServeContent shape) sets the
+		// UNCOMPRESSED length, then commits it with an explicit WriteHeader.
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(w, payload)
+		writeErr <- err
+	}))
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+
+	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+	require.NoError(t, <-writeErr, "the handler's write reports success either way — corruption would be silent")
+
+	zr, err := gzip.NewReader(res.Body)
+	require.NoError(t, err, "body must open as a gzip stream")
+	decoded, err := io.ReadAll(zr)
+	require.NoError(t, err,
+		"compressed stream must arrive whole, not truncated at the stale uncompressed Content-Length")
+	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
+	assert.Equal(t, payload, string(decoded),
+		"body must decompress byte-identically to the handler output")
+}
+
+// The fourth header-committing event (#175): a handler that sets the stale
+// uncompressed Content-Length and returns WITHOUT writing never passes
+// through Write, WriteHeader, or FlushError — the middleware's deferred
+// gz.Close() then commits the response with its own direct downstream writes
+// (gzip header + empty-stream trailer, ~23 bytes). With the stale length
+// latched at that commit, net/http closes the connection short of the
+// declared length and the client hits unexpected EOF on a response the
+// handler believes it never started. The middleware must strip the stale
+// length before its own commit too: the client must receive a complete,
+// decodable empty gzip stream.
+func TestGzip_BodylessHandlerStripsStaleContentLength(t *testing.T) {
+	h := rest.GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Sets the length it intended to serve, then bails without a byte —
+		// the not-modified/error-early shape of a length-aware handler.
+		w.Header().Set("Content-Length", "57")
+	}))
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+
+	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+
+	zr, err := gzip.NewReader(res.Body)
+	require.NoError(t, err, "body must open as a gzip stream")
+	decoded, err := io.ReadAll(zr)
+	require.NoError(t, err,
+		"empty gzip stream must arrive whole, not cut short of the stale declared Content-Length")
+	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
+	assert.Empty(t, string(decoded), "the handler wrote nothing — the stream must decode to nothing")
 }
 
 // The other ResponseController verbs (deadline control here, as the witness)
