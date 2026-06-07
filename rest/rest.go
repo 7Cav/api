@@ -55,11 +55,16 @@
 //     req.ParseForm() parse strictly via bindListQuery instead of
 //     r.URL.Query().
 //  3. Register in routes(): handle(mux, "GET /api/v1/...", "<scope>",
-//     handler) — the scope gate is a required argument, not a wrapping
-//     convention. Path parameters via r.PathValue. Wrong-method and unknown
-//     paths are already covered by the mux fallback (405+Allow / JSON 404).
+//     <max-age>, handler) — the scope gate and the route group's
+//     Cache-Control max-age (#131, cachecontrol.go) are required arguments,
+//     not wrapping conventions. Path parameters via r.PathValue.
+//     Wrong-method and unknown paths are already covered by the mux fallback
+//     (405+Allow / JSON 404).
 //  4. Spec operation block in openapi/openapi.yaml (CI-enforced two-way
-//     coverage, contract/spec_test.go).
+//     coverage, contract/spec_test.go) — its 200 response must declare the
+//     Cache-Control const matching the registered max-age (structural guard
+//     in contract/spec_test.go, observed-equals-declared in
+//     rest/spec_test.go).
 //  5. Goldens green: add the route's battery case names to implementedCases
 //     in rest_test.go — the replay harness does the rest.
 //  6. Classify every new case's request path in specRoutes
