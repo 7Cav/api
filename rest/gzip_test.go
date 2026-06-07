@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,6 +119,7 @@ func TestGzip_MidBodyFlushStreamsDecodablePrefix(t *testing.T) {
 
 	flushErr := make(chan error, 1) // handler runs on the server goroutine
 	release := make(chan struct{})  // client → handler: prefix decoded, finish
+	releaseOnce := sync.OnceFunc(func() { close(release) })
 	handlerErr := make(chan error, 2)
 	h := rest.GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := io.WriteString(w, part1)
@@ -130,6 +132,9 @@ func TestGzip_MidBodyFlushStreamsDecodablePrefix(t *testing.T) {
 
 	srv := httptest.NewServer(h)
 	defer srv.Close()
+	// LIFO: unblock the handler before srv.Close waits on it, so a failure
+	// before the deliberate release fails the test instead of hanging it.
+	defer releaseOnce()
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
 	require.NoError(t, err)
@@ -148,7 +153,7 @@ func TestGzip_MidBodyFlushStreamsDecodablePrefix(t *testing.T) {
 	assert.Equal(t, part1, prefix,
 		"flushed prefix must decompress to exactly the pre-flush writes")
 
-	close(release)
+	releaseOnce()
 	rest_, err := io.ReadAll(zr) // EOF verifies the gzip CRC/size trailer
 	require.NoError(t, err, "tail must decode through an intact trailer")
 	require.NoError(t, <-handlerErr, "post-flush write must succeed")
