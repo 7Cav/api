@@ -13,6 +13,12 @@ import (
 // implied-200 path only (writeJSON never calls WriteHeader(200)), so the
 // explicit-WriteHeader branch needs its own witness — without one, neutering
 // the header-set inside the code==200 branch leaves the whole suite green.
+//
+// Stamp-PRESENCE assertions read rr.Result().Header — the recorder snapshots
+// at WriteHeader (a flush implies one), so a stamp set after delegating
+// would be wire-invisible and must fail here. Stamp-ABSENCE assertions read
+// the live rr.Header() map, the stronger check there: not even a
+// post-snapshot late stamp is tolerated.
 func TestCacheControlWriter_CommitDecision(t *testing.T) {
 	wrap := func() (*cacheControlWriter, *httptest.ResponseRecorder) {
 		rr := httptest.NewRecorder()
@@ -22,7 +28,7 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 	t.Run("explicit WriteHeader 200 stamps", func(t *testing.T) {
 		w, rr := wrap()
 		w.WriteHeader(http.StatusOK)
-		assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"))
+		assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"))
 	})
 
 	t.Run("WriteHeader 204 does not stamp", func(t *testing.T) {
@@ -48,7 +54,7 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		w, rr := wrap()
 		_, err := w.Write([]byte("{}"))
 		require.NoError(t, err)
-		assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"))
+		assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"))
 	})
 
 	// The tunnel blind spot (same shape commitWriter closes in sentry.go): a
@@ -59,7 +65,7 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 	t.Run("FlushError before first write stamps", func(t *testing.T) {
 		w, rr := wrap()
 		require.NoError(t, http.NewResponseController(w).Flush())
-		assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
+		assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"),
 			"a flush commits the implied 200 — the freshness signal must already be on it")
 	})
 

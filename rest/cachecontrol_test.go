@@ -44,6 +44,9 @@ import (
 // after the first body byte, so cloning the live map after ServeHTTP would
 // pass a wire-invisible late stamp. commitSnapshot is the wire-faithful
 // observer.
+//
+// The shared *http.Header pointer makes t.Parallel a silent cross-case
+// bleed — replay loops over a captureHeader stack must stay sequential.
 func captureHeader(h http.Handler, last *http.Header) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*last = nil
@@ -151,7 +154,7 @@ func TestNewStack_RanksCarriesRosterFamilyCacheControl(t *testing.T) {
 	h.ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
+	assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"),
 		"roster-family 200s carry the retired cache's 10-minute freshness bound (ADR 0003 parity)")
 }
 
