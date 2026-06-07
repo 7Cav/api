@@ -88,6 +88,16 @@ jobs:
         go test ./...
       env:
         TESTDB_ADDR: 127.0.0.1:3310
+    # The race detector is load-bearing here, not belt-and-braces: the
+    # sentry concurrency guard (rest/sentry_test.go, #132) is
+    # deterministically red under -race against a shared-hub regression
+    # but only probabilistically red without it (~80% per plain run).
+    # More concurrency stacks on this surface from #131 on — the guard
+    # must be live in CI, not just in branch gates.
+    - name: Test with race detector
+      run: go test -race ./...
+      env:
+        TESTDB_ADDR: 127.0.0.1:3310
   lint:
     name: Lint
     runs-on: ubuntu-latest
