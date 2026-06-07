@@ -853,10 +853,10 @@ func TestSpec_MutationCanary(t *testing.T) {
 // corpus deliberately records no Cache-Control (the old stack sends none —
 // a recorded key would pin the header's absence), which is why this is a
 // structural net plus a live coupling test, not a golden field.
-var cacheControlConst = regexp.MustCompile(`^max-age=[0-9]+$`)
-
 func TestSpec_Every200DeclaresCacheControl(t *testing.T) {
 	_, model := loadSpec(t)
+
+	cacheControlConst := regexp.MustCompile(`^max-age=[0-9]+$`)
 
 	checkResponse := func(where, code string, r *v3.Response) {
 		if r == nil {
