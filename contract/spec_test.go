@@ -736,9 +736,9 @@ func TestSpec_MutationCanary(t *testing.T) {
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -838,9 +838,10 @@ func TestSpec_MutationCanary(t *testing.T) {
 // TestSpec_Every200DeclaresCacheControl pins the Cache-Control freshness
 // signal (#131) at the spec layer, both directions:
 //
-//   - every operation's explicitly declared 2xx response MUST carry a
-//     required Cache-Control header whose schema is a string const of the
-//     form "max-age=N" — the spec is where the per-route-group values are
+//   - every operation's explicitly declared 2xx response MUST declare a
+//     Cache-Control header (deliberately optional — see the required-header
+//     note in the body) whose schema is a string const of the form
+//     "max-age=N" — the spec is where the per-route-group values are
 //     recorded for consumers, and a new operation cannot land without
 //     declaring its freshness bound;
 //   - no non-2xx response (operation-declared, default, or shared

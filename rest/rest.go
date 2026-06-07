@@ -149,7 +149,7 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	handle(mux, "GET /api/v1/roster/{roster}/lite", "read", maxAgeRosterFamily, getLiteRoster(ds))
 	handle(mux, "GET /api/v1/s1/uniforms/{roster}", "read", maxAgeRosterFamily, getS1UniformsRoster(ds))
 
-	// --- tickets (scope: read:tickets, max-age 0 — per-user, always live) --
+	// --- tickets (scope: read:tickets, max-age 0 — never cached, live) -----
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
 	// golden-pinned by tickets/categories).
 	handle(mux, "GET /api/v1/tickets", "read:tickets", maxAgeTickets, listTickets(ds, rc))
@@ -190,16 +190,18 @@ const ticketSubPattern = "GET /api/v1/tickets/{ticket_id}/{sub}"
 // in routes() restores that). This dispatcher then narrows the wildcard
 // itself:
 //
-//   - sub == "messages" → the scope-gated messages handler (requireScope
-//     applied HERE because handle() cannot register this route — the scope
-//     gate stays explicit at the registration site);
+//   - sub == "messages" → the scope-gated, freshness-signaled messages
+//     handler (requireScope AND cacheControl applied HERE because handle()
+//     cannot register this route — the per-route wraps stay explicit at the
+//     registration site);
 //   - anything else → the JSON 404, scope-INDEPENDENT, exactly like the mux
 //     fallback for paths no route pattern matches (the old stack 404s these
 //     without consulting scopes either).
 func ticketSubResource(ds datastores.Datastore) http.Handler {
-	// requireScope AND cacheControl applied HERE because handle() cannot
-	// register this route — both per-route wraps stay explicit at the
-	// registration site.
+	// requireScope and cacheControl applied HERE because handle() cannot
+	// register this route — the two wraps stay explicit at the registration
+	// site. handle()'s third wrap, routeLabel, is absent (known pre-existing
+	// gap: messages meters under route="").
 	messages := requireScope("read:tickets", cacheControl(maxAgeTickets, listTicketMessages(ds)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !knownTicketSub(r.PathValue("sub")) {

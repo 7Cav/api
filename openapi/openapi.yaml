@@ -74,9 +74,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -121,9 +121,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -156,9 +156,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -191,9 +191,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -222,9 +222,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -257,9 +257,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -290,9 +290,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -336,9 +336,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -365,9 +365,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -394,9 +394,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -421,9 +421,9 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): consumers may treat this data as
-                fresh for 10 minutes — parity with the retired response
-                cache's update_time poller (ADR 0003).
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
               schema:
                 type: string
                 const: max-age=600
@@ -534,8 +534,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): per-user data, never cached —
-                always served live (max-age=0, stale immediately).
+                Freshness signal: never cached by the retired response
+                cache; always served live (stale immediately).
               schema:
                 type: string
                 const: max-age=0
@@ -574,8 +574,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): per-user data, never cached —
-                always served live (max-age=0, stale immediately).
+                Freshness signal: never cached by the retired response
+                cache; always served live (stale immediately).
               schema:
                 type: string
                 const: max-age=0
@@ -612,8 +612,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): per-user data, never cached —
-                always served live (max-age=0, stale immediately).
+                Freshness signal: never cached by the retired response
+                cache; always served live (stale immediately).
               schema:
                 type: string
                 const: max-age=0
@@ -669,8 +669,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): per-user data, never cached —
-                always served live (max-age=0, stale immediately).
+                Freshness signal: never cached by the retired response
+                cache; always served live (stale immediately).
               schema:
                 type: string
                 const: max-age=0
@@ -699,8 +699,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal (#131): per-user data, never cached —
-                always served live (max-age=0, stale immediately).
+                Freshness signal: never cached by the retired response
+                cache; always served live (stale immediately).
               schema:
                 type: string
                 const: max-age=0
