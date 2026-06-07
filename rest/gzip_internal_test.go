@@ -78,22 +78,20 @@ func TestGzipResponseWriter_FlushOrdersGzipBeforeUnderlying(t *testing.T) {
 	assert.Equal(t, part1, string(prefix))
 }
 
-// A PRISTINE connection takeover — nothing committed, nothing through the
-// gzip layer — must not poison the close log (#175): after a hijack
-// (reachable through the wrapper's Unwrap), the middleware's deferred
+// A no-output connection takeover must not poison the close log (#175): after
+// a hijack (reachable through the wrapper's Unwrap), the middleware's deferred
 // gz.Close() inevitably fails with http.ErrHijacked — its header/trailer
-// writes land on a connection the handler now owns — and because no gzip
-// stream ever started AND net/http had flushed nothing, nothing was
-// truncated: the wire carries the hijacker's bytes alone, exactly as written
-// here. Logging "response likely truncated" there would cry wolf on every
-// clean hijack, and that log line is the ONLY server-side signal of the real
-// corruption class (the stale-Content-Length truncations are silent
-// everywhere else), so it has to stay trustworthy. That premise holds ONLY
-// for the pristine case: handler output before the hijack loses bytes the
-// client was owed, and a COMMITTED status gets flushed by Hijack itself so
-// the hijacker's bytes land behind it — the loud siblings below pin those
-// sides. Internal (package rest) for captureErrorLog; a real server because
-// only a real connection can be hijacked.
+// writes land on a connection the handler now owns. A takeover is not a
+// truncation, so the COARSE ErrHijacked carve-out suppresses the "likely
+// truncated" log; logging it here would cry wolf on every clean hijack, and
+// that line is the ONLY server-side signal of the real corruption class (the
+// stale-Content-Length truncations are silent everywhere else), so it has to
+// stay trustworthy. The carve-out is deliberately coarse — it cannot tell this
+// clean takeover from a hijack that abandoned committed gzip output, so the
+// precise per-shape faithfulness is TRACKED IN #181 (latent until a hijacking
+// handler exists), not pinned here. Internal (package rest) for
+// captureErrorLog; a real server because only a real connection can be
+// hijacked.
 func TestGzipMiddleware_HijackKeepsCloseLogQuiet(t *testing.T) {
 	logged := captureErrorLog(t)
 
@@ -144,284 +142,6 @@ func TestGzipMiddleware_HijackKeepsCloseLogQuiet(t *testing.T) {
 	}
 	assert.NotContains(t, logged.String(), "gzip close failed",
 		"a no-output hijack is not a truncation — the close log must stay trustworthy")
-	assert.NotContains(t, logged.String(), "gzip stream abandoned",
-		"no gzip stream ever started — the abandoned-stream message is for hijacks AFTER output")
-}
-
-// The carve-out's flip side (#175): a hijack AFTER handler output went
-// through the gzip layer is NOT a clean takeover — the handler's bytes sit in
-// the flate buffer (only the 10-byte gzip header went downstream), so the
-// client got Content-Encoding: gzip with a stream that never decodes to the
-// payload. gz.Close() still fails with ErrHijacked, but suppressing the log
-// here would silence REAL corruption; the middleware must log the distinct
-// abandoned-stream message instead. Same barrier pattern as the quiet test
-// above — only the middleware's own return orders the deferred gz.Close.
-func TestGzipMiddleware_HijackAfterWriteLogsAbandonedStream(t *testing.T) {
-	logged := captureErrorLog(t)
-
-	const payload = "written through the gzip wrapper and owed to the client"
-	writeErr := make(chan error, 1) // handler runs on the server goroutine
-	hijackErr := make(chan error, 1)
-	inner := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := io.WriteString(w, payload) // gzip header goes downstream; payload buffers in flate
-		writeErr <- err
-		conn, _, err := http.NewResponseController(w).Hijack()
-		hijackErr <- err
-		if err != nil {
-			return
-		}
-		// The takeover dies without writing — the crash/bug shape. The
-		// handler's payload is gone with the flate buffer.
-		_ = conn.Close()
-	}))
-	closed := make(chan struct{})
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		inner.ServeHTTP(w, r) // the deferred gz.Close runs before this returns
-		close(closed)
-	})
-
-	srv := httptest.NewUnstartedServer(h)
-	// gz.Close's doomed flate-flush writes make the stdlib log "response.Write
-	// on hijacked connection" — expected here, keep it out of test output.
-	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
-	srv.Start()
-	defer srv.Close()
-
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	res, err := srv.Client().Do(req)
-	require.NoError(t, err)
-	raw, readErr := io.ReadAll(res.Body)
-	require.NoError(t, res.Body.Close())
-
-	require.NoError(t, <-writeErr, "the write through the wrapper reports success — corruption is invisible to the handler")
-	require.NoError(t, <-hijackErr, "the hijack must reach the connection through the gzip wrapper")
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("middleware never returned after the hijacked request")
-	}
-
-	// The client-visible truth: Content-Encoding: gzip was committed, but the
-	// payload never arrives decodable — the read or the decode dies first.
-	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
-	if readErr == nil {
-		zr, zerr := gzip.NewReader(bytes.NewReader(raw))
-		if zerr == nil {
-			decoded, derr := io.ReadAll(zr)
-			require.True(t, derr != nil || string(decoded) != payload,
-				"scenario invalid: the payload survived the hijack intact — nothing was abandoned")
-		}
-	}
-
-	assert.Contains(t, logged.String(), "gzip stream abandoned by hijack after output",
-		"output went through the gzip layer before the hijack — the truncation must be named, not carved out")
-}
-
-// The flush sibling of the test above (#175): a flush is the OTHER way a gzip
-// stream starts — FlushError pushes the gzip header and a sync block to the
-// wire before any Write — so a hijack after it abandons a stream the client
-// already began decoding: valid gzip prefix, then unexpected EOF mid-stream.
-// The deferred gz.Close()'s ErrHijacked must log the abandoned-stream message
-// here exactly as it does for the buffered-write shape; a latch that only
-// Write sets would stay quiet.
-func TestGzipMiddleware_HijackAfterFlushLogsAbandonedStream(t *testing.T) {
-	logged := captureErrorLog(t)
-
-	flushErr := make(chan error, 1) // handler runs on the server goroutine
-	hijackErr := make(chan error, 1)
-	inner := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rc := http.NewResponseController(w)
-		// Flush before any write: the gzip header + empty sync block reach the
-		// wire — the stream is started and a trailer is now owed.
-		flushErr <- rc.Flush()
-		conn, _, err := rc.Hijack()
-		hijackErr <- err
-		if err != nil {
-			return
-		}
-		_ = conn.Close() // takeover dies without terminating the stream
-	}))
-	closed := make(chan struct{})
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		inner.ServeHTTP(w, r) // the deferred gz.Close runs before this returns
-		close(closed)
-	})
-
-	srv := httptest.NewUnstartedServer(h)
-	// gz.Close's doomed trailer writes make the stdlib log "response.Write on
-	// hijacked connection" — expected here, keep it out of test output.
-	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
-	srv.Start()
-	defer srv.Close()
-
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	res, err := srv.Client().Do(req)
-	require.NoError(t, err)
-	raw, _ := io.ReadAll(res.Body) // the conn dies mid-body — the read error is incidental
-	require.NoError(t, res.Body.Close())
-
-	require.NoError(t, <-flushErr, "the pre-hijack flush reports success — the stream is started on the wire")
-	require.NoError(t, <-hijackErr, "the hijack must reach the connection through the gzip wrapper")
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("middleware never returned after the hijacked request")
-	}
-
-	// The client-visible truth: the flushed bytes open as a valid gzip stream
-	// (header + sync block reached the wire before the hijack), but the stream
-	// was never terminated — the decode dies short of a trailer.
-	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
-	zr, err := gzip.NewReader(bytes.NewReader(raw))
-	require.NoError(t, err, "the flushed prefix must open as a gzip stream — it reached the wire before the hijack")
-	_, err = io.ReadAll(zr)
-	require.Error(t, err, "scenario invalid: the stream decoded through an intact trailer — nothing was abandoned")
-
-	assert.Contains(t, logged.String(), "gzip stream abandoned by hijack after output",
-		"a flush starts the gzip stream just as a write does — the hijack abandons it, and the log must say so")
-}
-
-// The third hijack shape (#175 round 2): the handler COMMITS a body-allowed
-// status, sends nothing through the gzip layer, then hijacks. This is NOT a
-// pristine takeover: net/http's Hijack flushes already-committed headers
-// before handing over the connection ($GOROOT/src/net/http/server.go,
-// "if w.wroteHeader { w.cw.flush() }"), so the client holds a flushed 200
-// with Content-Encoding: gzip and Transfer-Encoding: chunked — and the
-// takeover (here: one that dies without writing) never supplies the promised
-// stream: zero-byte chunked body, unexpected EOF, nothing to decode. Every
-// handler call returned nil, so the close log is this corruption's only
-// witness — round 1's quiet arm, keyed on "no gzip output" alone, swallowed
-// it. Quiet is only honest when nothing was committed AND nothing went
-// downstream; a committed status demands the loud line pinned here.
-func TestGzipMiddleware_HijackAfterCommitLogsGzipAdvertisedNoStream(t *testing.T) {
-	logged := captureErrorLog(t)
-
-	hijackErr := make(chan error, 1) // handler runs on the server goroutine
-	inner := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK) // commits 200 + Content-Encoding: gzip
-		conn, _, err := http.NewResponseController(w).Hijack()
-		hijackErr <- err
-		if err != nil {
-			return
-		}
-		_ = conn.Close() // takeover dies without writing — the promised stream never starts
-	}))
-	closed := make(chan struct{})
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		inner.ServeHTTP(w, r) // the deferred gz.Close runs before this returns
-		close(closed)
-	})
-
-	srv := httptest.NewUnstartedServer(h)
-	// gz.Close's doomed trailer writes after the hijack make the stdlib log
-	// "response.Write on hijacked connection" — expected here, keep it out of
-	// test output.
-	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
-	srv.Start()
-	defer srv.Close()
-
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	res, err := srv.Client().Do(req)
-	require.NoError(t, err,
-		"the commit was flushed by the hijack — the client receives response headers, not a bare connection close")
-	raw, readErr := io.ReadAll(res.Body)
-	require.NoError(t, res.Body.Close())
-
-	require.NoError(t, <-hijackErr, "the hijack must reach the connection through the gzip wrapper")
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("middleware never returned after the hijacked request")
-	}
-
-	// The wire shape the client is stuck with: a committed, flushed 200
-	// advertising gzip over chunked framing — then nothing, ever.
-	require.Equal(t, http.StatusOK, res.StatusCode)
-	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
-	require.Contains(t, res.TransferEncoding, "chunked")
-	assert.Empty(t, raw, "no gzip byte ever reached the wire")
-	assert.Error(t, readErr,
-		"the chunked body ends without a terminating chunk — unexpected EOF at the client")
-
-	assert.Contains(t, logged.String(), "committed and flushed before hijack",
-		"a flushed gzip-advertising commit with no stream is corruption — round 2's hole was silence here")
-	assert.NotContains(t, logged.String(), "truncated",
-		"no stream ever started, so nothing was truncated — the message must name the actual shape")
-}
-
-// A stray Write through the wrapper AFTER a clean hijack (#175 round 2) must
-// not poison the close log: the takeover was pristine (nothing committed,
-// nothing downstream), the hijacker wrote its complete raw response, and the
-// handler bug's late Write was rejected wholesale by net/http (ErrHijacked,
-// zero bytes accepted) — the client holds the hijacker's intact bytes. Round
-// 1 keyed the abandoned-stream message on the ATTEMPT latch and cried
-// "client received a truncated body" over an intact wire; truncation claims
-// must key on bytes that actually went downstream. The handler bug is not
-// lost: the stdlib itself logs "response.Write on hijacked connection" for
-// exactly this misuse.
-func TestGzipMiddleware_StrayWriteAfterCleanHijackStaysQuiet(t *testing.T) {
-	logged := captureErrorLog(t)
-
-	writeErr := make(chan error, 1) // handler runs on the server goroutine
-	inner := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, bufrw, err := http.NewResponseController(w).Hijack()
-		if err != nil {
-			t.Errorf("hijack: %v", err)
-			return
-		}
-		_, _ = bufrw.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
-		_ = bufrw.Flush()
-		// The bug under test: a write through the (dead) wrapper after the
-		// takeover. net/http rejects it without a byte reaching the wire.
-		_, werr := io.WriteString(w, "stray write after hijack")
-		writeErr <- werr
-		_ = conn.Close()
-	}))
-	closed := make(chan struct{})
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		inner.ServeHTTP(w, r) // the deferred gz.Close runs before this returns
-		close(closed)
-	})
-
-	srv := httptest.NewUnstartedServer(h)
-	// The stray write makes the stdlib log "response.Write on hijacked
-	// connection" — that loudness is the stdlib's job here, keep it out of
-	// test output.
-	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
-	srv.Start()
-	defer srv.Close()
-
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	res, err := srv.Client().Do(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
-	require.NoError(t, res.Body.Close())
-
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("middleware never returned after the hijacked request")
-	}
-
-	// The wire truth: the hijacker's response arrived intact — nothing for
-	// the close log to report.
-	require.Equal(t, http.StatusOK, res.StatusCode)
-	require.Equal(t, "ok", string(body), "the client must hold exactly the hijacker's intact response")
-	require.ErrorIs(t, <-writeErr, http.ErrHijacked,
-		"the stray write is rejected wholesale — its error already names the misuse to the handler")
-	assert.NotContains(t, logged.String(), "truncated",
-		"zero gzip bytes went downstream — a truncation claim over an intact wire is the round-2 false positive")
-	assert.Empty(t, logged.String(),
-		"pristine takeover plus a wholesale-rejected stray write leaves nothing the stdlib has not already logged")
 }
 
 // A committed bodyless status must not detonate the close log (#175, folded
@@ -540,69 +260,16 @@ func TestGzipMiddleware_NotModifiedKeepsCloseLogQuiet(t *testing.T) {
 		"every conditional-GET hit would cry wolf otherwise (#134) — the close log must stay trustworthy")
 }
 
-// A body write behind a committed 204 (#175 round 2): net/http rejects every
-// downstream byte with ErrBodyNotAllowed, so the client receives the bare
-// 204 — the wire is CLEAN. Round 1's close log called it "(response likely
-// truncated)", false on both counts: nothing was sent, so nothing could be
-// truncated. It IS a handler bug — the handler's own Write already returned
-// ErrBodyNotAllowed — so the close log gets one accurate line naming
-// body-behind-bodyless-status, never a truncation claim.
-func TestGzipMiddleware_BodyWriteBehindNoContentLogsHandlerBug(t *testing.T) {
-	logged := captureErrorLog(t)
-
-	writeErr := make(chan error, 1) // handler runs on the server goroutine
-	inner := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-		_, werr := io.WriteString(w, "body on a 204 — a handler bug")
-		writeErr <- werr
-	}))
-	closed := make(chan struct{})
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		inner.ServeHTTP(w, r) // the deferred close path runs before this returns
-		close(closed)
-	})
-
-	srv := httptest.NewServer(h)
-	defer srv.Close()
-
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
-	require.NoError(t, err)
-	req.Header.Set("Accept-Encoding", "gzip")
-	res, err := srv.Client().Do(req)
-	require.NoError(t, err)
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
-	require.NoError(t, res.Body.Close())
-
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("middleware never returned")
-	}
-
-	// The wire is clean: bare 204, no encoding claim, no body.
-	require.Equal(t, http.StatusNoContent, res.StatusCode)
-	assert.Empty(t, res.Header.Get("Content-Encoding"))
-	assert.Empty(t, body)
-	require.ErrorIs(t, <-writeErr, http.ErrBodyNotAllowed,
-		"the handler hears the rejection from its own Write")
-
-	assert.Contains(t, logged.String(), "behind bodyless 204",
-		"a body write behind a bodyless status is a handler bug worth one accurate line")
-	assert.NotContains(t, logged.String(), "truncated",
-		"zero bytes reached the wire — a truncation claim over a clean 204 is round 2's false positive")
-}
-
-// Flush behind a committed 304 — THE #134 conditional-GET shape (#175 round
-// 2): ServeContent writes the 304, then a deferred flush or a flush-happy
-// wrapper calls ResponseController.Flush. FlushError pushes the gzip header +
-// sync block downstream, net/http rejects them behind the bodyless status
-// (ErrBodyNotAllowed, zero bytes accepted), and the rejection sticks in the
-// gzip.Writer — round 1's deferred close then logged "(response likely
+// Flush behind a committed 304 — THE #134 conditional-GET shape (#175):
+// ServeContent writes the 304, then a deferred flush or a flush-happy wrapper
+// calls ResponseController.Flush. FlushError pushes the gzip header + sync
+// block downstream, net/http rejects them behind the bodyless status
+// (ErrBodyNotAllowed), and the rejection sticks in the gzip.Writer — without
+// the bodyless skip the deferred gz.Close would then log "(response likely
 // truncated)" over a perfectly clean 304, once per cache hit at #134 volume.
-// The flush already returned the error to its caller; with no gzip byte
-// downstream and a bodyless status there is nothing to report — the close
-// log must stay quiet.
+// The flush already returned the error to its caller; behind a bodyless status
+// the middleware skips the close writes entirely, so there is nothing to
+// report — the close log must stay quiet, flush or no flush.
 func TestGzipMiddleware_FlushBehindNotModifiedKeepsCloseLogQuiet(t *testing.T) {
 	logged := captureErrorLog(t)
 
