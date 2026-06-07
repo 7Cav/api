@@ -62,7 +62,49 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
 			"a flush commits the implied 200 — the freshness signal must already be on it")
 	})
+
+	// committed==true guard on FlushError: a flush after an explicit non-200
+	// must not stamp — the 500 already decided. Asserted on the LIVE map (not
+	// the Result snapshot): a guard mutant stamps after the recorder's
+	// WriteHeader snapshot, so only the live map can see it.
+	t.Run("FlushError after WriteHeader 500 does not stamp", func(t *testing.T) {
+		w, rr := wrap()
+		w.WriteHeader(http.StatusInternalServerError)
+		require.NoError(t, http.NewResponseController(w).Flush())
+		assert.Empty(t, rr.Header().Get("Cache-Control"))
+	})
+
+	// Regression pin (#163 R1): on a gzip-shaped chain — a plain
+	// ResponseWriter with no FlushError/Flusher/Unwrap, exactly
+	// gzipResponseWriter's shape — the delegated flush ALWAYS returns
+	// http.ErrNotSupported: nothing reached the wire. The stamp and
+	// committed=true must roll back, or a handler reacting to the failed
+	// flush by writing an error commits a non-200 carrying max-age (the leak
+	// class the wrapper's own doc forbids).
+	t.Run("failed flush rolls back stamp before error response", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		w := &cacheControlWriter{ResponseWriter: &noFlushWriter{rr: rr}, value: "max-age=600"}
+
+		err := http.NewResponseController(w).Flush()
+		require.ErrorIs(t, err, http.ErrNotSupported,
+			"a gzip-shaped writer supports no flush — nothing was sent")
+
+		w.WriteHeader(http.StatusNotFound)
+		assert.Empty(t, rr.Result().Header.Get("Cache-Control"),
+			"a 404 after a failed flush must not carry the freshness signal")
+	})
 }
+
+// noFlushWriter hides the recorder's Flusher — gzipResponseWriter's shape
+// (no FlushError, no Flusher, no Unwrap), where a delegated flush always
+// fails with http.ErrNotSupported.
+type noFlushWriter struct {
+	rr *httptest.ResponseRecorder
+}
+
+func (w *noFlushWriter) Header() http.Header         { return w.rr.Header() }
+func (w *noFlushWriter) Write(b []byte) (int, error) { return w.rr.Write(b) }
+func (w *noFlushWriter) WriteHeader(code int)        { w.rr.WriteHeader(code) }
 
 // cacheControl values are registration-time constants; a negative max-age is
 // always a programming error, so it fails at registration, not on the wire.

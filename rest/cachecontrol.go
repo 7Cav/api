@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -95,16 +96,32 @@ func (w *cacheControlWriter) Write(b []byte) (int, error) {
 // flush — a flush before the first write commits the response, so without
 // this the header would miss the wire and the later Write would stamp a dead
 // map. Delegating through a fresh ResponseController keeps the downstream
-// search semantics identical (http.ErrNotSupported surfaces naturally when
-// nothing below can flush).
+// search semantics identical.
+//
+// If the delegated flush reports http.ErrNotSupported, no layer below could
+// flush — nothing reached the wire, so nothing committed — and the stamp
+// this call made is rolled back. Leaving it would poison the live header map
+// and lie committed=true: a handler reacting to the failed flush by writing
+// an error would commit a non-200 carrying max-age, the exact leak class the
+// type doc forbids. Worst on the gzip chain, where gzipResponseWriter
+// supports no flush at all, so the delegated flush ALWAYS fails this way. A
+// genuine I/O error keeps the state: by then net/http has already
+// snapshotted the headers onto the wire, so the commit really happened.
 func (w *cacheControlWriter) FlushError() error {
+	stamped := false
 	if !w.committed {
 		// A flush without an explicit WriteHeader commits the net/http
 		// implied 200 — same decision as the Write path above.
 		w.committed = true
 		w.Header().Set("Cache-Control", w.value)
+		stamped = true
 	}
-	return http.NewResponseController(w.ResponseWriter).Flush()
+	err := http.NewResponseController(w.ResponseWriter).Flush()
+	if stamped && errors.Is(err, http.ErrNotSupported) {
+		w.Header().Del("Cache-Control")
+		w.committed = false
+	}
+	return err
 }
 
 // Unwrap exposes the underlying writer to http.ResponseController so inner
