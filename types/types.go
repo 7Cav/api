@@ -25,5 +25,8 @@
 //     the existing house style (datastores.ApiKeyResult.KeyId).
 //
 // Adding a type: copy the conventions above, then let the route's goldens and
-// the spec replay loop (contract/spec_test.go) prove the wire form.
+// the spec replay loop (contract/spec_test.go) prove the wire form. The tag
+// conventions (explicit lowerCamelCase json name, no omitempty, `,string` iff
+// (u)int64) are enforced mechanically — every struct in the package is walked
+// by the tag lint in wireconventions_test.go, no registration needed.
 package types
