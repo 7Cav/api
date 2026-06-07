@@ -644,7 +644,7 @@ func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.P
 	for _, profile := range profiles {
 		protoProfile, err := ds.generateProtoProfile(profile)
 		if err != nil {
-			return nil, fmt.Errorf("error generating lite profile: %w", err)
+			return nil, fmt.Errorf("error generating profile: %w", err)
 		}
 
 		protoProfile.LastForumPostDate = forumPostDates[profile.UserID]
