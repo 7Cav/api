@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/7cav/api/contract"
+	"github.com/7cav/api/internal/spectest"
 	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
 	"github.com/pb33f/libopenapi"
@@ -238,33 +239,64 @@ func TestNewStack_SpecValidation(t *testing.T) {
 		validateObserved(t, model, rv, "/api/v1/milpacs/ranks", g)
 	})
 
-	// The lite and S1-uniforms outage tier, observed live against per-test
-	// outage fakes — the corpus has no committed outage goldens for these two
-	// operations (TestNewStack_LiteAndS1OutagesAreInternalJSON pins the frozen
-	// bodies), so the spec's explicit "500" on each operation is witnessed
-	// here, per the explicit-status rule.
-	t.Run("lite_roster_500_outage", func(t *testing.T) {
-		oh := rest.New(&fakeDatastore{
-			findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
-		}, &stubReferenceCache{})
-		g, _, err := contract.RunCase(oh, contract.Case{
-			Name: "lite-roster-500", Method: http.MethodGet, Path: "/api/v1/roster/ROSTER_TYPE_COMBAT/lite", Auth: contract.AuthRead,
-			Notes: "synthesized: outage tier observed on the lite-roster operation",
+	// The live-witnessed statuses (spec carve-outs the FROZEN corpus cannot
+	// witness — TestNewStack_LiteAndS1OutagesAreInternalJSON pins the frozen
+	// bodies). The subtests are DRIVEN by the internal/spectest registry the
+	// contract-side carve-out map is built from, with a 1:1 meta-assertion
+	// in both directions, so the coupling is mechanical: deleting a witness
+	// spec here orphans its registry entry and fails below; deleting a
+	// registry entry while the spec still declares the status fails
+	// contract's TestSpec_DeclaredStatusesAreCorpusWitnessed. No editing
+	// order silently suppresses the invariant (ratified at #127 review).
+	type liveWitnessSpec struct {
+		status int
+		path   string
+		ds     *fakeDatastore
+	}
+	liveWitnesses := map[string]liveWitnessSpec{
+		"lite_roster_500_outage": {
+			status: http.StatusInternalServerError,
+			path:   "/api/v1/roster/ROSTER_TYPE_COMBAT/lite",
+			ds: &fakeDatastore{
+				findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
+			},
+		},
+		"s1_uniforms_500_outage": {
+			status: http.StatusInternalServerError,
+			path:   "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT",
+			ds: &fakeDatastore{
+				findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
+			},
+		},
+	}
+	registered := map[string]bool{}
+	for _, lw := range spectest.LiveWitnessedStatuses {
+		require.False(t, registered[lw.Witness],
+			"registry names witness %q twice", lw.Witness)
+		registered[lw.Witness] = true
+		spec, ok := liveWitnesses[lw.Witness]
+		require.True(t, ok,
+			"registry entry %s %s names witness %q but no witness spec exists — an entry without an asserting witness is a spec bug, remove the entry or write the witness",
+			lw.Op, lw.Status, lw.Witness)
+		require.Equal(t, lw.Status, strconv.Itoa(spec.status),
+			"witness %q observes a different status than its registry entry declares", lw.Witness)
+		ran := false
+		t.Run(lw.Witness, func(t *testing.T) {
+			oh := rest.New(spec.ds, &stubReferenceCache{})
+			g, _, err := contract.RunCase(oh, contract.Case{
+				Name: lw.Witness, Method: http.MethodGet, Path: spec.path, Auth: contract.AuthRead,
+				Notes: "synthesized: live witness for the spec's explicit " + lw.Status + " (internal/spectest registry)",
+			})
+			require.NoError(t, err)
+			require.Equal(t, spec.status, g.Status)
+			validateObserved(t, model, rv, spec.path, g)
+			ran = true
 		})
-		require.NoError(t, err)
-		require.Equal(t, http.StatusInternalServerError, g.Status)
-		validateObserved(t, model, rv, "/api/v1/roster/ROSTER_TYPE_COMBAT/lite", g)
-	})
-	t.Run("s1_uniforms_500_outage", func(t *testing.T) {
-		oh := rest.New(&fakeDatastore{
-			findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
-		}, &stubReferenceCache{})
-		g, _, err := contract.RunCase(oh, contract.Case{
-			Name: "s1-uniforms-500", Method: http.MethodGet, Path: "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT", Auth: contract.AuthRead,
-			Notes: "synthesized: outage tier observed on the S1-uniforms operation",
-		})
-		require.NoError(t, err)
-		require.Equal(t, http.StatusInternalServerError, g.Status)
-		validateObserved(t, model, rv, "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT", g)
-	})
+		require.True(t, ran,
+			"witness %q did not run to completion — a skipped witness leaves its carve-out unenforced", lw.Witness)
+	}
+	for name := range liveWitnesses {
+		require.True(t, registered[name],
+			"witness spec %q has no registry entry — remove the spec or register the carve-out in internal/spectest", name)
+	}
 }

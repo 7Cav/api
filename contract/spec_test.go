@@ -36,6 +36,8 @@ import (
 	"github.com/pb33f/libopenapi-validator/paths"
 	"github.com/pb33f/libopenapi-validator/responses"
 	"github.com/pb33f/libopenapi-validator/schema_validation"
+
+	"github.com/7cav/api/internal/spectest"
 )
 
 const specPath = "../openapi/openapi.yaml"
@@ -894,14 +896,22 @@ func TestSpec_EveryOperationHasGolden(t *testing.T) {
 // (rest.New + contract.RunCase, not a replayed golden) and (b) validates
 // the observed response via validateObserved, whose explicit-status rule
 // makes the spec line load-bearing — deleting the declared status turns
-// the witness red. The coupling is asymmetric: deleting the WITNESS fails
-// nothing automatically, so an entry whose witness is removed must be
-// removed with it. An entry without an asserting witness is a spec bug,
-// not a carve-out — carve-outs are never grandfathered.
-var liveWitnessedStatuses = map[string]map[string]bool{
-	"GET /api/v1/roster/{roster}/lite": {"500": true},
-	"GET /api/v1/s1/uniforms/{roster}": {"500": true},
-}
+// the witness red. The reverse direction is enforced mechanically too:
+// the entries live in internal/spectest, and rest/spec_test.go DRIVES its
+// witness subtests from that registry with a 1:1 meta-assertion, so an
+// entry whose witness is deleted fails there instead of relying on review.
+// An entry without an asserting witness is a spec bug, not a carve-out —
+// carve-outs are never grandfathered.
+var liveWitnessedStatuses = func() map[string]map[string]bool {
+	m := map[string]map[string]bool{}
+	for _, lw := range spectest.LiveWitnessedStatuses {
+		if m[lw.Op] == nil {
+			m[lw.Op] = map[string]bool{}
+		}
+		m[lw.Op][lw.Status] = true
+	}
+	return m
+}()
 
 func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
 	_, model := loadSpec(t)
