@@ -17,9 +17,15 @@ import (
 // mask the gap).
 func TestStatusWriter_ResponseControllerTunnelsThroughMetrics(t *testing.T) {
 	flushErr := make(chan error, 1) // handler runs on the server goroutine
-	h := metricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// The probe mounts route-labeled, like every registration in the
+	// assembled stack: the process-global registry's never-routed contract
+	// (route="" ⇒ the auth tiers or a pre-routing panic, #173) is swept
+	// post-run by TestMain, and an unlabeled probe would mint route="" 200.
+	mux := http.NewServeMux()
+	mux.Handle("GET /", routeLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flushErr <- http.NewResponseController(w).Flush()
-	}))
+	})))
+	h := metricsMiddleware(mux)
 
 	srv := httptest.NewServer(h)
 	defer srv.Close()
