@@ -359,7 +359,7 @@ func TestMetrics_WrongMethod405MetersUnderCatchAll(t *testing.T) {
 // The clean-path 307 (ruled, #128 round 3) meters like the fallback's
 // 404s/405s: the bounded catch-all "/" route label — never the raw unclean
 // path (attacker-controlled cardinality) and never "" (the label documented
-// as "auth rejected before routing": this request authenticated, so its key
+// as "never reached routing": this request authenticated, so its key
 // id attributes the redirect). Before the ruling fix the redirect bypassed
 // routeLabel and metered under that empty label.
 func TestMetrics_CleanPath307MetersUnderCatchAllWithKeyId(t *testing.T) {
@@ -449,7 +449,7 @@ func TestMetrics_TicketUnknownSub404MetersUnderSubResourcePattern(t *testing.T) 
 	assert.Equal(t, before+1, after, "unknown-sub 404s must meter under the sub-resource registration pattern")
 }
 
-// The other direct mux.Handle registration — the scope-independent
+// The other direct mux.Handle registration #166 wrapped — the scope-independent
 // /tickets/ref/messages parity shim — is route-labeled too: its frozen 400
 // meters under its literal pattern (a bounded label), never route="". With
 // both #166 registrations wrapped (the catch-all was already labeled),

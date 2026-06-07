@@ -171,7 +171,7 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 
 	// The catch-all is route-labeled like every registered pattern: 404s and
 	// 405s meter under its "/" pattern — bounded, and distinct from "" (a
-	// request auth rejected before routing ever happened).
+	// request that never reached routing).
 	mux.Handle("/", routeLabel(fallback(mux)))
 
 	return mux

@@ -34,7 +34,7 @@ var (
 		prometheus.CounterOpts{
 			Name: "api_http_requests_total",
 			Help: "API requests by mux route pattern, method, HTTP status, and validated key id. " +
-				"route is empty when the request never reached routing (auth 401s, datastore 503); " +
+				"route is empty when the request never reached routing (the auth 401/503 tiers, or a pre-routing panic); " +
 				"\"/\" is the catch-all (unknown path / wrong method / clean-path 307). " +
 				"key_id is empty when no key validated.",
 		},
@@ -45,7 +45,7 @@ var (
 		prometheus.HistogramOpts{
 			Name: "api_http_request_duration_seconds",
 			Help: "API request latency by mux route pattern and method. " +
-				"route is empty when the request never reached routing (auth 401s, datastore 503); " +
+				"route is empty when the request never reached routing (the auth 401/503 tiers, or a pre-routing panic); " +
 				"\"/\" is the catch-all (unknown path / wrong method / clean-path 307). " +
 				"Deliberately NO key_id label (cardinality discipline).",
 			Buckets: prometheus.DefBuckets,
