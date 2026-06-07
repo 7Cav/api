@@ -149,8 +149,10 @@ func metricsMiddleware(next http.Handler) http.Handler {
 
 		// Recording is DEFERRED so a panicking handler still meters —
 		// otherwise panic-per-request reads as a flat error rate while the
-		// service burns (#92). A panicked request that never wrote a response
-		// has sw.code == 0, which status() reports as the implied 200; label
+		// service burns (#92). A panicked request that never wrote a final
+		// response has sw.code == 0 — a forwarded 1xx captures nothing
+		// (#165), so a 103-then-panic relabels 500 like any other unwritten
+		// case — which status() reports as the implied 200; label
 		// it 500 instead — the conventional label for an aborted request
 		// (net/http recovers the panic itself, logs it, and closes the
 		// connection without writing anything; HTTP/2 resets the stream). A
@@ -198,13 +200,21 @@ func methodLabel(m string) string {
 
 // statusWriter captures the response status for the counter's status label.
 // A handler that writes a body without an explicit WriteHeader gets the
-// net/http implied 200.
+// net/http implied 200. Informational (1xx) WriteHeaders capture nothing
+// (#165): a 1xx is never the final status, so the label belongs to whatever
+// final write follows.
 type statusWriter struct {
 	http.ResponseWriter
 	code int
 }
 
 func (w *statusWriter) WriteHeader(code int) {
+	if informational(code) {
+		// 1xx never commits — forward and keep the capture for the final
+		// status (#165; rationale on the informational predicate).
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
 	if w.code == 0 {
 		w.code = code
 	}

@@ -43,6 +43,20 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		assert.Empty(t, rr.Header().Get("Cache-Control"))
 	})
 
+	// An informational WriteHeader latches nothing (#165) — and in particular
+	// must not stamp: a stamp on the 1xx would sit in the live map and leak
+	// onto whatever final status follows, here a 500 (the leak class the type
+	// doc forbids). The stamp-on-the-real-200 direction needs real 1xx wire
+	// machinery the recorder lacks — informational_internal_test.go's shared
+	// table covers it on a real server.
+	t.Run("WriteHeader 103 leaves the decision to the final status", func(t *testing.T) {
+		w, rr := wrap()
+		w.WriteHeader(http.StatusEarlyHints)
+		w.WriteHeader(http.StatusInternalServerError)
+		assert.Empty(t, rr.Header().Get("Cache-Control"),
+			"a 500 after a forwarded 103 must not carry the freshness signal")
+	})
+
 	t.Run("second WriteHeader cannot change the first decision", func(t *testing.T) {
 		w, rr := wrap()
 		w.WriteHeader(http.StatusInternalServerError)

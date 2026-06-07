@@ -284,8 +284,11 @@ func reportServerError(r *http.Request, status int) {
 	})
 }
 
-// commitWriter tracks whether anything reached the wire, so the panic
-// recovery knows whether the contract 500 can still be written. Created by
+// commitWriter tracks whether the FINAL response started on the wire, so the
+// panic recovery knows whether the contract 500 can still be written. A
+// forwarded informational (1xx) WriteHeader latches nothing (#165): a 1xx
+// precedes the final response and leaves it rewritable, exactly as net/http's
+// own writer treats it. Created by
 // the OUTERMOST middleware but the INNERMOST wrapper in write delegation —
 // writes run gzipWriter → statusWriter → commitWriter → the server's writer
 // (metrics builds its statusWriter around this one). Unwrap keeps
@@ -300,6 +303,14 @@ type commitWriter struct {
 }
 
 func (w *commitWriter) WriteHeader(code int) {
+	if informational(code) {
+		// 1xx never commits — forward and keep the latch for the final
+		// status (#165; rationale on the informational predicate): an
+		// informational response leaves the wire rewritable, so the recovery
+		// can still honestly write the contract 500.
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
 	w.committed = true
 	w.ResponseWriter.WriteHeader(code)
 }
@@ -320,9 +331,11 @@ func (w *commitWriter) Write(b []byte) (int, error) {
 // committed=true on an untouched wire, sending a later handler panic down the
 // re-panic path (connection abort) instead of the contract 500 the recovery
 // can still honestly write. The latch only rolls back when this call was the
-// first to set it — after a prior Write/WriteHeader bytes are genuinely on
-// the wire and the state keeps. A genuine I/O error also keeps it: by then
-// the delegate really flushed, so the commit happened.
+// first to set it — after a prior Write or a prior FINAL (non-1xx)
+// WriteHeader, bytes of the final response are genuinely on the wire and the
+// state keeps (a forwarded 1xx sets no latch at all (#165), so it never
+// stands between a first flush and this rollback). A genuine I/O error also
+// keeps it: by then the delegate really flushed, so the commit happened.
 func (w *commitWriter) FlushError() error {
 	latched := !w.committed
 	w.committed = true

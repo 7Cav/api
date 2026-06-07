@@ -59,7 +59,10 @@ func cacheControl(maxAgeSeconds int, next http.Handler) http.Handler {
 }
 
 // cacheControlWriter injects the Cache-Control header at commit time — the
-// first WriteHeader, Write, or flush — and only when the response is a 200.
+// first FINAL (non-1xx) WriteHeader, Write, or flush — and only when the
+// response is a 200. A forwarded informational (1xx) WriteHeader commits
+// nothing (#165): the stamp decision belongs to the final status that
+// follows, exactly as net/http's own writer leaves 1xx uncommitted.
 // Commit time is the only safe moment: setting the header eagerly would leak
 // it onto error responses written later (writeError never clears headers),
 // and onto the contract 500 the sentry layer writes after a handler panic.
@@ -75,6 +78,12 @@ type cacheControlWriter struct {
 }
 
 func (w *cacheControlWriter) WriteHeader(code int) {
+	if informational(code) {
+		// 1xx never commits — forward and keep the stamp decision for the
+		// final status (#165; rationale on the informational predicate).
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
 	if !w.committed {
 		w.committed = true
 		if code == http.StatusOK {
