@@ -15,7 +15,7 @@ import (
 // served those forms as 200s; the ruling ACCEPTS the redirect but not its
 // incidental warts: net/http's RedirectHandler carries a default HTML body —
 // off-contract for an all-JSON API — and bypasses routeLabel, metering under
-// the empty label rest.go documents as "auth rejected before routing".
+// the empty label metrics.go reserves for "never reached routing".
 //
 // cleanPathRedirect answers the mux's would-be clean-path redirect IN FRONT of
 // the mux instead: same detection (the mux's own cleanPath semantics, copied
@@ -62,8 +62,8 @@ func cleanPathRedirect(next http.Handler) http.Handler {
 func writeCleanPathRedirect(w http.ResponseWriter, r *http.Request, cleaned string) {
 	// Meter like the fallback meters its 404s/405s: the bounded catch-all
 	// "/" route label — never the raw unclean path (attacker-controlled
-	// cardinality) and never "" (that label means auth rejected the request
-	// before routing; this request authenticated and reached routing's
+	// cardinality) and never "" (that label means the request never reached
+	// routing; this request authenticated and reached routing's
 	// doorstep). The key-id slot is already filled — auth runs outside this
 	// layer.
 	if labels := metricLabelsFromContext(r.Context()); labels != nil {
