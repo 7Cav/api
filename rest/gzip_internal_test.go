@@ -86,7 +86,11 @@ func (w *noFlushUnderlying) WriteHeader(int)             {}
 
 // When nothing below the gzip layer can flush, the handler must still hear
 // about it loudly: FlushError reports the chain's http.ErrNotSupported
-// instead of swallowing it and pretending the bytes reached the wire.
+// instead of swallowing it and pretending the bytes reached the wire. The
+// failure is NOT a no-op, though — the gzip header and sync block reach the
+// underlying writer before the delegated flush can fail, and this pins that
+// half-state (it is the fact cacheControlWriter's rollback comment scopes
+// itself around).
 func TestGzipResponseWriter_FlushReportsUnsupportedChain(t *testing.T) {
 	flushErr := make(chan error, 1)
 	h := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,8 +99,11 @@ func TestGzipResponseWriter_FlushReportsUnsupportedChain(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
-	h.ServeHTTP(&noFlushUnderlying{header: make(http.Header)}, req)
+	out := &noFlushUnderlying{header: make(http.Header)}
+	h.ServeHTTP(out, req)
 
 	require.ErrorIs(t, <-flushErr, http.ErrNotSupported,
 		"an unflushable chain below gzip must surface, not vanish")
+	assert.Positive(t, out.buf.Len(),
+		"the failed flush is not a no-op: the gzip header and sync block already reached the underlying writer")
 }

@@ -3,16 +3,23 @@ package rest_test
 // Behavioral tests for the gzip layer's ResponseController support (#167):
 // a handler behind GzipMiddleware must be able to flush mid-body without
 // corrupting the compressed stream. Driven over real server connections
-// (httptest.NewServer) — the recorder implements Flusher directly and would
-// mask a dead tunnel — with Accept-Encoding set explicitly so the transport
-// neither injects the header nor transparently decompresses: the tests read
-// the raw gzip bytes exactly as a streaming consumer would.
+// (httptest.NewServer) because a recorder cannot carry these tests:
+// incremental mid-body delivery is unobservable on a recorder (one buffer,
+// no wire timing), the deadline test needs a real connection to set a
+// deadline on, and the dangerous mutant — Unwrap without FlushError —
+// reports flush success on recorder and real connection alike, so only the
+// streaming decode of real wire bytes catches it. Accept-Encoding is set
+// explicitly so the transport neither injects the header nor transparently
+// decompresses: the tests read the raw gzip bytes exactly as a streaming
+// consumer would.
 
 import (
 	"compress/gzip"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -79,11 +86,58 @@ func TestGzip_NonNegotiatedRequestFlushesPlain(t *testing.T) {
 	assert.Equal(t, body, string(got), "body must arrive as written, uncompressed")
 }
 
+// A flush before the first write is a header-committing event, so FlushError
+// must strip a stale uncompressed Content-Length exactly as Write does
+// (rest/gzip.go). If the stale length commits alongside Content-Encoding:
+// gzip, net/http truncates the longer compressed stream at that length and
+// the client hits unexpected EOF mid-stream — while the flush AND the
+// handler's writes all returned nil, so the corruption is invisible to the
+// handler. Regression pin vs pre-#167, where the same handler got a loud
+// ErrNotSupported with zero bytes moved.
+func TestGzip_FlushBeforeFirstWriteStripsStaleContentLength(t *testing.T) {
+	const payload = `{"roster":"live","unit":"7th Cavalry","status":"active"}`
+
+	flushErr := make(chan error, 1) // handler runs on the server goroutine
+	writeErr := make(chan error, 1)
+	h := rest.GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A length-aware handler sets the UNCOMPRESSED length, then flushes
+		// before its first write.
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		flushErr <- http.NewResponseController(w).Flush()
+		_, err := io.WriteString(w, payload)
+		writeErr <- err
+	}))
+
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := srv.Client().Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+
+	require.Equal(t, "gzip", res.Header.Get("Content-Encoding"))
+	require.NoError(t, <-flushErr, "the flush reports success either way — corruption would be silent")
+	require.NoError(t, <-writeErr, "and so does the handler's write")
+
+	zr, err := gzip.NewReader(res.Body)
+	require.NoError(t, err, "body must open as a gzip stream")
+	decoded, err := io.ReadAll(zr)
+	require.NoError(t, err,
+		"compressed stream must arrive whole, not truncated at the stale uncompressed Content-Length")
+	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
+	assert.Equal(t, payload, string(decoded),
+		"body must decompress byte-identically to the handler output")
+}
+
 // The other ResponseController verbs (deadline control here, as the witness)
 // must tunnel through the gzip wrapper via Unwrap — they don't touch the
 // compressed stream, so passing them straight down is safe. Flush is the one
-// verb that must NOT take that route; the explicit FlushError above wins the
-// controller's method search, so Unwrap never opens the corruption path.
+// verb that must NOT take that route; gzipResponseWriter's explicit
+// FlushError (rest/gzip.go) wins the controller's method search, so Unwrap
+// never opens the corruption path.
 func TestGzip_ResponseControllerDeadlinesTunnelThrough(t *testing.T) {
 	deadlineErr := make(chan error, 1) // handler runs on the server goroutine
 	h := rest.GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +190,13 @@ func TestGzip_MidBodyFlushStreamsDecodablePrefix(t *testing.T) {
 	// before the deliberate release fails the test instead of hanging it.
 	defer releaseOnce()
 
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/", nil)
+	// The watchdog and the deferred release only arm once Do returns — a
+	// mutant whose flush delivers nothing before the headers would leave Do
+	// blocked forever. The request deadline turns that hang into a crisp
+	// failure, which in turn lets the deferred release unblock the handler.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/", nil)
 	require.NoError(t, err)
 	req.Header.Set("Accept-Encoding", "gzip")
 	res, err := srv.Client().Do(req)
@@ -154,10 +214,10 @@ func TestGzip_MidBodyFlushStreamsDecodablePrefix(t *testing.T) {
 		"flushed prefix must decompress to exactly the pre-flush writes")
 
 	releaseOnce()
-	rest_, err := io.ReadAll(zr) // EOF verifies the gzip CRC/size trailer
+	tail, err := io.ReadAll(zr) // EOF verifies the gzip CRC/size trailer
 	require.NoError(t, err, "tail must decode through an intact trailer")
 	require.NoError(t, <-handlerErr, "post-flush write must succeed")
-	assert.Equal(t, part1+part2, prefix+string(rest_),
+	assert.Equal(t, part1+part2, prefix+string(tail),
 		"full body must decompress byte-identically to the handler output")
 }
 

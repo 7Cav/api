@@ -54,8 +54,14 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // pushing a stream the client cannot yet decode while the compressed tail
 // sits buffered here. Delegating through a fresh ResponseController keeps the
 // downstream search semantics identical (same pattern as commitWriter and
-// cacheControlWriter).
+// cacheControlWriter). An error return — including ErrNotSupported from an
+// unflushable chain — is NOT a no-op: the gzip header and sync block are
+// already downstream by the time the delegated flush can fail.
 func (w *gzipResponseWriter) FlushError() error {
+	// A flush before the first write commits the headers, so the stale
+	// uncompressed Content-Length must go here too — same staleness Write
+	// handles above; left in place it truncates the compressed stream.
+	w.Header().Del("Content-Length")
 	if err := w.Writer.Flush(); err != nil {
 		return err
 	}
@@ -64,12 +70,14 @@ func (w *gzipResponseWriter) FlushError() error {
 
 // Unwrap exposes the underlying writer to http.ResponseController for the
 // verbs that don't touch the compressed stream — deadline control is the
-// deliberately supported set (EnableFullDuplex rides along harmlessly; a
-// Hijack caller takes the raw connection and owns the consequences, same as
-// hijacking past any wrapper). Flush can never take this route: the
-// controller's method search prefers the explicit FlushError above, which is
-// what keeps flushes from bypassing the gzip buffer and corrupting the
-// stream.
+// deliberately supported set (EnableFullDuplex rides along harmlessly).
+// Hijack is NOT like hijacking past other wrappers here: the middleware's
+// deferred gz.Close() still fires after the hijack and fails with
+// http.ErrHijacked, emitting the misleading "response likely truncated"
+// log, and Content-Encoding: gzip is already on the header map. Flush can
+// never take this route: the controller's method search prefers the
+// explicit FlushError above, which is what keeps flushes from bypassing the
+// gzip buffer and corrupting the stream.
 func (w *gzipResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
