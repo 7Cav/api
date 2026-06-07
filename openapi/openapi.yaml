@@ -313,10 +313,17 @@ paths:
     get:
       operationId: MilpacService_SearchByPosition
       summary: Search for profiles by position title
+      # Empty-result semantics ruled expected at #137: the matcher was
+      # verified correct against the mirror; {} is data-truthful when the
+      # phrase occurs in no current position title.
       description: >-
-        Search for profiles by position title substring (SQL LIKE '%query%'
-        against primary and secondary-capable position titles); returns lite
-        profiles. The live route is a multi-segment glob
+        Search for profiles by position title substring (SQL LIKE '%query%',
+        case-insensitive, unanchored, against primary and secondary-capable
+        position titles); returns lite profiles. An empty profiles map means
+        no current position title contains the query — terms must follow the
+        unit's own billet vocabulary (line leadership is "Section Leader" /
+        "Platoon Leader"; there is no "Squad Leader" billet, so that query
+        returns {}). The live route is a multi-segment glob
         ({position_query=**}, proto/milpacs.proto): slashes inside the query
         and the bare trailing-slash form also reach the handler — forms an
         OpenAPI path template cannot express; this document records the
