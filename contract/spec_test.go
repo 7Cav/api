@@ -36,6 +36,8 @@ import (
 	"github.com/pb33f/libopenapi-validator/paths"
 	"github.com/pb33f/libopenapi-validator/responses"
 	"github.com/pb33f/libopenapi-validator/schema_validation"
+
+	"github.com/7cav/api/internal/spectest"
 )
 
 const specPath = "../openapi/openapi.yaml"
@@ -877,10 +879,40 @@ func TestSpec_EveryOperationHasGolden(t *testing.T) {
 // TestSpec_DeclaredStatusesAreCorpusWitnessed is the inverse of the replay
 // loop's explicit-status rule. The replay loop demands every witnessed
 // status be declared; this test demands every DECLARED status be witnessed,
-// so a fictional response code cannot ride along undetected. The single
-// carve-out is "401": the pre-routing auth tier is uniform across the
-// surface, declared on every operation, but witnessed by goldens on only
-// two of them — every other residual entry is a spec bug.
+// so a fictional response code cannot ride along undetected. Carve-outs:
+// "401" (the pre-routing auth tier is uniform across the surface, declared
+// on every operation, but witnessed by goldens on only two of them) and the
+// enumerated liveWitnessedStatuses — every other residual entry is a spec
+// bug.
+//
+// liveWitnessedStatuses are statuses the new stack demonstrably emits but
+// the FROZEN corpus never recorded: the witness is a live per-test outage
+// observation in rest/spec_test.go (TestNewStack_SpecValidation's
+// lite_roster_500_outage / s1_uniforms_500_outage subtests), with the frozen
+// bodies pinned by TestNewStack_LiteAndS1OutagesAreInternalJSON.
+//
+// CONSTRAINT (ratified at the #127 review): every entry in this map MUST
+// name a live witness that (a) drives the status through the real stack
+// (rest.New + contract.RunCase, not a replayed golden) and (b) validates
+// the observed response via validateObserved, whose explicit-status rule
+// makes the spec line load-bearing — deleting the declared status turns
+// the witness red. The reverse direction is enforced mechanically too:
+// the entries live in internal/spectest, and rest/spec_test.go DRIVES its
+// witness subtests from that registry with a 1:1 meta-assertion, so an
+// entry whose witness is deleted fails there instead of relying on review.
+// An entry without an asserting witness is a spec bug, not a carve-out —
+// carve-outs are never grandfathered.
+var liveWitnessedStatuses = func() map[string]map[string]bool {
+	m := map[string]map[string]bool{}
+	for _, lw := range spectest.LiveWitnessedStatuses {
+		if m[lw.Op] == nil {
+			m[lw.Op] = map[string]bool{}
+		}
+		m[lw.Op][lw.Status] = true
+	}
+	return m
+}()
+
 func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
 	_, model := loadSpec(t)
 
@@ -923,7 +955,12 @@ func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
 					unwitnessed401Ops++
 					continue
 				}
-				t.Errorf("declared status %s on %s is witnessed by no golden — explicit statuses must be corpus-witnessed (401 carve-out only)", code, id)
+				if liveWitnessedStatuses[key][code] {
+					// Witnessed live against the new stack (see the map's
+					// doc comment) — the frozen corpus cannot grow a golden.
+					continue
+				}
+				t.Errorf("declared status %s on %s is witnessed by no golden — explicit statuses must be corpus-witnessed (401 and liveWitnessedStatuses carve-outs only)", code, id)
 			}
 		}
 	}

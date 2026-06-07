@@ -5,9 +5,10 @@ package rest_test
 // response (not the committed golden — contract/spec_test.go already covers
 // those) is validated against the document. Today that means the ranks
 // operation, the four profile lookup operations (id, username, discord,
-// gamertag — #126), and all five tickets operations (#129) — the remaining
-// operations are witnessed once their routes land (#127–#128). Same
-// non-vacuousness rules as the contract replay loop: the observed status
+// gamertag — #126), all five tickets operations (#129), and the three roster
+// operations (full/lite/S1 uniforms — #127) — the remaining operations are
+// witnessed once their routes land (#128). Same non-vacuousness rules as the
+// contract replay loop: the observed status
 // must be EXPLICITLY documented on the operation, a JSON response requires
 // an application/json schema to validate against, and every implemented
 // case's path must be classified in specRoutes — unclassified paths fail,
@@ -25,6 +26,9 @@ import (
 	"testing"
 
 	"github.com/7cav/api/contract"
+	"github.com/7cav/api/internal/spectest"
+	"github.com/7cav/api/proto"
+	"github.com/7cav/api/rest"
 	"github.com/pb33f/libopenapi"
 	"github.com/pb33f/libopenapi-validator/paths"
 	"github.com/pb33f/libopenapi-validator/responses"
@@ -77,7 +81,26 @@ var specRoutes = map[string]string{
 	// Gamertag lookup: happy, not-found.
 	"/api/v1/milpac/gamertag/CavGamer77": "/api/v1/milpac/gamertag/{gamertag}",
 	"/api/v1/milpac/gamertag/GhostTag":   "/api/v1/milpac/gamertag/{gamertag}",
-	"/api/v1/does/not/exist":             "", // off-spec: unknown-path tier (mux behavior, not an operation)
+	// Full roster (#127): both enum path forms (name/number), empty roster,
+	// zero enum under both forms, bogus literal, injected outage — the
+	// unknown-query case's base path is the by-name happy path.
+	"/api/v1/roster/ROSTER_TYPE_COMBAT":      "/api/v1/roster/{roster}",
+	"/api/v1/roster/1":                       "/api/v1/roster/{roster}",
+	"/api/v1/roster/ROSTER_TYPE_RESERVE":     "/api/v1/roster/{roster}",
+	"/api/v1/roster/ROSTER_TYPE_UNSPECIFIED": "/api/v1/roster/{roster}",
+	"/api/v1/roster/0":                       "/api/v1/roster/{roster}",
+	"/api/v1/roster/IMAGINARY_ROSTER":        "/api/v1/roster/{roster}",
+	"/api/v1/roster/ROSTER_TYPE_ARLINGTON":   "/api/v1/roster/{roster}",
+	// Lite roster: name/number forms, empty roster, zero enum.
+	"/api/v1/roster/ROSTER_TYPE_COMBAT/lite":      "/api/v1/roster/{roster}/lite",
+	"/api/v1/roster/1/lite":                       "/api/v1/roster/{roster}/lite",
+	"/api/v1/roster/2/lite":                       "/api/v1/roster/{roster}/lite",
+	"/api/v1/roster/ROSTER_TYPE_UNSPECIFIED/lite": "/api/v1/roster/{roster}/lite",
+	// S1 uniforms: name/number forms, zero enum.
+	"/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT": "/api/v1/s1/uniforms/{roster}",
+	"/api/v1/s1/uniforms/1":                  "/api/v1/s1/uniforms/{roster}",
+	"/api/v1/s1/uniforms/0":                  "/api/v1/s1/uniforms/{roster}",
+	"/api/v1/does/not/exist":                 "", // off-spec: unknown-path tier (mux behavior, not an operation)
 }
 
 func loadSpecModel(t *testing.T) *v3.Document {
@@ -215,4 +238,65 @@ func TestNewStack_SpecValidation(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, g.Status)
 		validateObserved(t, model, rv, "/api/v1/milpacs/ranks", g)
 	})
+
+	// The live-witnessed statuses (spec carve-outs the FROZEN corpus cannot
+	// witness — TestNewStack_LiteAndS1OutagesAreInternalJSON pins the frozen
+	// bodies). The subtests are DRIVEN by the internal/spectest registry the
+	// contract-side carve-out map is built from, with a 1:1 meta-assertion
+	// in both directions, so the coupling is mechanical: deleting a witness
+	// spec here orphans its registry entry and fails below; deleting a
+	// registry entry while the spec still declares the status fails
+	// contract's TestSpec_DeclaredStatusesAreCorpusWitnessed. No editing
+	// order silently suppresses the invariant (ratified at #127 review).
+	type liveWitnessSpec struct {
+		status int
+		path   string
+		ds     *fakeDatastore
+	}
+	liveWitnesses := map[string]liveWitnessSpec{
+		"lite_roster_500_outage": {
+			status: http.StatusInternalServerError,
+			path:   "/api/v1/roster/ROSTER_TYPE_COMBAT/lite",
+			ds: &fakeDatastore{
+				findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
+			},
+		},
+		"s1_uniforms_500_outage": {
+			status: http.StatusInternalServerError,
+			path:   "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT",
+			ds: &fakeDatastore{
+				findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
+			},
+		},
+	}
+	registered := map[string]bool{}
+	for _, lw := range spectest.LiveWitnessedStatuses {
+		require.False(t, registered[lw.Witness],
+			"registry names witness %q twice", lw.Witness)
+		registered[lw.Witness] = true
+		spec, ok := liveWitnesses[lw.Witness]
+		require.True(t, ok,
+			"registry entry %s %s names witness %q but no witness spec exists — an entry without an asserting witness is a spec bug, remove the entry or write the witness",
+			lw.Op, lw.Status, lw.Witness)
+		require.Equal(t, lw.Status, strconv.Itoa(spec.status),
+			"witness %q observes a different status than its registry entry declares", lw.Witness)
+		ran := false
+		t.Run(lw.Witness, func(t *testing.T) {
+			oh := rest.New(spec.ds, &stubReferenceCache{})
+			g, _, err := contract.RunCase(oh, contract.Case{
+				Name: lw.Witness, Method: http.MethodGet, Path: spec.path, Auth: contract.AuthRead,
+				Notes: "synthesized: live witness for the spec's explicit " + lw.Status + " (internal/spectest registry)",
+			})
+			require.NoError(t, err)
+			require.Equal(t, spec.status, g.Status)
+			validateObserved(t, model, rv, spec.path, g)
+			ran = true
+		})
+		require.True(t, ran,
+			"witness %q did not run to completion — a skipped witness leaves its carve-out unenforced", lw.Witness)
+	}
+	for name := range liveWitnesses {
+		require.True(t, registered[name],
+			"witness spec %q has no registry entry — remove the spec or register the carve-out in internal/spectest", name)
+	}
 }

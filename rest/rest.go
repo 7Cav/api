@@ -113,6 +113,11 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	// lookups, plural "milpacs" everywhere else. Frozen by the corpus.
 	handle(mux, "GET /api/v1/milpac/discord/{discord_id}", "read", getProfileByDiscordID(ds))
 	handle(mux, "GET /api/v1/milpac/gamertag/{gamertag}", "read", getProfileByGamertag(ds))
+	// Roster routes (#127): one member set, three profile shapes. {roster}
+	// binds the RosterType enum by name OR number (see types.ParseRosterType).
+	handle(mux, "GET /api/v1/roster/{roster}", "read", getRoster(ds))
+	handle(mux, "GET /api/v1/roster/{roster}/lite", "read", getLiteRoster(ds))
+	handle(mux, "GET /api/v1/s1/uniforms/{roster}", "read", getS1UniformsRoster(ds))
 
 	// --- tickets (scope: read:tickets) -----------------------------------
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
