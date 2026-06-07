@@ -1,9 +1,10 @@
 package rest
 
-// Shared latch coverage for the chain's writer wrappers (#165): an
-// informational (1xx) WriteHeader must pass through to the delegate and latch
-// NOTHING — net/http itself never treats 1xx as a commit (the stdlib response
-// writer leaves its wroteHeader latch false), so a wrapper that latches there
+// Shared latch coverage for the chain's writer wrappers (#165): a
+// non-latching informational WriteHeader (1xx minus 101 — net/http commits
+// on 101; rationale on the informational predicate) must pass through to the
+// delegate and latch NOTHING — the stdlib response writer leaves its
+// wroteHeader latch false for that set, so a wrapper that latches there
 // diverges from the wire: metrics would meter a 103 as the final status, the
 // panic recovery would abort a connection whose response is still rewritable,
 // and Cache-Control would miss the real 200.
@@ -32,16 +33,18 @@ import (
 func TestInformational_Boundaries(t *testing.T) {
 	assert.False(t, informational(99), "99 is not a status class at all")
 	assert.True(t, informational(http.StatusContinue), "100 opens the informational class")
+	assert.False(t, informational(http.StatusSwitchingProtocols),
+		"101 is the stdlib's one latching 1xx — net/http commits on it (no headers may follow a 101), so the wrappers must latch too")
 	assert.True(t, informational(http.StatusEarlyHints), "103 is the one seen in the wild")
 	assert.True(t, informational(199), "199 closes the informational class")
 	assert.False(t, informational(http.StatusOK), "200 is a final status — it must latch")
 }
 
-// TestWriterWrappers_Informational1xxDoesNotLatch drives WriteHeader(103)
-// through each writer wrapper's owning middleware and asserts (a) the 103
-// reaches the wire and (b) the wrapper's latch decision still belongs to the
-// FINAL response — each row finishes the request the way that makes its own
-// latch observable. A new writer wrapper joins this table.
+// TestWriterWrappers_Informational1xxDoesNotLatch drives WriteHeader(100)
+// then WriteHeader(103) through each writer wrapper's owning middleware and
+// asserts (a) both reach the wire and (b) the wrapper's latch decision still
+// belongs to the FINAL response — each row finishes the request the way that
+// makes its own latch observable. A new writer wrapper joins this table.
 func TestWriterWrappers_Informational1xxDoesNotLatch(t *testing.T) {
 	// Counter readings the metrics row shares between build (before) and
 	// assert (after) — rows run sequentially, never in parallel.
@@ -125,7 +128,14 @@ func TestWriterWrappers_Informational1xxDoesNotLatch(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := tc.build(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusEarlyHints) // the shared informational write
+				// The shared informational writes: both class boundaries the
+				// stdlib forwards without latching (100 opens it, 103 is the
+				// one seen in the wild) — so an inlined-range drift in any
+				// one wrapper fails here at wire level, not only in the
+				// predicate unit pin.
+				for _, code := range []int{http.StatusContinue, http.StatusEarlyHints} {
+					w.WriteHeader(code)
+				}
 				tc.finish(w)
 			}))
 			srv := httptest.NewServer(h)
@@ -148,8 +158,8 @@ func TestWriterWrappers_Informational1xxDoesNotLatch(t *testing.T) {
 			require.NoError(t, res.Body.Close())
 			srv.Close() // wait out the handler so deferred recording has run
 
-			require.Equal(t, []int{http.StatusEarlyHints}, got1xx,
-				"the 103 must be forwarded to the wire, not swallowed")
+			require.Equal(t, []int{http.StatusContinue, http.StatusEarlyHints}, got1xx,
+				"both informational writes must be forwarded to the wire, not swallowed")
 			tc.assert(t, res, string(body))
 		})
 	}

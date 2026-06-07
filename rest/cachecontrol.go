@@ -60,9 +60,11 @@ func cacheControl(maxAgeSeconds int, next http.Handler) http.Handler {
 
 // cacheControlWriter injects the Cache-Control header at commit time — the
 // first FINAL (non-1xx) WriteHeader, Write, or flush — and only when the
-// response is a 200. A forwarded informational (1xx) WriteHeader commits
-// nothing (#165): the stamp decision belongs to the final status that
-// follows, exactly as net/http's own writer leaves 1xx uncommitted.
+// response is a 200. A forwarded informational WriteHeader (1xx minus 101 —
+// rationale on the informational predicate) commits nothing (#165): the
+// stamp decision belongs to the final status that follows, exactly as
+// net/http's own writer leaves that set uncommitted (101 latches, there and
+// here).
 // Commit time is the only safe moment: setting the header eagerly would leak
 // it onto error responses written later (writeError never clears headers),
 // and onto the contract 500 the sentry layer writes after a handler panic.
@@ -79,8 +81,9 @@ type cacheControlWriter struct {
 
 func (w *cacheControlWriter) WriteHeader(code int) {
 	if informational(code) {
-		// 1xx never commits — forward and keep the stamp decision for the
-		// final status (#165; rationale on the informational predicate).
+		// A non-latching 1xx (the predicate excludes 101) never commits —
+		// forward and keep the stamp decision for the final status (#165;
+		// rationale on the informational predicate).
 		w.ResponseWriter.WriteHeader(code)
 		return
 	}
@@ -113,8 +116,9 @@ func (w *cacheControlWriter) Write(b []byte) (int, error) {
 // made is rolled back. Leaving it would poison the live header map and lie
 // committed=true: a handler reacting to the failed flush by writing an
 // error would commit a non-200 carrying max-age, the exact leak class the
-// type doc forbids. The rollback's premise — nothing reached the wire, so
-// nothing committed — holds for wrappers that fail before writing anything:
+// type doc forbids. The rollback's premise — nothing of the final response
+// reached the wire, so nothing committed — holds for wrappers that fail
+// before writing anything of it:
 // an unflushable wrapper ABOVE gzip, or a chain with no flushable bottom and
 // no gzip in between. It is NOT universal: gzip's FlushError (rest/gzip.go)
 // pushes its header and sync block downstream BEFORE the delegated flush can
