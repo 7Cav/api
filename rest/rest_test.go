@@ -1264,3 +1264,44 @@ func TestNewStack_EmptyRanksIsEmptyArray(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, `{"ranks":[]}`, strings.TrimSpace(rr.Body.String()))
 }
+
+// --- Encoded path separators (deliberate break, PRD #112, ruled 2026-06-06) -
+//
+// The old gateway percent-decoded paths BEFORE routing, so %2F was
+// routing-equivalent to a literal slash; ServeMux matches the escaped path,
+// so %2F stays data within a single segment and binds into the path value —
+// the non-wildcard sibling of the #128 search-segment break. Pinned
+// new-stack-only: the corpus replays the old stack, which produces the
+// pre-break behavior (roster generic 404, username generic 404, tickets
+// messages 200 via decode-before-route, ticket_id parse stopping at "ref").
+// The unknown-path case rides along as the family's no-divergence member —
+// the fallback 404 is identical on both stacks.
+func TestNewStack_EncodedSlashStaysSegmentData(t *testing.T) {
+	h := newStack(t)
+
+	cases := []struct {
+		path, key  string
+		wantStatus int
+		wantBody   string
+	}{
+		{"/api/v1/roster/combat%2Ffoo", "cav7_readkey", http.StatusBadRequest,
+			`{"code":3,"message":"type mismatch, parameter: roster, error: combat/foo is not valid","details":[]}`},
+		{"/api/v1/milpacs/profile/username/john%2Fdoe", "cav7_readkey", http.StatusNotFound,
+			`{"code":5,"message":"no profile found for username: john/doe","details":[]}`},
+		{"/api/v1/tickets/1%2Fmessages", "cav7_ticketskey", http.StatusBadRequest,
+			`{"code":3,"message":"type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"1/messages\": invalid syntax","details":[]}`},
+		{"/api/v1/tickets/ref%2Fmessages", "cav7_ticketskey", http.StatusBadRequest,
+			`{"code":3,"message":"type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"ref/messages\": invalid syntax","details":[]}`},
+		{"/api/v1/foo%2Fbar", "cav7_readkey", http.StatusNotFound,
+			`{"code":5,"message":"Not Found","details":[]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			rr := positionsGet(t, h, tc.path, tc.key)
+
+			require.Equal(t, tc.wantStatus, rr.Code)
+			assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+			assert.JSONEq(t, tc.wantBody, rr.Body.String())
+		})
+	}
+}
