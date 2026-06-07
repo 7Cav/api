@@ -6,12 +6,16 @@ package rest_test
 // (httptest.NewServer) because a recorder cannot carry these tests:
 // incremental mid-body delivery is unobservable on a recorder (one buffer,
 // no wire timing), the deadline test needs a real connection to set a
-// deadline on, and the dangerous mutant — Unwrap without FlushError —
-// reports flush success on recorder and real connection alike, so only the
-// streaming decode of real wire bytes catches it. Accept-Encoding is set
-// explicitly so the transport neither injects the header nor transparently
-// decompresses: the tests read the raw gzip bytes exactly as a streaming
-// consumer would.
+// deadline on, only net/http enforces a declared Content-Length (a recorder
+// neither truncates nor errors, so the stale-CL corruption is unobservable
+// on it), and the dangerous mutant — Unwrap without FlushError — reports
+// flush success on recorder and real connection alike, so no error
+// assertion can catch it: the catch must come from decoding what was
+// actually delivered at flush time. These tests do that on real wire bytes;
+// gzip_internal_test.go pins the same property crisply against a snapshot
+// fake. Accept-Encoding is set explicitly so the transport neither injects
+// the header nor transparently decompresses: the tests read the raw gzip
+// bytes exactly as a streaming consumer would.
 
 import (
 	"compress/gzip"
@@ -190,10 +194,11 @@ func TestGzip_MidBodyFlushStreamsDecodablePrefix(t *testing.T) {
 	// before the deliberate release fails the test instead of hanging it.
 	defer releaseOnce()
 
-	// The watchdog and the deferred release only arm once Do returns — a
-	// mutant whose flush delivers nothing before the headers would leave Do
-	// blocked forever. The request deadline turns that hang into a crisp
-	// failure, which in turn lets the deferred release unblock the handler.
+	// The watchdog only arms once Do returns, and the deferred release —
+	// registered above, before Do — can only fire once Do returns. A mutant
+	// whose flush delivers nothing before the headers would leave Do blocked
+	// forever; the request deadline turns that hang into a crisp failure,
+	// which in turn lets the deferred release unblock the handler.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/", nil)

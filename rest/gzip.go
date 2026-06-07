@@ -54,13 +54,18 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 // pushing a stream the client cannot yet decode while the compressed tail
 // sits buffered here. Delegating through a fresh ResponseController keeps the
 // downstream search semantics identical (same pattern as commitWriter and
-// cacheControlWriter). An error return — including ErrNotSupported from an
-// unflushable chain — is NOT a no-op: the gzip header and sync block are
-// already downstream by the time the delegated flush can fail.
+// cacheControlWriter). Any error from the delegated flush — including
+// ErrNotSupported from an unflushable chain — is NOT a no-op: the gzip
+// header and sync block are already downstream before it runs. (If gz.Flush
+// itself fails, the failure came from a downstream write — what landed is
+// an arbitrary prefix, possibly nothing.)
 func (w *gzipResponseWriter) FlushError() error {
 	// A flush before the first write commits the headers, so the stale
 	// uncompressed Content-Length must go here too — same staleness Write
-	// handles above; left in place it truncates the compressed stream.
+	// handles above; left in place it truncates the compressed stream. An
+	// explicit WriteHeader still commits it (net/http latches the length at
+	// WriteHeader) — pre-existing hole, reachable on develop without any
+	// flush, tracked separately.
 	w.Header().Del("Content-Length")
 	if err := w.Writer.Flush(); err != nil {
 		return err

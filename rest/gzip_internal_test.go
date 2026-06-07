@@ -43,8 +43,10 @@ func (w *flushSnapshotWriter) Flush() {
 // writer BEFORE flushing the underlying chain — in that order the bytes on
 // the wire at flush time are a valid gzip stream prefix decoding to exactly
 // the pre-flush writes. A mutant that skips the gzip flush (the corruption a
-// bare Unwrap would institutionalize) leaves the snapshot empty; one that
-// reorders leaves the sync block out of the snapshot. Both fail the decode.
+// bare Unwrap would institutionalize) leaves the snapshot holding only the
+// 10-byte gzip header from the handler's first Write — the decode fails at
+// io.ReadFull, not gzip.NewReader; one that reorders leaves the sync block
+// out of the snapshot. Both fail the decode.
 func TestGzipResponseWriter_FlushOrdersGzipBeforeUnderlying(t *testing.T) {
 	const part1 = "written before the flush"
 
@@ -90,20 +92,31 @@ func (w *noFlushUnderlying) WriteHeader(int)             {}
 // failure is NOT a no-op, though — the gzip header and sync block reach the
 // underlying writer before the delegated flush can fail, and this pins that
 // half-state (it is the fact cacheControlWriter's rollback comment scopes
-// itself around).
+// itself around). The underlying buffer is snapshotted INSIDE the handler,
+// the moment the flush returns: once ServeHTTP returns, the middleware's
+// deferred gz.Close() writes the gzip header and trailer into the buffer
+// regardless of what FlushError did, so any post-return assertion on the
+// buffer is vacuous — a probe-first FlushError that pushes nothing before
+// failing would pass it.
 func TestGzipResponseWriter_FlushReportsUnsupportedChain(t *testing.T) {
+	out := &noFlushUnderlying{header: make(http.Header)}
 	flushErr := make(chan error, 1)
+	atFlush := make(chan []byte, 1) // out.buf contents the moment FlushError returns
 	h := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		flushErr <- http.NewResponseController(w).Flush()
+		err := http.NewResponseController(w).Flush()
+		atFlush <- append([]byte(nil), out.buf.Bytes()...)
+		flushErr <- err
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
-	out := &noFlushUnderlying{header: make(http.Header)}
 	h.ServeHTTP(out, req)
 
 	require.ErrorIs(t, <-flushErr, http.ErrNotSupported,
 		"an unflushable chain below gzip must surface, not vanish")
-	assert.Positive(t, out.buf.Len(),
-		"the failed flush is not a no-op: the gzip header and sync block already reached the underlying writer")
+	downstream := <-atFlush
+	require.GreaterOrEqual(t, len(downstream), 15,
+		"the failed flush is not a no-op: the 10-byte gzip header and 5-byte sync block must already be downstream when FlushError returns")
+	assert.Equal(t, []byte{0x1f, 0x8b}, downstream[:2],
+		"bytes downstream at flush-failure time must start with the gzip magic")
 }
