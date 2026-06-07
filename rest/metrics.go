@@ -35,7 +35,8 @@ var (
 			Name: "api_http_requests_total",
 			Help: "API requests by mux route pattern, method, HTTP status, and validated key id. " +
 				"route is empty when the request never reached routing (auth 401s, datastore 503); " +
-				"\"/\" is the catch-all (unknown path / wrong method). key_id is empty when no key validated.",
+				"\"/\" is the catch-all (unknown path / wrong method / clean-path 307). " +
+				"key_id is empty when no key validated.",
 		},
 		[]string{"route", "method", "status", "key_id"},
 	)
@@ -45,7 +46,7 @@ var (
 			Name: "api_http_request_duration_seconds",
 			Help: "API request latency by mux route pattern and method. " +
 				"route is empty when the request never reached routing (auth 401s, datastore 503); " +
-				"\"/\" is the catch-all (unknown path / wrong method). " +
+				"\"/\" is the catch-all (unknown path / wrong method / clean-path 307). " +
 				"Deliberately NO key_id label (cardinality discipline).",
 			Buckets: prometheus.DefBuckets,
 		},

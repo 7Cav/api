@@ -5,10 +5,11 @@ package rest_test
 // response (not the committed golden — contract/spec_test.go already covers
 // those) is validated against the document. Today that means the ranks
 // operation, the four profile lookup operations (id, username, discord,
-// gamertag — #126), all five tickets operations (#129), and the three roster
-// operations (full/lite/S1 uniforms — #127) — the remaining operations are
-// witnessed once their routes land (#128). Same non-vacuousness rules as the
-// contract replay loop: the observed status
+// gamertag — #126), all five tickets operations (#129), the three roster
+// operations (full/lite/S1 uniforms — #127), and the position groups,
+// position search and AWOL operations (#128) — the full Phase 3 fan-out
+// surface. Same non-vacuousness rules as the contract replay loop: the
+// observed status
 // must be EXPLICITLY documented on the operation, a JSON response requires
 // an application/json schema to validate against, and every implemented
 // case's path must be classified in specRoutes — unclassified paths fail,
@@ -49,6 +50,19 @@ const specPath = "../openapi/openapi.yaml"
 // to stay unmatched.
 var specRoutes = map[string]string{
 	"/api/v1/milpacs/ranks": "/api/v1/milpacs/ranks",
+	// Reference lists (#128): position groups and the AWOL list.
+	"/api/v1/milpacs/position/groups": "/api/v1/milpacs/position/groups",
+	"/api/v1/milpacs/awol":            "/api/v1/milpacs/awol",
+	// Position search (#128): happy (%20-encoded title), empty result
+	// (frozen #137 behavior), multi-segment (the ** glob form an OpenAPI
+	// template cannot express — classified to the canonical template so the
+	// observed RESPONSE still validates; the contract suite carries the
+	// request-side carve-out, templateUnmatchableCases), trailing slash
+	// (empty query, the handler's 400).
+	"/api/v1/milpacs/position/search/Regimental%20Technical%20Aide": "/api/v1/milpacs/position/search/{positionQuery}",
+	"/api/v1/milpacs/position/search/squad%20leader":                "/api/v1/milpacs/position/search/{positionQuery}",
+	"/api/v1/milpacs/position/search/Platoon/Leader":                "/api/v1/milpacs/position/search/{positionQuery}",
+	"/api/v1/milpacs/position/search/":                              "/api/v1/milpacs/position/search/{positionQuery}",
 	// Tickets (#129): categories, by id (happy/not-found/parse-error), by
 	// ref (happy/not-found), messages (happy/page-two/parse-error), list —
 	// the list path also carries the 401-tier battery cases (auth runs
