@@ -380,11 +380,12 @@ func TestMetrics_CleanPath307MetersUnderCatchAllWithKeyId(t *testing.T) {
 	assert.Equal(t, before+1, after, "clean-path 307s must meter under the catch-all pattern with the key id")
 }
 
-// The one registration handle() cannot serve — the {ticket_id}/{sub}
-// dispatcher (ticketSubResource) — carries the same routeLabel wrap as every
-// handle()-registered route: a messages 200 meters under its registration
-// pattern. Before #166 this route's traffic metered under route="", conflating
-// a real route with "rejected before routing ever happened".
+// The scoped-resource registration handle() cannot serve — the
+// {ticket_id}/{sub} dispatcher (ticketSubResource) — carries the same
+// routeLabel wrap as every handle()-registered route: a messages 200 meters
+// under its registration pattern. Before #166 this route's traffic metered
+// under route="", conflating a real route with "rejected before routing ever
+// happened".
 func TestMetrics_TicketMessagesMetersUnderSubResourcePattern(t *testing.T) {
 	h := newStack(t)
 	labels := map[string]string{
@@ -451,8 +452,9 @@ func TestMetrics_TicketUnknownSub404MetersUnderSubResourcePattern(t *testing.T) 
 // The other direct mux.Handle registration — the scope-independent
 // /tickets/ref/messages parity shim — is route-labeled too: its frozen 400
 // meters under its literal pattern (a bounded label), never route="". With
-// both direct registrations wrapped, route="" means exactly one thing across
-// the whole table: the request never reached routing (#166).
+// both #166 registrations wrapped (the catch-all was already labeled),
+// route="" means exactly one thing across the whole table: the request never
+// reached routing.
 func TestMetrics_TicketsRefMessagesFrozen400MetersUnderItsPattern(t *testing.T) {
 	h := newStack(t)
 	labels := map[string]string{
