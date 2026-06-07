@@ -1,6 +1,9 @@
 package rest
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -114,6 +117,48 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		assert.Empty(t, rr.Result().Header.Get("Cache-Control"),
 			"a 404 after a failed flush must not carry the freshness signal")
 	})
+
+	// The errors.Is discriminator on the rollback above (#172; mirror of the
+	// #164 pin TestSentry_PanicAfterGenuineFlushErrorKeepsRepanicSemantics):
+	// ONLY the delegate's refusal (http.ErrNotSupported — nothing sent) may
+	// roll the stamp back. A first flush failing with a genuine I/O error is
+	// the opposite world: by then net/http has already snapshotted the headers
+	// onto the wire, so the commit — and the stamp riding it — really
+	// happened, and both must KEEP. Broadening the discriminator to any
+	// non-nil error would delete from the live map a stamp the wire already
+	// carries and reopen with committed=false a decision the wire already
+	// took. The delegate (flushErrorWriter, sentry_test.go) fails the flush
+	// with the injected error, never the refusal sentinel; the trailing 404
+	// is the handler-reacts-to-the-failed-flush move from the rollback pin
+	// above — here it must NOT reopen the commit (on a real server that 404
+	// is superfluous; the stamped implied 200 already went out).
+	errConnReset := errors.New("conn reset")
+	for _, tc := range []struct {
+		name     string
+		flushErr error // what the delegate's FlushError returns
+		want     error // the sentinel that must surface through the chain
+	}{
+		{name: "genuine flush error keeps the stamp (plain)", flushErr: errConnReset, want: errConnReset},
+		{name: "genuine flush error keeps the stamp (wrapped)", flushErr: fmt.Errorf("flush tcp conn: %w", io.ErrClosedPipe), want: io.ErrClosedPipe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			w := &cacheControlWriter{ResponseWriter: &flushErrorWriter{rr: rr, err: tc.flushErr}, value: "max-age=600"}
+
+			err := http.NewResponseController(w).Flush()
+			require.ErrorIs(t, err, tc.want,
+				"the delegate's genuine flush error must surface to the caller")
+			require.NotErrorIs(t, err, http.ErrNotSupported,
+				"premise: a real flush failure, not the delegate's refusal")
+
+			assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
+				"a genuinely failed flush really committed — the stamp must keep")
+
+			w.WriteHeader(http.StatusNotFound)
+			assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"),
+				"the commit decision stays latched — a later error status cannot reopen it")
+		})
+	}
 }
 
 // noFlushWriter hides the recorder's Flusher — the shape gzipResponseWriter
