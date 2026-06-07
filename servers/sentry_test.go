@@ -5,9 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"sync"
 	"syscall"
@@ -210,30 +207,34 @@ func TestSentryStartupProbe_ClientSideDrop_WarnsAndFails(t *testing.T) {
 }
 
 // TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine pins that
-// setupSentry actually INVOKES the startup probe: the DSN points at a local
-// server that holds the canary's HTTP request past the shrunk probe window,
-// so the real transport cannot drain. Deleting the sentryStartupProbe() call
-// from setupSentry turns both assertions red (no warning, and the enabled
-// line prints). No real network involved.
+// setupSentry actually INVOKES the startup probe against the client it just
+// configured: a stub transport injected through the test seam reports
+// Flush=not-drained, so the stalled-transport premise holds by construction —
+// no socket dial manufactures the stall, and machine load cannot invert the
+// outcome (#179: a refused dial is a fast send outcome that drains the queue,
+// so the old local-server stall lost the timing race under load). Binding a
+// stub onto the hub is not enough here — setupSentry binds its own client, so
+// the seam must reach the client it constructs. Deleting the
+// sentryStartupProbe() call from setupSentry turns this red (no stall
+// warning, the enabled line prints, no canary reaches the transport).
 func TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine(t *testing.T) {
-	release := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-release // hold the connection past the probe window
-	}))
-	defer srv.Close()
-	defer close(release) // LIFO: unblock the handler before Close waits on it
+	transport := &stubTransport{flushDrains: false}
+	sentryTransportOverride = transport
+	t.Cleanup(func() { sentryTransportOverride = nil })
 
-	srvURL, err := url.Parse(srv.URL)
-	require.NoError(t, err)
-	viper.Set("SENTRY_DSN", "http://public@"+srvURL.Host+"/1")
+	// 127.0.0.1:1 refuses instantly — the suite's deterministic stand-in for
+	// the dial-check pre-check, which is frozen and irrelevant to the stall
+	// premise. Shrink its window anyway so a pathological environment cannot
+	// stall the suite. The probe window itself no longer needs shrinking: the
+	// stub's Flush reports not-drained immediately, regardless of load.
+	viper.Set("SENTRY_DSN", "http://public@127.0.0.1:1/1")
 	defer func() {
 		viper.Set("SENTRY_DSN", "")
 		sentry.CurrentHub().BindClient(nil)
 	}()
-
-	restore := sentryStartupProbeTimeout
-	sentryStartupProbeTimeout = 100 * time.Millisecond
-	defer func() { sentryStartupProbeTimeout = restore }()
+	restoreDial := sentryDialCheckTimeout
+	sentryDialCheckTimeout = 500 * time.Millisecond
+	defer func() { sentryDialCheckTimeout = restoreDial }()
 
 	var warnBuf, infoBuf bytes.Buffer
 	Warn.SetOutput(&warnBuf)
@@ -248,6 +249,10 @@ func TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine(t *testing.T) {
 		"a transport that cannot drain within the window must be loud at boot")
 	assert.NotContains(t, infoBuf.String(), "Sentry error capture enabled",
 		"the success line must be withheld when the probe could not drain")
+	events := transport.Events()
+	require.Len(t, events, 1,
+		"the canary must reach the transport of the client setupSentry just configured — the probe ran against THAT client, not some pre-bound stub")
+	assert.Equal(t, "sentry startup probe", events[0].Message)
 }
 
 // TestSentryDebugEnabled_StrictParse pins the operator-trap fix: viper's
