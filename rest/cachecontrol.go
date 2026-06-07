@@ -59,7 +59,8 @@ func cacheControl(maxAgeSeconds int, next http.Handler) http.Handler {
 }
 
 // cacheControlWriter injects the Cache-Control header at commit time — the
-// first FINAL (non-1xx) WriteHeader, Write, or flush — and only when the
+// first latching WriteHeader (non-1xx, or the 101 carve-out — see the
+// informational predicate), Write, or flush — and only when the
 // response is a 200. A forwarded informational WriteHeader (1xx minus 101 —
 // rationale on the informational predicate) commits nothing (#165): the
 // stamp decision belongs to the final status that follows, exactly as

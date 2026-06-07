@@ -150,12 +150,15 @@ func metricsMiddleware(next http.Handler) http.Handler {
 		// Recording is DEFERRED so a panicking handler still meters —
 		// otherwise panic-per-request reads as a flat error rate while the
 		// service burns (#92). A panicked request that never wrote a final
-		// response has sw.code == 0 — a forwarded 1xx captures nothing
-		// (#165), so a 103-then-panic relabels 500 like any other unwritten
-		// case — which status() reports as the implied 200; label
-		// it 500 instead — the conventional label for an aborted request
-		// (net/http recovers the panic itself, logs it, and closes the
-		// connection without writing a response; HTTP/2 resets the stream). A
+		// response has sw.code == 0, which status() reports as the implied
+		// 200; label it 500 instead — the conventional label for an aborted
+		// request (net/http recovers the panic itself, logs it, and closes
+		// the connection without writing a response; HTTP/2 resets the
+		// stream). A forwarded non-latching 1xx (the predicate excludes 101)
+		// captures nothing (#165), so a 103-then-panic relabels 500 like any
+		// other unwritten case — but a 101-then-panic keeps the captured 101:
+		// the stdlib committed on it, so that status, not the relabel, is the
+		// honest one. A
 		// handler that already committed a status before panicking keeps that
 		// status — it is on the wire. One gap: statusWriter has no FlushError,
 		// so a flush-committed implied 200 is invisible to this capture — a
@@ -204,10 +207,12 @@ func methodLabel(m string) string {
 
 // statusWriter captures the response status for the counter's status label.
 // A handler that writes a body without an explicit WriteHeader gets the
-// net/http implied 200. Informational WriteHeaders (1xx minus 101 —
-// rationale on the informational predicate) capture nothing (#165): those
-// are never the final status, so the label belongs to whatever final write
-// follows.
+// net/http implied 200. Non-latching informational WriteHeaders (1xx minus
+// 101 — rationale on the informational predicate) capture nothing (#165):
+// those are never the final status, so the label belongs to whatever final
+// write follows. A 101 IS captured, like a final status — the stdlib commits
+// on it — so it meters as status="101" (the carve-out's consequence here,
+// symmetric with commitWriter's latch and cacheControlWriter's commit).
 type statusWriter struct {
 	http.ResponseWriter
 	code int

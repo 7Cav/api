@@ -9,7 +9,9 @@ import "net/http"
 // `code >= 100 && code <= 199 && code != StatusSwitchingProtocols` through
 // its informational path, leaving its wroteHeader latch false — but on a 101
 // it SETS wroteHeader and commits ("We shouldn't send any further headers
-// after 101", per the stdlib comment), silently dropping everything after.
+// after 101", per the stdlib comment), dropping everything after from the
+// wire — wire-silent only: the server logs each superfluous WriteHeader, and
+// Write returns http.ErrBodyNotAllowed.
 // This predicate mirrors that exactly, 101 carve-out included: excluding 101
 // here means the wrappers latch on it just as the stdlib does, so e.g. a
 // post-101 panic re-panics instead of "writing" a contract 500 the stdlib

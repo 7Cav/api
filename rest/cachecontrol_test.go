@@ -58,9 +58,9 @@ func captureHeader(h http.Handler, last *http.Header) http.Handler {
 // commitSnapshot clones the header map at commit time — the first
 // WriteHeader, Write, or flush (FlushError, for symmetry with the production
 // writers) — which is exactly when a real server snapshots headers onto the
-// FINAL response (a first WriteHeader(1xx) is exactly when it does NOT — no
-// route in this battery emits one, so the helper keeps the simple
-// first-call rule). Anything set afterwards is invisible to clients and
+// FINAL response (a first non-latching 1xx WriteHeader is exactly when it
+// does NOT — no route in this battery emits any 1xx, so the helper keeps the
+// simple first-call rule). Anything set afterwards is invisible to clients and
 // must stay invisible to the battery.
 type commitSnapshot struct {
 	http.ResponseWriter

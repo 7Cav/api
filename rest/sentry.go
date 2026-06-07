@@ -335,10 +335,13 @@ func (w *commitWriter) Write(b []byte) (int, error) {
 // touched, sending a later handler panic down the
 // re-panic path (connection abort) instead of the contract 500 the recovery
 // can still honestly write. The latch only rolls back when this call was the
-// first to set it — after a prior Write or a prior FINAL (non-1xx)
-// WriteHeader, bytes of the final response are genuinely on the wire and the
-// state keeps (a forwarded 1xx sets no latch at all (#165), so it never
-// stands between a first flush and this rollback). A genuine I/O error also
+// first to set it — after a prior Write or a prior latching WriteHeader (a
+// final status, or the 101 carve-out — see the informational predicate) the
+// commit already happened and the state keeps: bytes or the final status
+// line are genuinely out, or the stdlib latched on the 101 itself. (A
+// forwarded non-latching 1xx sets no latch at all (#165); a 101 latches like
+// a final status, so a flush after it correctly finds the latch already set
+// and never rolls back.) A genuine I/O error also
 // keeps it: by then the delegate really flushed, so the commit happened.
 func (w *commitWriter) FlushError() error {
 	latched := !w.committed

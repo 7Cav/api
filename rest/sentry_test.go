@@ -675,8 +675,10 @@ func TestSentry_PanicAfterFailedFirstFlushWritesContract500(t *testing.T) {
 }
 
 // The latch-was-ours guard on the #164 rollback: a failed flush AFTER a prior
-// Write or a prior FINAL (non-1xx) WriteHeader must NOT reset the latch —
-// bytes (or the final status line) are genuinely on the wire, so the only
+// Write or a prior latching WriteHeader (a final status, or the 101
+// carve-out — see the informational predicate) must NOT reset the latch —
+// the commit already happened (bytes or the final status line genuinely out,
+// or the stdlib's own 101 latch set), so the only
 // honest panic semantics left are the
 // committed path's re-panic and connection abort. A rollback here would write
 // a contract 500 behind a response already started — the exact corruption

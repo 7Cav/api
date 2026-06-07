@@ -43,7 +43,8 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		assert.Empty(t, rr.Header().Get("Cache-Control"))
 	})
 
-	// An informational WriteHeader latches nothing (#165) — and in particular
+	// A non-latching 1xx WriteHeader (the predicate carves out 101) latches
+	// nothing (#165) — and in particular
 	// must not stamp: a stamp on the 1xx would sit in the live map and leak
 	// onto whatever final status follows, here a 500 (the leak class the type
 	// doc forbids). The stamp-on-the-real-200 direction needs real 1xx wire
