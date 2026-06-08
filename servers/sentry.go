@@ -52,7 +52,10 @@ var sentryDialCheckTimeout = 3 * time.Second
 // test needs a transport whose Flush deterministically reports not-drained,
 // and binding a stub onto the hub cannot reach the client setupSentry binds
 // itself. Nil in production — the SDK builds its real HTTP transport and
-// nothing here changes.
+// nothing here changes. Caveat: a non-nil transport flips sentry-go (v0.46.2)
+// into its legacy-transport client mode (with batchMeter), whereas
+// production's nil selects the telemetry-processor mode — stub-transport tests
+// therefore exercise the legacy flush path; re-check on SDK bumps.
 var sentryTransportOverride sentry.Transport
 
 // setupSentry initialises Sentry error capture (errors only, no tracing) when

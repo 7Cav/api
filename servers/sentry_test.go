@@ -62,6 +62,16 @@ func bindStubClient(t *testing.T, flushDrains bool) *stubTransport {
 	return transport
 }
 
+// setSentryTransportOverride points the sentryTransportOverride seam (#179) at
+// tr for the duration of the test, restoring the production nil afterwards.
+// The reset rides along with the set, so a set-without-reset is unwritable
+// through this helper.
+func setSentryTransportOverride(t *testing.T, tr sentry.Transport) {
+	t.Helper()
+	sentryTransportOverride = tr
+	t.Cleanup(func() { sentryTransportOverride = nil })
+}
+
 func TestSetupSentry_NoDSN_Disabled(t *testing.T) {
 	viper.Set("SENTRY_DSN", "")
 	defer viper.Set("SENTRY_DSN", "")
@@ -219,8 +229,7 @@ func TestSentryStartupProbe_ClientSideDrop_WarnsAndFails(t *testing.T) {
 // warning, the enabled line prints, no canary reaches the transport).
 func TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine(t *testing.T) {
 	transport := &stubTransport{flushDrains: false}
-	sentryTransportOverride = transport
-	t.Cleanup(func() { sentryTransportOverride = nil })
+	setSentryTransportOverride(t, transport)
 
 	// 127.0.0.1:1 refuses instantly — the suite's deterministic stand-in for
 	// the dial-check pre-check, which is frozen and irrelevant to the stall
