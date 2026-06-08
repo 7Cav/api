@@ -171,6 +171,8 @@ func Cases() []Case {
 			Notes: "Malformed cursor (camelCase key): InvalidArgument 'invalid after_cursor'."},
 		{Name: "tickets/list_unknown_param_ignored", Method: "GET", Path: "/api/v1/tickets?utterly_unknown=42", Auth: AuthReadTickets,
 			Notes: "Unknown query parameter ignored: identical payload to list_default."},
+		{Name: "tickets/list_modified_since_over_uint32", Method: "GET", Path: "/api/v1/tickets?modified_since=4294967296", Auth: AuthReadTickets,
+			Notes: "modifiedSince is uint32-backed: the handler rejects values above 4294967295 with 'value out of range', pinned here at the response level. Sent via the snake_case alias 'modified_since', which the spec validator treats as an ignored unknown param — so this does NOT exercise the request-level maximum; that bound is pinned by TestSpec_Uint32ParamsBounded (and enforced on the camelCase modifiedSince key by the request validator, cf. get_by_id_over_uint32)."},
 
 		// --- Tickets: get by id / ref ---------------------------------------
 		{Name: "tickets/get_by_id_happy", Method: "GET", Path: "/api/v1/tickets/42", Auth: AuthReadTickets,
@@ -179,6 +181,8 @@ func Cases() []Case {
 			Notes: "NotFound names the numeric id."},
 		{Name: "tickets/get_by_id_parse_error", Method: "GET", Path: "/api/v1/tickets/abc", Auth: AuthReadTickets,
 			Notes: "Non-numeric id under {ticket_id}: leaked parse-error text. Frozen."},
+		{Name: "tickets/get_by_id_over_uint32", Method: "GET", Path: "/api/v1/tickets/4294967296", Auth: AuthReadTickets,
+			Notes: "ticketId path param is uint32-backed: a value above 4294967295 leaks the parse 'value out of range'. Pins the spec's maximum: 4294967295 on the path param."},
 		{Name: "tickets/get_by_ref_happy", Method: "GET", Path: "/api/v1/tickets/ref/MF1UI9HE", Auth: AuthReadTickets,
 			Notes: "Ref binding returns the same GetTicketResponse shape."},
 		{Name: "tickets/get_by_ref_not_found", Method: "GET", Path: "/api/v1/tickets/ref/NOPE9999", Auth: AuthReadTickets,

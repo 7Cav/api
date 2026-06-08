@@ -1,0 +1,16 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "type mismatch, parameter: ticket_id, error: strconv.ParseUint: parsing \"4294967296\": value out of range"
+  },
+  "case": "tickets/get_by_id_over_uint32",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "ticketId path param is uint32-backed: a value above 4294967295 leaks the parse 'value out of range'. Pins the spec's maximum: 4294967295 on the path param.",
+  "path": "/api/v1/tickets/4294967296",
+  "status": 400
+}

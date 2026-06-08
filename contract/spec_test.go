@@ -482,6 +482,11 @@ var specViolatingRequests = map[string]mustFailRequest{
 		wantType:    helpers.ParameterValidation,
 		wantMessage: "Path parameter 'ticketId' is not a valid integer",
 	},
+	"tickets/get_by_id_over_uint32": {
+		reason:      "ticketId above 4294967295 violates the uint32 maximum on the path parameter",
+		wantType:    helpers.ParameterValidation,
+		wantMessage: "Path parameter 'ticketId' failed to validate",
+	},
 	"tickets/messages_parse_error": {
 		reason:      "non-numeric ticketId violates the integer path parameter",
 		wantType:    helpers.ParameterValidation,
@@ -511,7 +516,7 @@ func TestSpec_CarveOutMapsAreLive(t *testing.T) {
 		assert.True(t, known[name], "templateUnmatchableCases key %q names no battery case", name)
 	}
 
-	assert.Len(t, specViolatingRequests, 9, "must-fail request entries are pinned")
+	assert.Len(t, specViolatingRequests, 10, "must-fail request entries are pinned")
 	for name := range specViolatingRequests {
 		assert.True(t, known[name], "specViolatingRequests key %q names no battery case", name)
 	}
@@ -1088,4 +1093,73 @@ func TestSpec_EveryGoldenRouteInSpec(t *testing.T) {
 			assert.NotNil(t, item.Get, "case %s: spec path %s lacks a GET operation", c.Name, specPath)
 		}
 	}
+}
+
+// uint32Max is the uint32 ceiling the request binder enforces
+// (strconv.ParseUint(raw, 10, 32) in rest/query.go and rest/tickets.go): a
+// value above it is rejected with a 400 "value out of range". The spec must
+// advertise the same bound so it does not promise a range the API cannot
+// accept.
+const uint32Max = 4294967295
+
+// TestSpec_Uint32ParamsBounded pins the uint32 upper bound on every
+// integer-typed request parameter. Numeric query/path parameters are backed
+// by uint32 proto fields (see proto/tickets.proto: ticket_id, per_page,
+// modified_since, category_id, status_id, prefix_id, assigned_user_id,
+// starter_user_id are all uint32); 64-bit ids serialize as decimal strings
+// (type: string) and are not integer parameters. Each integer parameter
+// schema — whether scalar or the items of an array parameter — must declare
+// minimum: 0 AND maximum: 4294967295, so a value above the ceiling is a
+// DOCUMENTED 400, not an undocumented one. Without the maximum the spec
+// advertises an unbounded range the binder rejects.
+func TestSpec_Uint32ParamsBounded(t *testing.T) {
+	_, model := loadSpec(t)
+
+	// checkIntegerSchema asserts s carries the uint32 bound when it is an
+	// integer schema; returns whether it was an integer schema.
+	checkIntegerSchema := func(where string, s *base.Schema) bool {
+		if s == nil || !slices.Contains(s.Type, "integer") {
+			return false
+		}
+		require.NotNil(t, s.Minimum, "%s: integer parameter declares no minimum", where)
+		assert.Equal(t, float64(0), *s.Minimum, "%s: uint32 parameter minimum must be 0", where)
+		require.NotNil(t, s.Maximum,
+			"%s: integer parameter declares no maximum — it is backed by uint32 and a value above %d is a 400 'value out of range'; declare maximum: %d",
+			where, uint32Max, uint32Max)
+		assert.Equal(t, float64(uint32Max), *s.Maximum,
+			"%s: uint32 parameter maximum must be %d", where, uint32Max)
+		return true
+	}
+
+	bounded := 0
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		route := pair.Key()
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			for _, p := range op.Parameters {
+				if p.Schema == nil || p.Schema.IsReference() {
+					continue
+				}
+				s := p.Schema.Schema()
+				if s == nil {
+					continue
+				}
+				where := fmt.Sprintf("%s %s param %q", strings.ToUpper(method), route, p.Name)
+				if checkIntegerSchema(where, s) {
+					bounded++
+				}
+				// Array parameters (the repeated-filter query keys) carry the
+				// integer in items.
+				if s.Items != nil && s.Items.IsA() && !s.Items.A.IsReference() {
+					if checkIntegerSchema(where+"[]", s.Items.A.Schema()) {
+						bounded++
+					}
+				}
+			}
+		}
+	}
+	// Non-vacuousness: the tickets surface alone has ticketId (×2), perPage
+	// (×2), modifiedSince, and the repeated uint32 filter items
+	// (categoryId, statusId, prefixId, assignedUserId, starterUserId).
+	assert.GreaterOrEqual(t, bounded, 10,
+		"expected the uint32 parameter set to be bounded, saw only %d", bounded)
 }
