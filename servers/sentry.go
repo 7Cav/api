@@ -47,6 +47,17 @@ var sentryStartupProbeTimeout = 5 * time.Second
 // mutates it.
 var sentryDialCheckTimeout = 3 * time.Second
 
+// sentryTransportOverride, when non-nil, replaces the transport of the client
+// setupSentry constructs. Test-only injection seam (#179): the probe-stall
+// test needs a transport whose Flush deterministically reports not-drained,
+// and binding a stub onto the hub cannot reach the client setupSentry binds
+// itself. Nil in production — the SDK builds its real HTTP transport and
+// nothing here changes. Caveat: a non-nil transport flips sentry-go (v0.46.2)
+// into its legacy-transport client mode (with batchMeter), whereas
+// production's nil selects the telemetry-processor mode — stub-transport tests
+// therefore exercise the legacy flush path; re-check on SDK bumps.
+var sentryTransportOverride sentry.Transport
+
 // setupSentry initialises Sentry error capture (errors only, no tracing) when
 // SENTRY_DSN is present in the environment. Without a DSN nothing is
 // initialised — no client, no capture, local/dev unaffected; the only side
@@ -89,6 +100,9 @@ func setupSentry() bool {
 		// Belt-and-braces scrubbing at the choke point — see scrubEvent for
 		// the exact (request-material-only) scope of the guarantee.
 		BeforeSend: scrubEvent,
+		// Nil in production (SDK default transport); see
+		// sentryTransportOverride for the test-only seam.
+		Transport: sentryTransportOverride,
 	})
 	if err != nil {
 		// Telemetry must never take the API down: log and run without it.
