@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"github.com/spf13/viper"
 )
@@ -16,11 +17,23 @@ import (
 // globals) so the full trust rule is exhaustively table-testable; clientIP is
 // the thin ambient wrapper the log sites call over the cached set.
 
-// trustedProxies is the parsed TRUSTED_PROXIES set, populated ONCE at startup
-// by InitTrustedProxies and read by clientIP. nil/empty = trust nothing, which
-// makes resolveClientIP ignore every forwarding header (the prior
-// proxy-address logging behavior).
-var trustedProxies []*net.IPNet
+// trustedProxies holds the parsed TRUSTED_PROXIES set, published ONCE at
+// startup by InitTrustedProxies and read by clientIP. The atomic pointer makes
+// the once-write/read-after lifecycle structural: a reader can never observe a
+// half-written set, and a read before the publish loads the zero value (nil) =
+// trust nothing, which makes resolveClientIP ignore every forwarding header
+// (the prior proxy-address logging behavior). Read it only via
+// loadTrustedProxies.
+var trustedProxies atomic.Pointer[[]*net.IPNet]
+
+// loadTrustedProxies returns the published trusted-proxy set, or nil before
+// InitTrustedProxies has published one — the safe trust-nothing direction.
+func loadTrustedProxies() []*net.IPNet {
+	if p := trustedProxies.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
 
 // parseTrustedProxies turns the comma-split TRUSTED_PROXIES specs into CIDR
 // networks. A bare IP is normalized to a host route (/32 for v4, /128 for v6).
@@ -139,12 +152,12 @@ func InitTrustedProxies() error {
 	if err != nil {
 		return err
 	}
-	trustedProxies = nets
+	trustedProxies.Store(&nets)
 	return nil
 }
 
 // clientIP is the thin ambient wrapper the two 401 log sites call. It resolves
 // against the cached trusted set populated by InitTrustedProxies.
 func clientIP(r *http.Request) string {
-	return resolveClientIP(r, trustedProxies)
+	return resolveClientIP(r, loadTrustedProxies())
 }
