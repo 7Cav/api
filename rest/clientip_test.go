@@ -84,6 +84,33 @@ func TestResolveClientIP_TrustedPeer_MalformedXFF_FallsBackToRealIP(t *testing.T
 	require.Equal(t, "198.51.100.7", resolveClientIP(r, trusted))
 }
 
+// A port-bearing right-most XFF entry (e.g. 203.0.113.9:51000) does NOT get
+// its port stripped: net.ParseIP rejects host:port, so clientFromXFF treats it
+// as a malformed entry, stops the walk, and marks XFF unusable — same path as
+// any other unparseable entry. This PINS the current no-port-strip-on-XFF
+// behavior (ADR 0005): a future refactor that starts stripping ports from XFF
+// entries would flip these results and surface here as a deliberate change.
+func TestResolveClientIP_TrustedPeer_PortBearingXFF_FallsBackToRealIP(t *testing.T) {
+	trusted := mustCIDRs(t, "10.0.0.0/8")
+	// Right-most untrusted entry carries a :port → unparseable → XFF unusable →
+	// X-Real-IP fallback (NOT the port-stripped 203.0.113.9).
+	r := reqWith("10.0.0.5:443", map[string]string{
+		"X-Forwarded-For": "203.0.113.9:51000, 10.0.0.4",
+		"X-Real-IP":       "198.51.100.7",
+	})
+	require.Equal(t, "198.51.100.7", resolveClientIP(r, trusted))
+}
+
+func TestResolveClientIP_TrustedPeer_PortBearingXFFNoRealIP_FallsBackToPeer(t *testing.T) {
+	trusted := mustCIDRs(t, "10.0.0.0/8")
+	// Same port-bearing (unusable) XFF, but no X-Real-IP → falls through to the
+	// bare peer IP rather than the port-stripped XFF address.
+	r := reqWith("10.0.0.5:443", map[string]string{
+		"X-Forwarded-For": "203.0.113.9:51000, 10.0.0.4",
+	})
+	require.Equal(t, "10.0.0.5", resolveClientIP(r, trusted))
+}
+
 func TestResolveClientIP_TrustedPeer_AllTrustedXFF_ReturnsRealIP(t *testing.T) {
 	trusted := mustCIDRs(t, "10.0.0.0/8")
 	// Every XFF entry is a trusted hop → XFF yields nothing → X-Real-IP.
