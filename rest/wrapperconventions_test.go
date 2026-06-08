@@ -205,26 +205,41 @@ func soleResult(fd *ast.FuncDecl) (ast.Expr, bool) {
 }
 
 // flushConventionViolations applies the FlushError convention to every
-// ResponseWriter wrapper in files: never bare Flush() (the controller's
-// Flusher branch swallows its errors); a FlushError must carry the exact
-// `FlushError() error` shape the controller's method search matches — any
-// other signature is dead code the controller skips, falling through to the
-// swallow-or-tunnel paths the author thought they had replaced; and every
-// wrapper must declare `FlushError() error` OR `Unwrap() http.ResponseWriter`
-// — a wrapper with neither (and no Flush) dead-ends the controller's method
-// walk, so every handler flush through it returns http.ErrNotSupported in
-// production (#174 review: that opaque-wrapper mutant survived the entire
-// suite before this rule). Returns the wrapper and FlushError-method counts
-// for the caller's vacuous-pass floors.
+// ResponseWriter wrapper in files: never bare Flush() — hand-written or
+// promoted from an embedded non-wrapper helper, the controller's Flusher
+// branch swallows its errors either way (a promoted one is flagged on the
+// embedding wrapper, naming its origin — #174 delta review); a FlushError
+// must carry the exact `FlushError() error` shape the controller's method
+// search matches — any other signature is dead code the controller skips,
+// falling through to the swallow-or-tunnel paths the author thought they had
+// replaced; and every wrapper must declare `FlushError() error` OR
+// `Unwrap() http.ResponseWriter` — a wrapper with neither (and no Flush)
+// dead-ends the controller's method walk, so every handler flush through it
+// returns http.ErrNotSupported in production (#174 review: that
+// opaque-wrapper mutant survived the entire suite before this rule). Returns
+// the wrapper and FlushError-method counts for the caller's vacuous-pass
+// floors.
 func flushConventionViolations(fset *token.FileSet, files []*ast.File) (violations []string, wrappers, flushErrors int) {
 	wrapperSet, embeds := wrapperTypes(files)
 	wrappers = len(wrapperSet)
-	// escapes: the type declares Flush or FlushError under ANY signature
-	// (shape problems are flagged individually, so the dead-end rule fires
-	// only when the controller finds nothing at all to walk) or the exact
-	// `Unwrap() http.ResponseWriter`. Recorded for EVERY receiver type, not
-	// just wrappers: an embedder inherits the promoted methods below.
+	// escapes: the type declares flush machinery the controller's method
+	// walk actually finds. Recorded for EVERY receiver type, not just
+	// wrappers — an embedder inherits the promoted methods below — but the
+	// crediting discipline differs (#174 delta review): wrappers earn credit
+	// for Flush/FlushError under ANY signature, because their shape problems
+	// are flagged individually and the dead-end rule should fire only when
+	// the controller finds nothing at all to walk; non-wrappers earn credit
+	// only on the EXACT shapes the controller matches (`FlushError() error`,
+	// `Unwrap() http.ResponseWriter`) — their shape problems are flagged
+	// nowhere, so any-signature credit here would launder through the
+	// promotion fixpoint into a clean bill for a wrapper embedding them.
 	escapes := map[string]bool{}
+	// flushOrigins: bare Flush() on a non-wrapper receiver, keyed by type.
+	// Deliberately NOT an escape — promoted into a wrapper it IS matched, by
+	// the controller's Flusher branch, which swallows its errors exactly
+	// like a hand-written bare Flush; the embedding wrapper gets the
+	// bare-Flush violation below, naming the origin via the embed graph.
+	flushOrigins := map[string]string{}
 	for _, f := range files {
 		httpName := httpImportName(f)
 		for _, decl := range f.Decls {
@@ -239,21 +254,25 @@ func flushConventionViolations(fset *token.FileSet, files []*ast.File) (violatio
 			_, isWrapper := wrapperSet[recv]
 			switch fd.Name.Name {
 			case "Flush":
-				escapes[recv] = true
 				if isWrapper {
+					escapes[recv] = true
 					violations = append(violations, fmt.Sprintf(
 						"%s: %s.Flush: bare Flush() on a ResponseWriter wrapper — http.ResponseController's Flusher branch silently swallows its errors, so the handler hears success on a flush that died. Implement FlushError() error instead (see gzipResponseWriter/commitWriter/cacheControlWriter), or drop flush interception entirely and let Unwrap tunnel it",
 						fset.Position(fd.Pos()), recv))
+				} else {
+					flushOrigins[recv] = recv
 				}
 			case "FlushError":
-				escapes[recv] = true
 				if isWrapper {
+					escapes[recv] = true
 					flushErrors++
 					if !isFlushErrorSignature(fd) {
 						violations = append(violations, fmt.Sprintf(
 							"%s: %s.FlushError: signature must be exactly `FlushError() error` — anything else is invisible to http.ResponseController's method search and never runs",
 							fset.Position(fd.Pos()), recv))
 					}
+				} else if isFlushErrorSignature(fd) {
+					escapes[recv] = true
 				}
 			case "Unwrap":
 				if isUnwrapSignature(fd, httpName) {
@@ -265,24 +284,32 @@ func flushConventionViolations(fset *token.FileSet, files []*ast.File) (violatio
 	// Promotion fixpoint: an embedder with no flush machinery of its own
 	// still escapes the dead end when an embedded type provides it — Go
 	// promotes the embedded FlushError/Unwrap into the embedder's method
-	// set, where the controller's walk finds them.
+	// set, where the controller's walk finds them. Bare-Flush provenance
+	// rides the same edges: promotion puts the helper's Flush into the
+	// embedder's method set too, where the Flusher branch matches it.
 	for changed := true; changed; {
 		changed = false
 		for name, embedded := range embeds {
-			if escapes[name] {
-				continue
-			}
 			for _, e := range embedded {
-				if escapes[e] {
+				if escapes[e] && !escapes[name] {
 					escapes[name] = true
 					changed = true
-					break
+				}
+				if flushOrigins[e] != "" && flushOrigins[name] == "" {
+					flushOrigins[name] = flushOrigins[e]
+					changed = true
 				}
 			}
 		}
 	}
 	for name, pos := range wrapperSet {
 		if escapes[name] {
+			continue
+		}
+		if origin := flushOrigins[name]; origin != "" {
+			violations = append(violations, fmt.Sprintf(
+				"%s: %s: bare Flush() promoted from embedded non-wrapper %s — http.ResponseController's Flusher branch matches the promoted method and silently swallows its errors, so the handler hears success on a flush that died. Implement FlushError() error on the wrapper (see gzipResponseWriter/commitWriter/cacheControlWriter), or stop embedding the flushing helper and let Unwrap tunnel",
+				fset.Position(pos), name, origin))
 			continue
 		}
 		violations = append(violations, fmt.Sprintf(
@@ -435,6 +462,39 @@ func TestFlushConventionViolations_DetectsEachBreak(t *testing.T) {
 			decls: syntheticWrapper +
 				"func (w *fakeWrap) FlushError() error { return nil }\n\n" +
 				"type outerWrap struct{ *fakeWrap }\n",
+		},
+		{
+			// Laundered escape (#174 delta review): a non-wrapper helper's
+			// bare Flush, promoted into an embedding wrapper, is matched by
+			// the controller's Flusher branch and swallows errors exactly
+			// like a hand-written bare Flush — the violation lands on the
+			// wrapper and names the helper the method promoted from.
+			name: "promoted bare Flush from an embedded non-wrapper helper",
+			decls: "type plainBuffer struct{ n int }\n\nfunc (b *plainBuffer) Flush() {}\n\n" +
+				"type sneakyWrap struct {\n\thttp.ResponseWriter\n\t*plainBuffer\n}\n",
+			want:     "bare Flush() promoted from embedded non-wrapper plainBuffer",
+			wantType: "sneakyWrap",
+		},
+		{
+			// Laundered escape, malformed flavour (#174 delta review): a
+			// non-wrapper helper's FlushError under the wrong signature
+			// promotes a method the controller's search never matches — the
+			// embedding wrapper is a runtime dead end and must be flagged
+			// as one, not credited for the helper's dead code.
+			name: "promoted malformed FlushError leaves the embedder a dead end",
+			decls: "type leakyBuffer struct{ n int }\n\nfunc (b *leakyBuffer) FlushError() (int, error) { return 0, nil }\n\n" +
+				"type sneakyWrap struct {\n\thttp.ResponseWriter\n\t*leakyBuffer\n}\n",
+			want:     "neither `FlushError() error` nor `Unwrap() http.ResponseWriter`",
+			wantType: "sneakyWrap",
+		},
+		{
+			// The legitimate promotion: a non-wrapper helper whose
+			// FlushError carries the exact shape IS matched by the
+			// controller once promoted — exact-signature credit (the same
+			// discipline Unwrap always had) is what keeps this clean.
+			name: "promoted exact FlushError from a non-wrapper helper is clean",
+			decls: "type flushHelper struct{ n int }\n\nfunc (h *flushHelper) FlushError() error { return nil }\n\n" +
+				"type helperWrap struct {\n\thttp.ResponseWriter\n\t*flushHelper\n}\n",
 		},
 		{
 			// Detection hole 2 (#174 review): a NAMED http.ResponseWriter
