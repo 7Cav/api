@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -160,10 +161,10 @@ func metricsMiddleware(next http.Handler) http.Handler {
 		// the stdlib committed on it, so that status, not the relabel, is the
 		// honest one. A
 		// handler that already committed a status before panicking keeps that
-		// status — it is on the wire. One gap: statusWriter has no FlushError,
-		// so a flush-committed implied 200 is invisible to this capture — a
-		// 103-then-flush-then-panic meters 500 against a 200 already committed
-		// on the wire. Pre-existing blind spot, tracked in #174.
+		// status — it is on the wire; a flush-committed implied 200 counts
+		// (statusWriter.FlushError captures it, #174 — before that it
+		// tunneled past via Unwrap and a flush-then-panic metered 500 against
+		// a wire-committed 200).
 		// The panic is re-raised AFTER recording
 		// (the inner defer fires as this deferred func returns) so the sentry
 		// recovery layer outside this one (#132) — and net/http when sentry
@@ -207,7 +208,9 @@ func methodLabel(m string) string {
 
 // statusWriter captures the response status for the counter's status label.
 // A handler that writes a body without an explicit WriteHeader gets the
-// net/http implied 200. Non-latching informational WriteHeaders (1xx minus
+// net/http implied 200 — committed by its first Write or by a
+// ResponseController flush (FlushError below; #174 closed that blind spot).
+// Non-latching informational WriteHeaders (1xx minus
 // 101 — rationale on the informational predicate) capture nothing (#165):
 // those are never the final status, so the label belongs to whatever final
 // write follows. A 101 IS captured, like a final status — the stdlib commits
@@ -239,9 +242,41 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// FlushError captures the implied 200 a first flush commits before
+// delegating it — the same treatment #164/#167 gave commitWriter and
+// cacheControlWriter (#174 closed this last blind spot): without it the
+// flush tunnels past via Unwrap, the capture never latches, and a
+// flush-then-panic meters 500 against a 200 already committed on the wire.
+// Delegating through a fresh ResponseController keeps the downstream search
+// semantics identical.
+//
+// If the delegated flush reports http.ErrNotSupported, the capture this call
+// made is rolled back (#164's discriminator, mirror of commitWriter and
+// cacheControlWriter): nothing reached the wire, so the status label still
+// belongs to whatever final write follows — left latched, a later explicit
+// error status could not capture and the meter would claim a 200 the wire
+// never carried. The rollback only fires when this call was the first to
+// capture; after a prior Write or latching WriteHeader the commit already
+// happened and the capture keeps. A genuine I/O error also keeps it: by then
+// the delegate really flushed, so the implied 200 is on the wire.
+func (w *statusWriter) FlushError() error {
+	captured := w.code == 0
+	if captured {
+		w.code = http.StatusOK
+	}
+	err := http.NewResponseController(w.ResponseWriter).Flush()
+	if captured && errors.Is(err, http.ErrNotSupported) {
+		w.code = 0
+	}
+	return err
+}
+
 // Unwrap exposes the underlying writer to http.ResponseController so inner
-// layers keep Flusher/Hijacker/deadline access through this wrapper — without
-// it those optional interfaces silently vanish for everything inside metrics.
+// layers keep Hijacker/deadline access through this wrapper — without it
+// those optional interfaces silently vanish for everything inside metrics.
+// Flush never takes this route: the controller's method search prefers the
+// explicit FlushError above, which is what keeps a flush-committed implied
+// 200 visible to the status capture.
 func (w *statusWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }

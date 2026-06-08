@@ -384,15 +384,15 @@ func parseRestPackage(t *testing.T) (*token.FileSet, []*ast.File) {
 
 // The FlushError convention, enforced over the package: zero violations, and
 // the floors prove the walker still sees the real wrapper population (four
-// wrappers; gzipResponseWriter, commitWriter, and cacheControlWriter carry
-// FlushError today — bump the floors when wrappers come or go).
+// wrappers, all four carrying FlushError since #174 gave statusWriter the
+// #164/#167 treatment — bump the floors when wrappers come or go).
 func TestRestWrappers_FlushErrorConvention(t *testing.T) {
 	fset, files := parseRestPackage(t)
 	violations, wrappers, flushErrors := flushConventionViolations(fset, files)
 
 	require.GreaterOrEqual(t, wrappers, 4,
 		"wrapper count regressed — the embed detection or file filter broke (the chain mounts four writer wrappers)")
-	require.GreaterOrEqual(t, flushErrors, 3,
+	require.GreaterOrEqual(t, flushErrors, 4,
 		"FlushError count regressed — the method scan broke")
 	for _, v := range violations {
 		t.Error(v)

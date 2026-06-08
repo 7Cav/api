@@ -77,7 +77,10 @@ func GzipMiddleware(next http.Handler) http.Handler {
 					// stream). The precise per-shape faithfulness — commit-then-
 					// hijack smuggling, truncated-after-output, accurate
 					// logging — is TRACKED IN #181 and is latent until a
-					// hijacking handler exists. No handler hijacks today.
+					// hijacking handler exists. No handler hijacks today —
+					// self-announcing, not remembered: the hijack tripwire
+					// (wrapperconventions_test.go, #174) fails the suite the
+					// moment production code in this package hijacks.
 					if errors.Is(err, http.ErrHijacked) {
 						return
 					}
