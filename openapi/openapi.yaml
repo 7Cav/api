@@ -31,6 +31,15 @@ info:
   description: >-
     Read-only access to 7Cav.us milpacs (military personnel records) and forum
     tickets. All endpoints require a bearer API key.
+
+
+    Request leniency (frozen behavior, PRD #112): unknown query parameters are
+    ignored on every operation rather than rejected — a request carrying a
+    parameter this document does not declare is accepted, not a 400. This is
+    intentional and golden-pinned (e.g. roster/unknown_query_param_ignored,
+    tickets/list_unknown_param_ignored). Property-based tooling that flags such
+    a request as "accepted a schema-violating request" is observing expected
+    behavior; it is not a defect.
   version: dev
 externalDocs:
   description: 7Cav API Repository
@@ -466,6 +475,7 @@ paths:
             items:
               type: integer
               minimum: 0
+              maximum: 4294967295
         - name: excludeSubcategories
           in: query
           required: false
@@ -486,6 +496,7 @@ paths:
             items:
               type: integer
               minimum: 0
+              maximum: 4294967295
         - name: prefixId
           in: query
           required: false
@@ -494,6 +505,7 @@ paths:
             items:
               type: integer
               minimum: 0
+              maximum: 4294967295
         - name: assignedUserId
           in: query
           required: false
@@ -502,6 +514,7 @@ paths:
             items:
               type: integer
               minimum: 0
+              maximum: 4294967295
         - name: starterUserId
           in: query
           required: false
@@ -510,12 +523,14 @@ paths:
             items:
               type: integer
               minimum: 0
+              maximum: 4294967295
         - name: modifiedSince
           in: query
           required: false
           schema:
             type: integer
             minimum: 0
+            maximum: 4294967295
         - name: includeHidden
           in: query
           required: false
@@ -527,6 +542,7 @@ paths:
           schema:
             type: integer
             minimum: 0
+            maximum: 4294967295
         - name: afterCursor
           in: query
           required: false
@@ -534,7 +550,8 @@ paths:
             type: string
             description: >-
               Opaque cursor; empty string = first page. Round-trip the
-              nextCursor from the previous response.
+              nextCursor from the previous response. A malformed cursor (one
+              not produced by this API) is rejected with 400.
       responses:
         "200":
           description: One page of tickets.
@@ -575,6 +592,7 @@ paths:
           schema:
             type: integer
             minimum: 0
+            maximum: 4294967295
       responses:
         "200":
           description: The ticket with its first messages.
@@ -651,12 +669,14 @@ paths:
           schema:
             type: integer
             minimum: 0
+            maximum: 4294967295
         - name: perPage
           in: query
           required: false
           schema:
             type: integer
             minimum: 0
+            maximum: 4294967295
         - name: afterCursor
           in: query
           required: false
@@ -664,7 +684,8 @@ paths:
             type: string
             description: >-
               Opaque cursor; empty string = first page. Pagination is by
-              message position ascending.
+              message position ascending. A malformed cursor (one not produced
+              by this API) is rejected with 400.
         - name: includeHidden
           in: query
           required: false
