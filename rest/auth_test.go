@@ -6,6 +6,7 @@ package rest
 // stacks.
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -134,6 +135,68 @@ func TestAuthMiddleware_DatastoreError_Is503AndLogged(t *testing.T) {
 	assert.Contains(t, logged, "GET")
 	assert.Contains(t, logged, "/api/v1/whatever")
 	assert.NotContains(t, logged, "cav7_secrettoken", "the bearer token must NEVER be logged")
+}
+
+// captureWarnLog redirects the package Warn logger into a buffer for one test
+// and restores the previous writer afterwards — the 401 tiers Warn-log the
+// rejected attempt (the only place a caller address is logged).
+func captureWarnLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := Warn.Writer()
+	Warn.SetOutput(&buf)
+	t.Cleanup(func() { Warn.SetOutput(prev) })
+	return &buf
+}
+
+// The two 401 warn lines must report the resolved client IP and the socket
+// peer — `from <client-ip> (peer <RemoteAddr>)` — each keeping its existing
+// distinct prefix (#190, ADR 0005). With a trusted peer the client IP is
+// resolved from the forwarding headers.
+
+func TestAuthMiddleware_BadScheme401_LogsClientAndPeer(t *testing.T) {
+	withTrustedProxiesEnv(t, "10.0.0.0/8")
+	require.NoError(t, InitTrustedProxies())
+	buf := captureWarnLog(t)
+
+	ds := &fakeAuthDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		t.Fatal("ValidateApiKey must not be called for a scheme error")
+		return nil, nil
+	}}
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/whatever", nil)
+	req.RemoteAddr = "10.0.0.5:443"
+	req.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.4")
+	rr := httptest.NewRecorder()
+	AuthMiddleware(ds, next).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	logged := buf.String()
+	assert.Contains(t, logged, "bad bearer scheme", "keeps its distinct prefix")
+	assert.Contains(t, logged, "from 203.0.113.9 (peer 10.0.0.5:443)")
+}
+
+func TestAuthMiddleware_UnknownKey401_LogsClientAndPeer(t *testing.T) {
+	withTrustedProxiesEnv(t, "10.0.0.0/8")
+	require.NoError(t, InitTrustedProxies())
+	buf := captureWarnLog(t)
+
+	ds := &fakeAuthDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
+		return nil, nil // zero rows → unknown key
+	}}
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/whatever", nil)
+	req.RemoteAddr = "10.0.0.5:443"
+	req.Header.Set("Authorization", "Bearer cav7_unknownkey")
+	req.Header.Set("X-Forwarded-For", "203.0.113.9, 10.0.0.4")
+	rr := httptest.NewRecorder()
+	AuthMiddleware(ds, next).ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	logged := buf.String()
+	// The unknown-key tier keeps its generic prefix (no "bad bearer scheme").
+	assert.NotContains(t, logged, "bad bearer scheme")
+	assert.Contains(t, logged, "from 203.0.113.9 (peer 10.0.0.5:443)")
 }
 
 // requireScope is the per-route authorization gate (ADR 0004: scope checks

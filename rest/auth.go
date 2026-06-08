@@ -39,7 +39,7 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := datastores.ParseBearerToken(r.Header.Get("Authorization"), maxTokenLen)
 		if token == "" {
-			Warn.Printf("Unauthorized HTTP access attempt (bad bearer scheme) from %s", r.RemoteAddr)
+			Warn.Printf("Unauthorized HTTP access attempt (bad bearer scheme) from %s (peer %s)", clientIP(r), r.RemoteAddr)
 			http.Error(w, errBearerScheme, http.StatusUnauthorized)
 			return
 		}
@@ -60,7 +60,7 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 			// Zero rows: an unknown/expired key. The generic 401 tier —
 			// leaks nothing about whether a key exists, is expired, or
 			// lacks scopes (golden-pinned, #106).
-			Warn.Printf("Unauthorized HTTP access attempt from %s", r.RemoteAddr)
+			Warn.Printf("Unauthorized HTTP access attempt from %s (peer %s)", clientIP(r), r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

@@ -31,6 +31,7 @@ import (
 	"github.com/7cav/api/datastores"
 	milpacs "github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"github.com/7cav/api/rest"
 	httpServices "github.com/7cav/api/servers/gateway"
 	grpcServices "github.com/7cav/api/servers/grpc"
 	"github.com/spf13/viper"
@@ -112,6 +113,17 @@ func (server *MicroServer) Start() {
 	grpclog.SetLoggerV2(grpcLogger)
 
 	Info.Println("Starting 7Cav API version:", version)
+
+	// Resolve and cache the trusted-proxy set (TRUSTED_PROXIES, ADR 0005) ONCE
+	// before any listener opens: the shared rest.AuthMiddleware (legacy gateway
+	// and new stack both delegate to it) reads this cache to resolve the client
+	// IP for its 401 log lines. A non-empty-but-malformed value is fatal here —
+	// a misconfigured trust set must not start silently trusting nothing.
+	// CROSS-ISSUE: #134 must preserve this call when it rebuilds the
+	// single-listener composition root (documentation requirement, ADR 0005).
+	if err := rest.InitTrustedProxies(); err != nil {
+		Error.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 
 	// Phase 0 observability (PRD #112): errors-only Sentry capture, gated on
 	// SENTRY_DSN. Disabled (local/dev) nothing is initialised — one Info line,
