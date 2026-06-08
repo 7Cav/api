@@ -166,6 +166,75 @@ func TestStatusWriter_RefusedFlushRollsBackCaptureForFinalStatus(t *testing.T) {
 		"a rolled-back capture must not leave a phantom 200 child")
 }
 
+// The KEEP side of the rollback's first-to-capture guard (#174 review; the
+// symmetric pin to cachecontrol_internal_test.go's "FlushError after
+// WriteHeader 500 does not stamp"): the rollback may only undo what THIS
+// flush latched. A refused flush AFTER an explicit status must leave the
+// capture alone — without the `captured &&` guard it wipes it, and a
+// WriteHeader(503) → refused flush meters 200 against a wire-committed 5xx.
+func TestStatusWriter_RefusedFlushAfterExplicitStatusKeepsCapture(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.Handle("GET /flush-refused-after-status", routeLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		err := http.NewResponseController(w).Flush()
+		assert.ErrorIs(t, err, http.ErrNotSupported, "premise: an unflushable base refuses the flush")
+	})))
+	h := metricsMiddleware(mux)
+
+	counter200 := requestsTotal.WithLabelValues("GET /flush-refused-after-status", http.MethodGet, "200", "")
+	counter503 := requestsTotal.WithLabelValues("GET /flush-refused-after-status", http.MethodGet, "503", "")
+	before200 := testutil.ToFloat64(counter200)
+	before503 := testutil.ToFloat64(counter503)
+
+	req := httptest.NewRequest(http.MethodGet, "/flush-refused-after-status", nil)
+	h.ServeHTTP(&noFlushWriter{rr: httptest.NewRecorder()}, req)
+
+	require.Equal(t, before503+1, testutil.ToFloat64(counter503),
+		"the 503 was captured before the refused flush — the rollback must not touch a capture it did not make")
+	require.Equal(t, before200, testutil.ToFloat64(counter200),
+		"a refused flush after an explicit status must not relabel the request 200")
+}
+
+// The #165 × #174 composition the issue comment named, pinned nowhere else:
+// a forwarded non-latching 103 first (captures nothing, #165), then a flush
+// commits the implied 200 (FlushError captures it, #174), then a panic — the
+// meter must report the 200 the wire carries: not the never-written relabel
+// 500, and never the 103 (a non-latching informational is never the final
+// status label).
+func TestStatusWriter_InformationalThenFlushThenPanicMetersCommitted200(t *testing.T) {
+	flushErr := make(chan error, 1) // buffered: read after the panic recovery
+	mux := http.NewServeMux()
+	mux.Handle("GET /hints-flush-boom", routeLabel(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusEarlyHints) // forwarded, non-latching (#165)
+		flushErr <- http.NewResponseController(w).Flush()
+		panic("handler exploded after the 103 and the flush")
+	})))
+	h := metricsMiddleware(mux)
+
+	counter200 := requestsTotal.WithLabelValues("GET /hints-flush-boom", http.MethodGet, "200", "")
+	counter103 := requestsTotal.WithLabelValues("GET /hints-flush-boom", http.MethodGet, "103", "")
+	counter500 := requestsTotal.WithLabelValues("GET /hints-flush-boom", http.MethodGet, "500", "")
+	before200 := testutil.ToFloat64(counter200)
+	before103 := testutil.ToFloat64(counter103)
+	before500 := testutil.ToFloat64(counter500)
+
+	req := httptest.NewRequest(http.MethodGet, "/hints-flush-boom", nil)
+	panicked := func() (p any) {
+		defer func() { p = recover() }()
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		return nil
+	}()
+	require.Equal(t, "handler exploded after the 103 and the flush", panicked,
+		"the panic must propagate past the metrics layer")
+	require.NoError(t, <-flushErr, "premise: the flush succeeded, so the implied 200 committed")
+	require.Equal(t, before200+1, testutil.ToFloat64(counter200),
+		`the flush after the 103 committed the implied 200 — it must meter as status="200"`)
+	require.Equal(t, before103, testutil.ToFloat64(counter103),
+		"a forwarded non-latching 103 must never become the final status label")
+	require.Equal(t, before500, testutil.ToFloat64(counter500),
+		"the 500 relabel is only for panics with NOTHING committed — the flush committed")
+}
+
 // A handler that commits a 200 (WriteHeader+Write) and THEN panics meters as
 // status="200" — the status is already on the wire, so relabeling it 500
 // would claim a response the client never received. The 500 relabel applies

@@ -32,7 +32,9 @@ import (
 func TestFlushChain_NewShapedStackStreamsFlushedPrefix(t *testing.T) {
 	// Sentry ENABLED: without a client sentryMiddleware never mounts
 	// commitWriter, and the composed property would silently exclude the
-	// outermost wrapper.
+	// outermost wrapper. The premise that an enabled client mounts the
+	// wrapper UNCONDITIONALLY is itself pinned —
+	// TestSentryMiddleware_MountsCommitWriterWhenEnabled (sentry_test.go).
 	enableSentry(t)
 
 	const part1 = "first chunk, flushed mid-stream"
