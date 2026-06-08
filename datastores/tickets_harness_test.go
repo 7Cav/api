@@ -1,8 +1,10 @@
 package datastores_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/7cav/api/datastores"
@@ -565,4 +567,40 @@ func messagePositions(msgs []*proto.Message) []uint32 {
 		out[i] = m.Position
 	}
 	return out
+}
+
+// A must-be-populated phrase family (status) that reads zero rows from
+// xf_phrase must surface a Warn naming the family and still return an empty
+// map with a nil error — the refresh must NOT hard-fail on one drifted
+// family (#195). This drives the real loader against the MariaDB harness
+// with the status phrases deleted to reproduce the production drift mode.
+func TestLoadStatusNames_ZeroRowsWarnsButDoesNotFail(t *testing.T) {
+	ds := openHarnessDatastore(t)
+
+	// Remove the seeded status phrases so the (correct) LIKE prefix now
+	// matches zero rows — the exact silent-blank mode #189 fixed at the
+	// prefix level and #195 guards one layer down.
+	if err := ds.Db.Exec(`DELETE FROM xf_phrase WHERE title LIKE 'nf_tickets_status.%'`).Error; err != nil {
+		t.Fatalf("clearing status phrases: %v", err)
+	}
+
+	var buf bytes.Buffer
+	prev := datastores.Warn.Writer()
+	datastores.Warn.SetOutput(&buf)
+	t.Cleanup(func() { datastores.Warn.SetOutput(prev) })
+
+	names, err := ds.LoadStatusNames(context.Background())
+	if err != nil {
+		t.Fatalf("LoadStatusNames must not hard-fail on a zero-row read, got %v", err)
+	}
+	if len(names) != 0 {
+		t.Fatalf("status phrases were deleted, want empty map, got %v", names)
+	}
+	logged := buf.String()
+	if logged == "" {
+		t.Fatal("an empty status family must surface a Warn, got silence (the #195 silent-blank mode)")
+	}
+	if !strings.Contains(strings.ToLower(logged), "status") {
+		t.Errorf("the Warn must name the status family, got %q", logged)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -16,11 +17,11 @@ import (
 func withTrustedProxiesEnv(t *testing.T, value string) {
 	t.Helper()
 	prior := viper.GetString("TRUSTED_PROXIES")
-	priorSet := trustedProxies
+	priorSet := trustedProxies.Load()
 	viper.Set("TRUSTED_PROXIES", value)
 	t.Cleanup(func() {
 		viper.Set("TRUSTED_PROXIES", prior)
-		trustedProxies = priorSet
+		trustedProxies.Store(priorSet)
 	})
 }
 
@@ -192,7 +193,7 @@ func TestParseTrustedProxies_MalformedEntryErrors(t *testing.T) {
 func TestInitTrustedProxies_EmptyTrustsNothing(t *testing.T) {
 	withTrustedProxiesEnv(t, "")
 	require.NoError(t, InitTrustedProxies())
-	require.Empty(t, trustedProxies)
+	require.Empty(t, loadTrustedProxies())
 }
 
 func TestInitTrustedProxies_NonEmptyMalformedReturnsError(t *testing.T) {
@@ -203,5 +204,33 @@ func TestInitTrustedProxies_NonEmptyMalformedReturnsError(t *testing.T) {
 func TestInitTrustedProxies_ParsesAndCaches(t *testing.T) {
 	withTrustedProxiesEnv(t, "10.0.0.0/8, 192.168.1.1")
 	require.NoError(t, InitTrustedProxies())
-	require.Len(t, trustedProxies, 2)
+	require.Len(t, loadTrustedProxies(), 2)
+}
+
+// TestTrustedProxies_ConcurrentReadsDuringPublish proves the publish/read path
+// is race-clean: clientIP readers running while InitTrustedProxies publishes
+// must never observe a torn set. Under -race this is the structural guarantee
+// the atomic.Pointer buys over the old plain-slice assignment.
+func TestTrustedProxies_ConcurrentReadsDuringPublish(t *testing.T) {
+	withTrustedProxiesEnv(t, "10.0.0.0/8")
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := reqWith("10.0.0.5:443", map[string]string{
+				"X-Forwarded-For": "203.0.113.9, 10.0.0.4",
+			})
+			for range 200 {
+				// Result is non-deterministic mid-publish (peer or client),
+				// but the read itself must never tear or race.
+				_ = clientIP(r)
+			}
+		}()
+	}
+	for range 50 {
+		require.NoError(t, InitTrustedProxies())
+	}
+	wg.Wait()
 }

@@ -173,6 +173,8 @@ func Cases() []Case {
 			Notes: "Unknown query parameter ignored: identical payload to list_default."},
 		{Name: "tickets/list_modified_since_over_uint32", Method: "GET", Path: "/api/v1/tickets?modified_since=4294967296", Auth: AuthReadTickets,
 			Notes: "modifiedSince is uint32-backed: the handler rejects values above 4294967295 with 'value out of range', pinned here at the response level. Sent via the snake_case alias 'modified_since', which the spec validator treats as an ignored unknown param — so this does NOT exercise the request-level maximum; that bound is pinned by TestSpec_Uint32ParamsBounded (and enforced on the camelCase modifiedSince key by the request validator, cf. get_by_id_over_uint32)."},
+		{Name: "tickets/list_category_over_uint32", Method: "GET", Path: "/api/v1/tickets?category_id=4294967296", Auth: AuthReadTickets,
+			Notes: "categoryId[] is a repeated uint32 filter whose array items carry maximum: 4294967295: the binder rejects an over-ceiling value with 'value out of range', pinned here at the response level — the repeated-filter complement of list_modified_since_over_uint32. Sent via the snake_case alias 'category_id', which the spec validator treats as an ignored unknown param (libopenapi-validator does not enforce numeric maximum on array items anyway), so this does NOT exercise the request-level bound; the DECLARED items maximum is pinned structurally by TestSpec_Uint32ParamsBounded. This case adds the REPLAY half for the array surface."},
 
 		// --- Tickets: get by id / ref ---------------------------------------
 		{Name: "tickets/get_by_id_happy", Method: "GET", Path: "/api/v1/tickets/42", Auth: AuthReadTickets,
