@@ -168,6 +168,50 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 				"the commit decision stays latched — a later error status cannot reopen it")
 		})
 	}
+
+	// The reopen half of the rollback (#178; the rollback pin above covers
+	// only the handler-reacts-with-an-error continuation): committed=false
+	// exists for the OTHER continuation — a handler that shrugs at the
+	// refused flush and writes its 200 body anyway. Without the reopen,
+	// committed stays true after the rollback deleted the stamp, the later
+	// Write never re-stamps, and a 200 goes out WITHOUT its Cache-Control
+	// freshness signal — the exact loss this wrapper exists to prevent.
+	// Result snapshot here: the recorder commits at the Write's implied
+	// WriteHeader, so the stamp must be on the wire-visible set by then.
+	t.Run("failed flush reopens the commit for a shrugging 200", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		w := &cacheControlWriter{ResponseWriter: &noFlushWriter{rr: rr}, value: "max-age=600"}
+
+		err := http.NewResponseController(w).Flush()
+		require.ErrorIs(t, err, http.ErrNotSupported,
+			"an unflushable writer supports no flush — nothing was sent")
+
+		_, werr := w.Write([]byte("{}")) // handler shrugs — the implied 200 still happens
+		require.NoError(t, werr)
+		assert.Equal(t, "max-age=600", rr.Result().Header.Get("Cache-Control"),
+			"the rollback reopened the commit — the shrugged 200 must carry the freshness signal")
+	})
+
+	// The `stamped &&` guard on the rollback (#178; the symmetric pin to
+	// metrics' TestStatusWriter_RefusedFlushAfterExplicitStatusKeepsCapture):
+	// the rollback may only undo what THIS flush stamped. A refused flush
+	// AFTER a real WriteHeader(200) commit must leave the stamp alone —
+	// without the guard it deletes from the live map a stamp the commit
+	// decision already took (on a real server headers snapshot at first
+	// write, masking most of the damage — the map's integrity is the
+	// testable property, so the LIVE map is asserted).
+	t.Run("failed flush after WriteHeader 200 keeps the stamp", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		w := &cacheControlWriter{ResponseWriter: &noFlushWriter{rr: rr}, value: "max-age=600"}
+
+		w.WriteHeader(http.StatusOK)
+		err := http.NewResponseController(w).Flush()
+		require.ErrorIs(t, err, http.ErrNotSupported,
+			"an unflushable writer supports no flush — nothing was sent")
+
+		assert.Equal(t, "max-age=600", rr.Header().Get("Cache-Control"),
+			"the refused flush stamped nothing — it must not delete the stamp the commit took")
+	})
 }
 
 // cacheControl values are registration-time constants; a negative max-age is
