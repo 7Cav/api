@@ -162,6 +162,22 @@ func TestSetupSentry_DSNEnablesClientWithRelease(t *testing.T) {
 	assert.Equal(t, testRelease, events[0].Release, "events must carry the build-time release")
 }
 
+// commitWriter mounts UNCONDITIONALLY whenever a client is bound — the
+// composed flush-chain pin (flushchain_internal_test.go) enables sentry on
+// exactly this premise, so a refactor that mounts the wrapper conditionally
+// (per-route, per-method, …) fails here by name instead of silently
+// shrinking that pin's coverage to a commitWriter-less chain (#174 review).
+func TestSentryMiddleware_MountsCommitWriterWhenEnabled(t *testing.T) {
+	enableSentry(t)
+	var sawCommitWriter bool
+	h := sentryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, sawCommitWriter = w.(*commitWriter)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	require.True(t, sawCommitWriter,
+		"with a client bound, sentryMiddleware must hand every handler a *commitWriter — the recovery's committed signal and the composed flush-chain pin both stand on it")
+}
+
 // The headline acceptance (#132): a panicking handler produces ONE event —
 // tagged with the release, the validated key id, and the matched route
 // pattern — and the request still completes as a 500 in the contract error
@@ -740,20 +756,6 @@ func TestSentry_FailedFlushAfterCommitKeepsRepanicSemantics(t *testing.T) {
 		})
 	}
 }
-
-// flushErrorWriter is a base writer whose flush genuinely FAILS rather than
-// being refused: FlushError returns the injected error, never
-// http.ErrNotSupported. The real-server analogue is a conn write error — the
-// implied 200 commits to the wire BEFORE the error returns to the handler.
-type flushErrorWriter struct {
-	rr  *httptest.ResponseRecorder
-	err error
-}
-
-func (w *flushErrorWriter) Header() http.Header         { return w.rr.Header() }
-func (w *flushErrorWriter) Write(b []byte) (int, error) { return w.rr.Write(b) }
-func (w *flushErrorWriter) WriteHeader(code int)        { w.rr.WriteHeader(code) }
-func (w *flushErrorWriter) FlushError() error           { return w.err }
 
 // The errors.Is discriminator on the #164 rollback: ONLY the delegate's
 // refusal (http.ErrNotSupported — nothing sent) may clear the latch. A first

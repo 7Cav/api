@@ -131,7 +131,7 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 	// happened, and both must KEEP. Broadening the discriminator to any
 	// non-nil error would delete from the live map a stamp the wire already
 	// carries and reopen with committed=false a decision the wire already
-	// took. The delegate (flushErrorWriter, sentry_test.go) fails the flush
+	// took. The delegate (flushErrorWriter, fakewriters_test.go) fails the flush
 	// with the injected error, never the refusal sentinel; the trailing 404
 	// is the handler-reacts-to-the-failed-flush move from the rollback pin
 	// above — here it must NOT reopen the commit (on a real server that 404
@@ -169,17 +169,6 @@ func TestCacheControlWriter_CommitDecision(t *testing.T) {
 		})
 	}
 }
-
-// noFlushWriter hides the recorder's Flusher — the shape gzipResponseWriter
-// had before #167 (no FlushError, no Flusher, no Unwrap), where a delegated
-// flush always fails with http.ErrNotSupported.
-type noFlushWriter struct {
-	rr *httptest.ResponseRecorder
-}
-
-func (w *noFlushWriter) Header() http.Header         { return w.rr.Header() }
-func (w *noFlushWriter) Write(b []byte) (int, error) { return w.rr.Write(b) }
-func (w *noFlushWriter) WriteHeader(code int)        { w.rr.WriteHeader(code) }
 
 // cacheControl values are registration-time constants; a negative max-age is
 // always a programming error, so it fails at registration, not on the wire.

@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -21,26 +22,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// flushSnapshotWriter records what the gzip layer pushed down to it, and
-// snapshots that buffer the moment Flush is called — the bytes that would be
-// on the wire after the flush.
-type flushSnapshotWriter struct {
-	header   http.Header
-	buf      bytes.Buffer
-	flushed  int
-	snapshot []byte // buf contents at the first Flush
-}
-
-func (w *flushSnapshotWriter) Header() http.Header         { return w.header }
-func (w *flushSnapshotWriter) Write(b []byte) (int, error) { return w.buf.Write(b) }
-func (w *flushSnapshotWriter) WriteHeader(int)             {}
-func (w *flushSnapshotWriter) Flush() {
-	if w.flushed == 0 {
-		w.snapshot = append([]byte(nil), w.buf.Bytes()...)
-	}
-	w.flushed++
-}
 
 // FlushError must flush the gzip.Writer's buffered output into the underlying
 // writer BEFORE flushing the underlying chain — in that order the bytes on
@@ -366,18 +347,6 @@ func TestGzipMiddleware_HeadBodylessMakesNoLengthClaim(t *testing.T) {
 		"nothing went through the gzip layer — there is nothing to truncate")
 }
 
-// failingWriter rejects every body write with a fixed genuine error — the
-// downstream-failure shape (connection torn down, write timeout) that makes
-// the deferred gz.Close fail for real.
-type failingWriter struct {
-	header http.Header
-	err    error
-}
-
-func (w *failingWriter) Header() http.Header       { return w.header }
-func (w *failingWriter) Write([]byte) (int, error) { return 0, w.err }
-func (w *failingWriter) WriteHeader(int)           {}
-
 // The loud side of the carve-out (#175): a GENUINE close failure — anything
 // but the hijack/bodyless shapes — must still log "gzip close failed".
 // Nothing else pins this: a carve-out widened to swallow every close error
@@ -409,16 +378,99 @@ func TestGzipMiddleware_GenuineCloseFailureLogs(t *testing.T) {
 		"the log must carry the underlying error for diagnosis")
 }
 
-// noFlushUnderlying is a writer the controller cannot flush — no FlushError,
-// no Flusher, no Unwrap.
-type noFlushUnderlying struct {
-	header http.Header
-	buf    bytes.Buffer
+// A delegate whose flush genuinely FAILS (the conn-write-error shape, not
+// the ErrNotSupported refusal below) must surface through gzip's FlushError
+// VERBATIM (#174): the handler's errors.Is discriminators — and the rollback
+// discriminators in the wrappers above gzip (commitWriter, cacheControlWriter)
+// — match on the delegate's error chain, so a FlushError that wrapped,
+// replaced, or swallowed it would break every one of them silently. By the
+// time the delegated flush fails, gz.Flush already pushed the gzip header and
+// sync block into the (working) delegate — the commit really happened, which
+// is exactly why the genuine-error world must stay distinguishable from the
+// refusal world.
+func TestGzipResponseWriter_FlushPropagatesDelegateErrorVerbatim(t *testing.T) {
+	errConnReset := errors.New("conn reset")
+	for _, tc := range []struct {
+		name     string
+		flushErr error // what the delegate's FlushError returns
+		want     error // the sentinel that must surface through errors.Is
+	}{
+		{name: "plain error", flushErr: errConnReset, want: errConnReset},
+		{name: "wrapped sentinel", flushErr: fmt.Errorf("flush tcp conn: %w", io.ErrClosedPipe), want: io.ErrClosedPipe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := &flushErrorWriter{rr: httptest.NewRecorder(), err: tc.flushErr}
+			flushErr := make(chan error, 1)
+			h := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, err := io.WriteString(w, "written before the failing flush")
+				require.NoError(t, err)
+				flushErr <- http.NewResponseController(w).Flush()
+			}))
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip")
+			h.ServeHTTP(out, req)
+
+			err := <-flushErr
+			assert.Equal(t, tc.flushErr, err,
+				"the delegate's flush error must propagate verbatim — wrapping or replacing it breaks the chain's errors.Is discriminators")
+			require.ErrorIs(t, err, tc.want)
+			require.NotErrorIs(t, err, http.ErrNotSupported,
+				"a genuine failure must never read as the refusal sentinel — the rollback discriminators key on exactly that distinction")
+		})
+	}
 }
 
-func (w *noFlushUnderlying) Header() http.Header         { return w.header }
-func (w *noFlushUnderlying) Write(b []byte) (int, error) { return w.buf.Write(b) }
-func (w *noFlushUnderlying) WriteHeader(int)             {}
+// The OTHER failure point in gzip's FlushError (#174): gz.Flush() itself
+// fails because its downstream write — the gzip header + sync block landing
+// on the base writer — fails. Three duties, all pinned here against the
+// write-failing base fake:
+//
+//   - early return: the delegated chain flush must NOT run (failingWriter's
+//     flushes counter stays 0) — there is nothing coherent to flush, and a
+//     mutant that delegates anyway would report the chain flush's nil and
+//     swallow the real failure;
+//   - sticky gzip.Writer error: every subsequent flush and write surfaces the
+//     same downstream error — the stream is dead, not retryable;
+//   - Close-path log backstop: the deferred gz.Close fails with the sticky
+//     error and the middleware logs "gzip close failed" — for the many
+//     handlers that ignore write/flush errors, that line is the ONLY
+//     server-side trace of the truncation.
+func TestGzipResponseWriter_FlushWriteFailureReturnsEarlyAndSticks(t *testing.T) {
+	logged := captureErrorLog(t)
+
+	errDownstream := errors.New("downstream write torn away")
+	out := &failingWriter{header: make(http.Header), err: errDownstream}
+	var firstFlush, secondFlush, writeErr error
+	var flushesAtReturn int
+	h := GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+		firstFlush = rc.Flush() // gz.Flush's header+sync write fails on the base
+		flushesAtReturn = out.flushes
+		secondFlush = rc.Flush() // the gzip.Writer error is sticky
+		_, writeErr = io.WriteString(w, "never leaves the dead stream")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	h.ServeHTTP(out, req)
+
+	require.ErrorIs(t, firstFlush, errDownstream,
+		"the base write failure under gz.Flush must surface to the flushing handler")
+	assert.Equal(t, 0, flushesAtReturn,
+		"a failed gz.Flush must return early — the delegated chain flush must never run")
+	require.ErrorIs(t, secondFlush, errDownstream,
+		"the gzip.Writer error is sticky — a retry flush surfaces the same failure")
+	require.ErrorIs(t, writeErr, errDownstream,
+		"the gzip.Writer error is sticky — a later write surfaces the same failure")
+	assert.Equal(t, 0, out.flushes,
+		"no delegated flush may reach the base at any point — the stream died at the first failure")
+
+	assert.Contains(t, logged.String(), "gzip close failed",
+		"the deferred close is the log backstop — handlers that ignore flush errors leave it as the only server-side trace")
+	assert.Contains(t, logged.String(), errDownstream.Error(),
+		"the log must carry the underlying error for diagnosis")
+}
 
 // When nothing below the gzip layer can flush, the handler must still hear
 // about it loudly: FlushError reports the chain's http.ErrNotSupported
