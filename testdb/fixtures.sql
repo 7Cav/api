@@ -189,15 +189,21 @@ INSERT INTO xf_nf_tickets_category
   (3, 'Tech Support',  'TeamSpeak and game tech',0, 0, 5, 6, 20, 2, '', '', '', '', '', '');
 
 -- Phrases backing the reference cache: status / priority / prefix names.
+-- The NF Tickets add-on's own phrase naming is inconsistent: status and
+-- priority phrases are titled WITHOUT a `ticket_` infix
+-- (`nf_tickets_status.<id>`, `nf_tickets_priority.<id>`), but prefix phrases
+-- DO carry it (`nf_tickets_ticket_prefix.<id>`). These seeds mirror the
+-- real-world add-on naming exactly so the reference-cache loader is exercised
+-- against the formats production actually writes. (see datastores/tickets.go)
 INSERT INTO xf_phrase (language_id, title, phrase_text) VALUES
-  (0, 'nf_tickets_ticket_status.1',   'Awaiting Support'),
-  (0, 'nf_tickets_ticket_status.2',   'In Progress'),
-  (0, 'nf_tickets_ticket_status.3',   'Closed'),
-  (0, 'nf_tickets_ticket_priority.1', 'Low'),
-  (0, 'nf_tickets_ticket_priority.2', 'Normal'),
-  (0, 'nf_tickets_ticket_priority.3', 'High'),
+  (0, 'nf_tickets_status.1',   'Awaiting Support'),
+  (0, 'nf_tickets_status.2',   'In Progress'),
+  (0, 'nf_tickets_status.3',   'Closed'),
+  (0, 'nf_tickets_priority.1', 'Low'),
+  (0, 'nf_tickets_priority.2', 'Normal'),
+  (0, 'nf_tickets_priority.3', 'High'),
   (0, 'nf_tickets_ticket_prefix.1',   'Urgent'),
-  (0, 'nf_tickets_ticket_status_no_id', 'edge: no trailing id');
+  (0, 'nf_tickets_status_no_id', 'edge: no trailing id');
 
 -- Tickets span categories 1/2/3, statuses 1/2/3, all three states, and
 -- include one deleted (hidden) ticket. last_modified_date descends

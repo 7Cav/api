@@ -38,18 +38,36 @@ var ErrInvalidCursor = errors.New("invalid cursor")
 // Compile-time assertion: Mysql must implement referencecache.Loader.
 var _ referencecache.Loader = (*Mysql)(nil)
 
+// xf_phrase title prefixes for the three NF Tickets reference families.
+//
+// CAUTION — the add-on's phrase naming is ASYMMETRIC, not a typo below:
+// status and priority titles carry NO `ticket_` infix
+// (`nf_tickets_status.<id>`, `nf_tickets_priority.<id>`), but prefix titles
+// DO (`nf_tickets_ticket_prefix.<id>`). This mirrors exactly what the NF
+// Tickets add-on writes to xf_phrase in production; querying status/priority
+// with the `ticket_` infix matches zero rows and silently warms an empty
+// cache (every statusName/priorityName resolves to ""). Do not "normalise"
+// these to a uniform shape — the inconsistency is in the source data, and
+// the testdb fixtures (testdb/fixtures.sql) seed these exact forms.
+const (
+	phrasePrefixStatus   = "nf_tickets_status."
+	phrasePrefixPriority = "nf_tickets_priority."
+	phrasePrefixPrefix   = "nf_tickets_ticket_prefix."
+)
+
 func (ds *Mysql) LoadStatusNames(ctx context.Context) (map[uint32]string, error) {
-	return ds.loadPhraseMap(ctx, "nf_tickets_ticket_status.")
+	return ds.loadPhraseMap(ctx, phrasePrefixStatus)
 }
 func (ds *Mysql) LoadPriorityNames(ctx context.Context) (map[uint32]string, error) {
-	return ds.loadPhraseMap(ctx, "nf_tickets_ticket_priority.")
+	return ds.loadPhraseMap(ctx, phrasePrefixPriority)
 }
 func (ds *Mysql) LoadPrefixNames(ctx context.Context) (map[uint32]string, error) {
-	return ds.loadPhraseMap(ctx, "nf_tickets_ticket_prefix.")
+	return ds.loadPhraseMap(ctx, phrasePrefixPrefix)
 }
 
 // loadPhraseMap reads rows from xf_phrase whose title starts with the given
-// prefix (e.g. "nf_tickets_ticket_status."), parses the trailing integer id,
+// prefix (one of the phrasePrefix* consts above, e.g. "nf_tickets_status."),
+// parses the trailing integer id,
 // and returns id -> phrase_text. Rows where the trailing part isn't a
 // uint32 are skipped (not an error — the phrase table is shared, so
 // unrelated rows can be in scope of the LIKE pattern at the edges).

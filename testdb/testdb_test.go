@@ -394,7 +394,10 @@ func TestFixtures_TicketRelationsResolve(t *testing.T) {
 	db, _ := testdb.Open(t)
 
 	for _, q := range []struct{ label, sql string }{
-		{"status phrase", `SELECT COUNT(*) FROM xf_nf_tickets_ticket tk LEFT JOIN xf_phrase ph ON ph.title = CONCAT('nf_tickets_ticket_status.', tk.status_id) WHERE ph.phrase_id IS NULL`},
+		// Status phrases carry NO `ticket_` infix in real add-on data
+		// (nf_tickets_status.<id>) — only prefix does. Guarding the
+		// corrected join keeps the fixtures honest to production naming.
+		{"status phrase", `SELECT COUNT(*) FROM xf_nf_tickets_ticket tk LEFT JOIN xf_phrase ph ON ph.title = CONCAT('nf_tickets_status.', tk.status_id) WHERE ph.phrase_id IS NULL`},
 		{"category row", `SELECT COUNT(*) FROM xf_nf_tickets_ticket tk LEFT JOIN xf_nf_tickets_category c ON c.ticket_category_id = tk.ticket_category_id WHERE c.ticket_category_id IS NULL`},
 	} {
 		var n int
@@ -411,7 +414,10 @@ func TestFixtures_TicketRelationsResolve(t *testing.T) {
 		{"hidden messages", `SELECT COUNT(*) FROM xf_nf_tickets_message WHERE message_state <> 'visible'`},
 		{"participants", `SELECT COUNT(*) FROM xf_nf_tickets_ticket_participant`},
 		{"ticket field values", `SELECT COUNT(*) FROM xf_nf_tickets_ticket_field_value`},
-		{"priority phrases", `SELECT COUNT(*) FROM xf_phrase WHERE title LIKE 'nf_tickets_ticket_priority.%'`},
+		// Priority phrases, like status, carry NO `ticket_` infix
+		// (nf_tickets_priority.<id>); prefix phrases DO
+		// (nf_tickets_ticket_prefix.<id>) — the add-on's naming asymmetry.
+		{"priority phrases", `SELECT COUNT(*) FROM xf_phrase WHERE title LIKE 'nf_tickets_priority.%'`},
 		{"prefix phrases", `SELECT COUNT(*) FROM xf_phrase WHERE title LIKE 'nf_tickets_ticket_prefix.%'`},
 	} {
 		var n int
