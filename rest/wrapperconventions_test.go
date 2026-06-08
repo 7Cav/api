@@ -8,9 +8,14 @@ package rest_test
 // wrapper, before it has any tests at all:
 //
 //   - FlushError convention: every ResponseWriter wrapper implements
-//     `FlushError() error` or doesn't intercept flush at all — never bare
+//     `FlushError() error` or skips flush interception and declares
+//     `Unwrap() http.ResponseWriter` so the controller tunnels — never bare
 //     `Flush()`, whose errors http.ResponseController's Flusher branch
-//     silently swallows (the wrapper reports success on a flush that died).
+//     silently swallows (the wrapper reports success on a flush that died),
+//     and never NEITHER: a wrapper with no FlushError, no Flush and no
+//     Unwrap dead-ends the controller's method walk, turning every handler
+//     flush through it into http.ErrNotSupported in production (#174
+//     review — the opaque-wrapper mutant survived the whole suite).
 //   - Informational predicate (#165 review): every WriteHeader method on a
 //     wrapper must consult informational() — a WriteHeader-stateful wrapper
 //     added without the non-latching-1xx guard (and without volunteering
@@ -41,12 +46,12 @@ import (
 // sanctioned ways forward when a handler legitimately needs the connection.
 const hijackRemedy = "no production code in package rest may hijack — the gzip close-log's coarse ErrHijacked carve-out (#175) is only safe while nothing hijacks through the chain. Mount upgrade endpoints OUTSIDE GzipMiddleware, or implement the faithfulness spec preserved in .out-of-scope/gzip-hijack-faithfulness.md (PR #185, from #181)"
 
-// wrapperTypes returns the names of every struct type in files that embeds
+// wrapperTypes returns every struct type in files that embeds
 // http.ResponseWriter — the package's writer-wrapper convention (all four
-// production wrappers embed it; a wrapper holding the delegate in a named
-// field would not satisfy http.ResponseWriter and could not enter the chain).
-func wrapperTypes(files []*ast.File) map[string]bool {
-	wrappers := map[string]bool{}
+// production wrappers embed it) — keyed by type name, with the TypeSpec
+// position for violation messages.
+func wrapperTypes(files []*ast.File) map[string]token.Pos {
+	wrappers := map[string]token.Pos{}
 	for _, f := range files {
 		ast.Inspect(f, func(n ast.Node) bool {
 			ts, ok := n.(*ast.TypeSpec)
@@ -63,7 +68,7 @@ func wrapperTypes(files []*ast.File) map[string]bool {
 				}
 				if sel, ok := fld.Type.(*ast.SelectorExpr); ok {
 					if x, ok := sel.X.(*ast.Ident); ok && x.Name == "http" && sel.Sel.Name == "ResponseWriter" {
-						wrappers[ts.Name.Name] = true
+						wrappers[ts.Name.Name] = ts.Pos()
 					}
 				}
 			}
@@ -92,50 +97,105 @@ func receiverTypeName(fd *ast.FuncDecl) string {
 // isFlushErrorSignature reports whether the method is exactly
 // `FlushError() error` — no parameters, one unnamed error result.
 func isFlushErrorSignature(fd *ast.FuncDecl) bool {
-	if fd.Type.Params != nil && len(fd.Type.Params.List) != 0 {
+	res, ok := soleResult(fd)
+	if !ok {
 		return false
 	}
-	if fd.Type.Results == nil || len(fd.Type.Results.List) != 1 {
+	id, ok := res.(*ast.Ident)
+	return ok && id.Name == "error"
+}
+
+// isUnwrapSignature reports whether the method is exactly
+// `Unwrap() http.ResponseWriter` — the only shape
+// http.ResponseController's method walk descends through. Anything else
+// (parameters, a different result type) is invisible to the controller.
+func isUnwrapSignature(fd *ast.FuncDecl) bool {
+	res, ok := soleResult(fd)
+	if !ok {
 		return false
+	}
+	sel, ok := res.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	x, ok := sel.X.(*ast.Ident)
+	return ok && x.Name == "http" && sel.Sel.Name == "ResponseWriter"
+}
+
+// soleResult returns the method's single unnamed result type, reporting
+// false for any other parameter/result arity.
+func soleResult(fd *ast.FuncDecl) (ast.Expr, bool) {
+	if fd.Type.Params != nil && len(fd.Type.Params.List) != 0 {
+		return nil, false
+	}
+	if fd.Type.Results == nil || len(fd.Type.Results.List) != 1 {
+		return nil, false
 	}
 	res := fd.Type.Results.List[0]
 	if len(res.Names) != 0 {
-		return false
+		return nil, false
 	}
-	id, ok := res.Type.(*ast.Ident)
-	return ok && id.Name == "error"
+	return res.Type, true
 }
 
 // flushConventionViolations applies the FlushError convention to every
 // ResponseWriter wrapper in files: never bare Flush() (the controller's
-// Flusher branch swallows its errors), and a FlushError must carry the exact
+// Flusher branch swallows its errors); a FlushError must carry the exact
 // `FlushError() error` shape the controller's method search matches — any
 // other signature is dead code the controller skips, falling through to the
-// swallow-or-tunnel paths the author thought they had replaced. Returns the
-// wrapper and FlushError-method counts for the caller's vacuous-pass floors.
+// swallow-or-tunnel paths the author thought they had replaced; and every
+// wrapper must declare `FlushError() error` OR `Unwrap() http.ResponseWriter`
+// — a wrapper with neither (and no Flush) dead-ends the controller's method
+// walk, so every handler flush through it returns http.ErrNotSupported in
+// production (#174 review: that opaque-wrapper mutant survived the entire
+// suite before this rule). Returns the wrapper and FlushError-method counts
+// for the caller's vacuous-pass floors.
 func flushConventionViolations(fset *token.FileSet, files []*ast.File) (violations []string, wrappers, flushErrors int) {
 	wrapperSet := wrapperTypes(files)
 	wrappers = len(wrapperSet)
+	// intercepts: declares Flush or FlushError under ANY signature — shape
+	// problems are flagged individually above, so the dead-end rule below
+	// fires only when the controller finds nothing at all to walk.
+	intercepts := map[string]bool{}
+	unwraps := map[string]bool{} // declares the exact `Unwrap() http.ResponseWriter`
 	for _, f := range files {
 		for _, decl := range f.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || !wrapperSet[receiverTypeName(fd)] {
+			if !ok {
+				continue
+			}
+			recv := receiverTypeName(fd)
+			if _, isWrapper := wrapperSet[recv]; !isWrapper {
 				continue
 			}
 			switch fd.Name.Name {
 			case "Flush":
+				intercepts[recv] = true
 				violations = append(violations, fmt.Sprintf(
 					"%s: %s.Flush: bare Flush() on a ResponseWriter wrapper — http.ResponseController's Flusher branch silently swallows its errors, so the handler hears success on a flush that died. Implement FlushError() error instead (see gzipResponseWriter/commitWriter/cacheControlWriter), or drop flush interception entirely and let Unwrap tunnel it",
-					fset.Position(fd.Pos()), receiverTypeName(fd)))
+					fset.Position(fd.Pos()), recv))
 			case "FlushError":
+				intercepts[recv] = true
 				flushErrors++
 				if !isFlushErrorSignature(fd) {
 					violations = append(violations, fmt.Sprintf(
 						"%s: %s.FlushError: signature must be exactly `FlushError() error` — anything else is invisible to http.ResponseController's method search and never runs",
-						fset.Position(fd.Pos()), receiverTypeName(fd)))
+						fset.Position(fd.Pos()), recv))
+				}
+			case "Unwrap":
+				if isUnwrapSignature(fd) {
+					unwraps[recv] = true
 				}
 			}
 		}
+	}
+	for name, pos := range wrapperSet {
+		if intercepts[name] || unwraps[name] {
+			continue
+		}
+		violations = append(violations, fmt.Sprintf(
+			"%s: %s: ResponseWriter wrapper with neither `FlushError() error` nor `Unwrap() http.ResponseWriter` — http.ResponseController's method walk dead-ends here, so every handler flush (and every other controller verb) through this layer returns http.ErrNotSupported in production. Implement FlushError() error to intercept flush (see gzipResponseWriter/commitWriter/cacheControlWriter), or declare Unwrap and let the controller tunnel",
+			fset.Position(pos), name))
 	}
 	return violations, wrappers, flushErrors
 }
@@ -152,7 +212,10 @@ func informationalPredicateViolations(fset *token.FileSet, files []*ast.File) (v
 	for _, f := range files {
 		for _, decl := range f.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || fd.Name.Name != "WriteHeader" || !wrapperSet[receiverTypeName(fd)] {
+			if !ok || fd.Name.Name != "WriteHeader" {
+				continue
+			}
+			if _, isWrapper := wrapperSet[receiverTypeName(fd)]; !isWrapper {
 				continue
 			}
 			writeHeaders++
@@ -226,6 +289,14 @@ func TestFlushConventionViolations_DetectsEachBreak(t *testing.T) {
 		{
 			name:  "no flush interception at all",
 			decls: syntheticWrapper + "func (w *fakeWrap) Unwrap() http.ResponseWriter { return w.ResponseWriter }\n",
+		},
+		{
+			// The opaque-wrapper mutant from the #174 review: no FlushError,
+			// no Flush, no Unwrap — the controller's method walk dead-ends
+			// and every handler flush returns http.ErrNotSupported.
+			name:  "dead end: neither FlushError nor Unwrap",
+			decls: syntheticWrapper,
+			want:  "neither `FlushError() error` nor `Unwrap() http.ResponseWriter`",
 		},
 		{
 			name:  "bare Flush",

@@ -7,7 +7,7 @@
 // package is the permanent home — at cutover the single public listener
 // serves every route through it, and Phase 4 deletes the old stacks.
 //
-// # Middleware chain (PRD order — assembled in New)
+// # Middleware chain (PRD order — assembled in chain, New's composition)
 //
 //	sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 → mux
 //
@@ -90,7 +90,7 @@ var (
 
 // New assembles the new stack: the route mux wrapped in the PRD middleware
 // chain (sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 →
-// mux). The returned handler serves
+// mux; the one definition lives on chain below). The returned handler serves
 // the /api surface; non-API paths (the docs UI) are the cutover slice's
 // concern (#134) and 404 here until then.
 //
@@ -108,13 +108,23 @@ func New(ds datastores.Datastore, rc datastores.TicketReferenceCache) http.Handl
 	if rc == nil {
 		panic("rest.New: nil TicketReferenceCache — pass the refreshed referencecache.Cache (see #134)")
 	}
+	return chain(ds, routes(ds, rc))
+}
+
+// chain wraps inner — the route mux, in production — in the PRD middleware
+// order: sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 →
+// inner. ONE definition, shared by New and the composed flush-chain pin
+// (flushchain_internal_test.go), so the assembly that test exercises IS the
+// assembly production serves: a wrapper inserted here is exercised by the
+// composition test by construction, and the test cannot rot into a
+// hand-maintained mirror of an assembly that moved on (#174 review).
+func chain(ds datastores.Datastore, inner http.Handler) http.Handler {
 	return sentryMiddleware(
 		metricsMiddleware(
 			AuthMiddleware(ds,
 				sentryLabel(
 					GzipMiddleware(
-						cleanPathRedirect(
-							routes(ds, rc)))))))
+						cleanPathRedirect(inner))))))
 }
 
 // routes builds the pattern-routing mux. Every route registers through

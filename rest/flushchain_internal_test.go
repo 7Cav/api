@@ -5,13 +5,15 @@ package rest
 // cachecontrol, gzip each pinned individually) — nothing pinned the COMPOSED
 // property, so a wrapper inserted into New tomorrow without
 // FlushError/Flusher/Unwrap would break handler flushes in production with
-// every existing test green. This test assembles the New-shaped stack —
-// sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 → mux,
-// with the probe registered through handle() exactly like a production route
-// (routeLabel + requireScope + cacheControl) — over a real server and pins
-// the composed behavior: the mid-body flush succeeds, and the flushed prefix
-// is decodable on the wire while the handler still holds the tail. Internal
-// (package rest) because the chain pieces New composes are unexported.
+// every existing test green. This test assembles the stack through chain()
+// (rest.go) — the SAME function New composes its middleware with, so the
+// assembly under test is production's by construction, not a hand-kept
+// mirror that could drift (#174 review) — with routes() swapped for a probe
+// mux whose route registers through handle() exactly like a production route
+// (routeLabel + requireScope + cacheControl). Over a real server it pins the
+// composed behavior: the mid-body flush succeeds, and the flushed prefix is
+// decodable on the wire while the handler still holds the tail. Internal
+// (package rest) because chain and the wrappers it mounts are unexported.
 
 import (
 	"compress/gzip"
@@ -49,21 +51,16 @@ func TestFlushChain_NewShapedStackStreamsFlushedPrefix(t *testing.T) {
 		writeErr <- err
 	})
 
-	// The New-shaped assembly, middleware nesting mirrored from New verbatim
-	// with routes() swapped for the probe mux. handle() gives the probe the
-	// full per-route wrap set (routeLabel — the metrics sweep's never-routed
-	// contract holds for this traffic too — plus requireScope and
-	// cacheControl), so the flush traverses every writer wrapper a production
-	// route's would: commitWriter → statusWriter → gzipResponseWriter →
-	// cacheControlWriter.
+	// The production assembly itself: chain() is what New composes the
+	// middleware with (rest.go), here with routes() swapped for the probe
+	// mux. handle() gives the probe the full per-route wrap set (routeLabel —
+	// the metrics sweep's never-routed contract holds for this traffic too —
+	// plus requireScope and cacheControl), so the flush traverses every
+	// writer wrapper a production route's would: commitWriter → statusWriter
+	// → gzipResponseWriter → cacheControlWriter.
 	mux := http.NewServeMux()
 	handle(mux, "GET /", "read", maxAgeRosterFamily, probe)
-	h := sentryMiddleware(
-		metricsMiddleware(
-			AuthMiddleware(&sentryFakeDatastore{},
-				sentryLabel(
-					GzipMiddleware(
-						cleanPathRedirect(mux))))))
+	h := chain(&sentryFakeDatastore{}, mux)
 
 	srv := httptest.NewServer(h)
 	defer srv.Close()
