@@ -38,59 +38,92 @@ var ErrInvalidCursor = errors.New("invalid cursor")
 // Compile-time assertion: Mysql must implement referencecache.Loader.
 var _ referencecache.Loader = (*Mysql)(nil)
 
-// xf_phrase title prefixes for the three NF Tickets reference families.
+// phraseFamily names one NF Tickets reference family in xf_phrase: the
+// LIKE prefix its titles carry, a short human name for diagnostics, and
+// whether the family is ever legitimately empty.
 //
-// CAUTION — the add-on's phrase naming is ASYMMETRIC, not a typo below:
-// status and priority titles carry NO `ticket_` infix
-// (`nf_tickets_status.<id>`, `nf_tickets_priority.<id>`), but prefix titles
-// DO (`nf_tickets_ticket_prefix.<id>`). This mirrors exactly what the NF
+// CAUTION — the add-on's phrase naming is ASYMMETRIC, not a typo in the
+// familyStatus/familyPriority/familyPrefix prefixes below: status and
+// priority titles carry NO `ticket_` infix (`nf_tickets_status.<id>`,
+// `nf_tickets_priority.<id>`), but prefix titles DO
+// (`nf_tickets_ticket_prefix.<id>`). This mirrors exactly what the NF
 // Tickets add-on writes to xf_phrase in production; querying status/priority
 // with the `ticket_` infix matches zero rows and silently warms an empty
 // cache (every statusName/priorityName resolves to ""). Do not "normalise"
 // these to a uniform shape — the inconsistency is in the source data, and
 // the testdb fixtures (testdb/fixtures.sql) seed these exact forms.
-const (
-	phrasePrefixStatus   = "nf_tickets_status."
-	phrasePrefixPriority = "nf_tickets_priority."
-	phrasePrefixPrefix   = "nf_tickets_ticket_prefix."
+//
+// mustBePopulated guards the silent-degradation mode of #195: status and
+// priority are never empty in production, so a zero-row read for them means
+// the source data has drifted (an add-on phrase rename, a collation/charset
+// change, a language_id regression) and must be surfaced loudly instead of
+// warming a blank cache (every statusName/priorityName then resolves to "").
+// prefix MAY be legitimately sparse, so it stays exempt.
+type phraseFamily struct {
+	prefix          string
+	name            string
+	mustBePopulated bool
+}
+
+var (
+	familyStatus   = phraseFamily{prefix: "nf_tickets_status.", name: "status", mustBePopulated: true}
+	familyPriority = phraseFamily{prefix: "nf_tickets_priority.", name: "priority", mustBePopulated: true}
+	familyPrefix   = phraseFamily{prefix: "nf_tickets_ticket_prefix.", name: "prefix", mustBePopulated: false}
 )
 
-func (ds *Mysql) LoadStatusNames(ctx context.Context) (map[uint32]string, error) {
-	return ds.loadPhraseMap(ctx, phrasePrefixStatus)
-}
-func (ds *Mysql) LoadPriorityNames(ctx context.Context) (map[uint32]string, error) {
-	return ds.loadPhraseMap(ctx, phrasePrefixPriority)
-}
-func (ds *Mysql) LoadPrefixNames(ctx context.Context) (map[uint32]string, error) {
-	return ds.loadPhraseMap(ctx, phrasePrefixPrefix)
+// warnIfEmpty surfaces a zero-row read for a must-be-populated family at
+// Warn severity, naming the family. It is intentionally NOT triggered by
+// individual missing ids within a populated map — those resolve to "" by
+// design (new add-on records can land between refresh ticks). A legitimately
+// sparse family (prefix) never warns.
+func (f phraseFamily) warnIfEmpty(out map[uint32]string) {
+	if f.mustBePopulated && len(out) == 0 {
+		Warn.Printf(
+			"reference cache: phrase family %q (%s%%) read zero rows — status/priority names will resolve blank on healthy responses; the xf_phrase titles for this family have likely drifted",
+			f.name, f.prefix)
+	}
 }
 
-// loadPhraseMap reads rows from xf_phrase whose title starts with the given
-// prefix (one of the phrasePrefix* consts above, e.g. "nf_tickets_status."),
-// parses the trailing integer id,
-// and returns id -> phrase_text. Rows where the trailing part isn't a
+func (ds *Mysql) LoadStatusNames(ctx context.Context) (map[uint32]string, error) {
+	return ds.loadPhraseMap(ctx, familyStatus)
+}
+func (ds *Mysql) LoadPriorityNames(ctx context.Context) (map[uint32]string, error) {
+	return ds.loadPhraseMap(ctx, familyPriority)
+}
+func (ds *Mysql) LoadPrefixNames(ctx context.Context) (map[uint32]string, error) {
+	return ds.loadPhraseMap(ctx, familyPrefix)
+}
+
+// loadPhraseMap reads rows from xf_phrase whose title starts with the
+// family's prefix (e.g. "nf_tickets_status."), parses the trailing integer
+// id, and returns id -> phrase_text. Rows where the trailing part isn't a
 // uint32 are skipped (not an error — the phrase table is shared, so
 // unrelated rows can be in scope of the LIKE pattern at the edges).
-func (ds *Mysql) loadPhraseMap(ctx context.Context, prefix string) (map[uint32]string, error) {
+//
+// A successful read that matches zero rows is NOT an error (the refresh must
+// not hard-fail on one drifted family and take down the rest of the cache),
+// but for a must-be-populated family it is surfaced via warnIfEmpty (#195).
+func (ds *Mysql) loadPhraseMap(ctx context.Context, fam phraseFamily) (map[uint32]string, error) {
 	var rows []struct {
 		Title      string `gorm:"column:title"`
 		PhraseText string `gorm:"column:phrase_text"`
 	}
 	tx := ds.Db.WithContext(ctx).
-		Raw(`SELECT title, phrase_text FROM xf_phrase WHERE title LIKE ?`, prefix+"%").
+		Raw(`SELECT title, phrase_text FROM xf_phrase WHERE title LIKE ?`, fam.prefix+"%").
 		Scan(&rows)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
 	out := map[uint32]string{}
 	for _, r := range rows {
-		idStr := r.Title[len(prefix):]
+		idStr := r.Title[len(fam.prefix):]
 		parsed, err := strconv.ParseUint(idStr, 10, 32)
 		if err != nil {
 			continue
 		}
 		out[uint32(parsed)] = r.PhraseText
 	}
+	fam.warnIfEmpty(out)
 	return out, nil
 }
 
