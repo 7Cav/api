@@ -741,20 +741,6 @@ func TestSentry_FailedFlushAfterCommitKeepsRepanicSemantics(t *testing.T) {
 	}
 }
 
-// flushErrorWriter is a base writer whose flush genuinely FAILS rather than
-// being refused: FlushError returns the injected error, never
-// http.ErrNotSupported. The real-server analogue is a conn write error — the
-// implied 200 commits to the wire BEFORE the error returns to the handler.
-type flushErrorWriter struct {
-	rr  *httptest.ResponseRecorder
-	err error
-}
-
-func (w *flushErrorWriter) Header() http.Header         { return w.rr.Header() }
-func (w *flushErrorWriter) Write(b []byte) (int, error) { return w.rr.Write(b) }
-func (w *flushErrorWriter) WriteHeader(code int)        { w.rr.WriteHeader(code) }
-func (w *flushErrorWriter) FlushError() error           { return w.err }
-
 // The errors.Is discriminator on the #164 rollback: ONLY the delegate's
 // refusal (http.ErrNotSupported — nothing sent) may clear the latch. A first
 // flush failing with a genuine I/O error is the opposite world: the delegate
