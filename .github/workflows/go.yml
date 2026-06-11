@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v6.0.2
+      uses: actions/checkout@v6.0.3
     - name: Install tools
       run: |
         make install
@@ -42,7 +42,7 @@ jobs:
           --health-retries=24
     steps:
     - name: Check out code
-      uses: actions/checkout@v6.0.2
+      uses: actions/checkout@v6.0.3
     # The service container is up for the whole job; this step is "no
     # harness" only in the sense that TESTDB_ADDR is left unset. Mirror
     # of the with-harness guard, inverted: a known harness-backed test
@@ -103,7 +103,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v6.0.2
+      uses: actions/checkout@v6.0.3
     - name: Install tools
       run: make install
     - name: Install buf
