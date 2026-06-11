@@ -5,7 +5,7 @@ go 1.25.10
 require (
 	github.com/bufbuild/buf v1.70.0
 	github.com/getsentry/sentry-go v0.46.2
-	github.com/go-sql-driver/mysql v1.8.1
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0
 	github.com/pb33f/libopenapi v0.36.6
 	github.com/pb33f/libopenapi-validator v0.13.8
@@ -43,7 +43,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	connectrpc.com/connect v1.20.0 // indirect
 	connectrpc.com/otelconnect v0.9.0 // indirect
-	filippo.io/edwards25519 v1.1.1 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
