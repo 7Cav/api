@@ -2,25 +2,30 @@
 
 # Cav API
 
-A web API using GPRC/protobufs for main communication, but also supplying a more standard HTTP/JSON over grpc-gateway for legacy usage
+An HTTP/JSON API that serves 7Cav community and roster data. It is a read
+layer over the forum's MySQL database, written in Go on the standard
+library `net/http` stack.
 
 ## Clients
 
 ### Authentication
 
-The API is guarded via an OAuth2 bearer token, which you can get via the [7Cav auth service](https://auth.7cav.us/auth/realms/7Cav/account/)
+The API is guarded by a `Bearer` token. Tokens are issued and managed in
+the forum admin UI; each one carries a set of scopes that gate which parts
+of the surface it can read. Send it on every request:
 
-> If you see an empty field for the API Key, go to the 'sessions' tab, and click 'Log out all sessions'. Then, sign in again as usual.
+```
+Authorization: Bearer <your token>
+```
 
 ### HTTP/JSON
 
-We still maintain a simple HTTP API which routes to the underlying gRPC API. The more detailed endpoints are only accessible via the gRPC clients, so only use the HTTP API if you really need to and understand the trade-offs.
+The interactive documentation lives at [api.7cav.us](https://api.7cav.us).
 
-You can view the automatically generated documentation via [api.7cav.us](https://api.7cav.us)
+> To try the API from the docs page, click the `Authorize` button at the
+> top and paste your bearer token.
 
-> If you want to 'try out' the API, ensure you use your bearer token by clicking the 'Authorize' button at the top of the page 
-
-Wrap the requests in whichever flavour of language/HTTP client you wish:
+Wrap the requests in whichever language or HTTP client you prefer.
 
 #### NodeJS
 
@@ -62,7 +67,7 @@ func main() {
         TokenType:   "Bearer",
     }))
 
-    res, err := client.Get("milpacs/profile/id/1")
+    res, err := client.Get("https://api.7cav.us/api/v1/milpacs/profile/id/1")
     if err != nil {
         panic(err)
     }
@@ -70,97 +75,71 @@ func main() {
 }
 ```
 
-### gRPC
+## Architecture
 
-You probably came here for guidance on using the gRPC clients in your code. It depends on which language you're using, and if they are [supported by gRPC](https://grpc.io/docs/languages/).
+The service runs as a single public listener that serves the whole `/api`
+surface plus the documentation UI. There is no second port and no gRPC: an
+earlier version split the process into a gRPC server and a generated
+HTTP/JSON gateway, but that design was retired in [PRD #112][prd]
+("Goodbye gRPC"). See [ADR 0006][adr6] for why.
 
-An example client written in golang can be found in `cmd/example.go` and can be run via `go run main.go example <id>` to get milpac info for a specific user.
+The contract is checked into the repo, not generated:
 
-```go
-package main
+- the **types package** (`types/`) holds the hand-written wire types;
+- the **OpenAPI 3.1 spec** (`openapi/openapi.yaml`) is the reference
+  document served at the docs URL;
+- the **golden corpus** (`contract/goldens/`) records one
+  request/response per public route.
 
-import (
-	"context"
-    "crypto/tls"
-    "fmt"
-    "github.com/7cav/api/proto"
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials"
-    "google.golang.org/grpc/credentials/oauth"
-)
+`contract/spec_test.go` validates the spec against the corpus in both
+directions, so the three stay in step and any drift fails CI naming the
+operation and field. The domain glossary and the add-an-endpoint checklist
+live in [`CONTEXT.md`](CONTEXT.md).
 
-func main() {
-    ctx := context.Background()
-    token := "<token>"
-    
-    rpcCreds := oauth.NewOauthAccess(&oauth2.Token{AccessToken: token})
-
-    // use TLS config to auto detect SSL/TLS cert from Api Host
-    config := &tls.Config{
-        InsecureSkipVerify: false,
-    }
-
-    opts := []grpc.DialOption{
-        grpc.WithTransportCredentials(credentials.NewTLS(config)),
-        grpc.WithPerRPCCredentials(rpcCreds),
-        grpc.WithBlock(),
-    }
-
-    conn, _ := grpc.Dial("api.7cav.us:443", opts...)
-    client := proto.NewMilpacServiceClient(conn)
-    res, err := client.Profile(context.Background(), &proto.ProfileRequest{UserId: 1})
-    if err != nil {
-        panic(err)
-    }
-    fmt.Println(res)
-}
-```
-
-Otherwise, follow the gRPC tutorials on using 'Client Side Code' and use the `proto/milpacs.proto` schema in your own code-bases.
+[prd]: https://github.com/7Cav/api/issues/112
+[adr6]: docs/adr/0006-single-listener-net-http-and-hand-owned-openapi.md
 
 ## Running
 
-In production, we use a customized version of the docker-compose.yml you can see here. The nginx container in front is for handling SSL/TLS termination before we reach the gRPC server.That way internally we don't need to use TLS encryption(needed on client side due to sending bearer tokens)
+In production the API runs behind an nginx that terminates TLS in front of
+the single HTTP listener. The `docker-compose.yaml` in this repo is a
+prod-shaped template; the live compose file is customized and kept out of
+the repo.
 
-The following should get you up and running. However you'll need a copy of the 7cav xenforo database imported into the mysql container!
+You need a copy of the 7Cav XenForo database reachable from the container
+(see the `DB_*` environment variables in `docker-compose.yaml`). Then:
 
 ```shell
-make certs
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Development
 
-So long as you have golang installed, you should be fine to run the following make commands to get setup with the required dependencies:
+With Go installed you can build and run the API directly. There is no code
+generation or tooling install step:
 
 ```shell
-make install
+go build ./...
+go run main.go serve
 ```
 
-This will also install [Cobra](https://github.com/spf13/cobra), which is used for creating the boilerplate for each custom command on the generated binary.
+`go run main.go serve` needs the database environment variables set (see
+`docker-compose.yaml` for the full list).
 
-When making changes to the proto file, be sure to run the relevant make file to regenerate the exported server interfaces:
-
-> You'll need to install the `buf` cli first from [here](https://github.com/bufbuild/buf)
+### Tests
 
 ```shell
-make generate
+go test ./...          # unit + contract suite, no external services
+make test-integration  # adds the dockerized MariaDB harness (testdb/)
 ```
 
-### Windows
+`make lint` runs `go vet`. The contract suite (`contract/`) replays the
+golden corpus against the live stack and validates the OpenAPI spec; run it
+before pushing changes that touch the wire surface.
 
-If you're developing on Windows, we have added a mage file to help you replicate some of the make commands without having access to make.
+### Adding an endpoint
 
-You will need to install [mage](https://magefile.org/) first.
-
-```shell
-mage install
-```
-
-The available commands are:
-`` mage generate ``
-`` mage lint ``
-`` mage install ``
-
-Notably missing is the certs command, which is used to generate self-signed certs for nginx TLS.
-Without this you will not be able to test the API via the swagger page, however you can still test the gateway with curl.
+Wire types → handler → route registration → spec operation → goldens. The
+spec and golden steps are CI-enforced. The full checklist is in
+[`CONTEXT.md`](CONTEXT.md); the in-code long form is in the package docs of
+`rest/rest.go` and `types/types.go`.

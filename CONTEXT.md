@@ -1,11 +1,15 @@
 # Context
 
-Domain language used by the 7Cav API. The hand-owned OpenAPI 3.1 spec
-(`openapi/openapi.yaml`, validated against the golden corpus) is the
-contract; this document covers the concepts and any nuance that isn't
-obvious from reading the spec. The proto/buf toolchain was retired in
-Phase 4 (#135) — the API is now a plain net/http JSON service with
-hand-written handlers and types.
+Domain language used by the 7Cav API. The contract is a trio that is
+checked in and CI-enforced, not a generated artifact: the **types
+package** (`types/`, the hand-written wire types), the **hand-owned
+OpenAPI 3.1 spec** (`openapi/openapi.yaml`), and the **golden corpus**
+(`contract/goldens/`, one recorded request/response per public route).
+The spec is validated against the corpus, so the three stay in step. This
+document covers the concepts and any nuance that isn't obvious from
+reading them. The proto/buf toolchain was retired in Phase 4 (#135, ADR
+0006); the API is now a plain net/http JSON service with hand-written
+handlers and types.
 
 ## Source data
 
@@ -25,7 +29,7 @@ serves them.
 
 ## Profile shapes
 
-A member's milpac is served in three shapes by different RPCs, each
+A member's milpac is served in three shapes by different routes, each
 tuned to a known consumer:
 
 - **`Profile`** — full view: rank, positions, awards, records, and the
@@ -36,16 +40,15 @@ tuned to a known consumer:
   uniform-relevant fields and omits the rest.
 
 The three are not subsets of one type; they are hand-mapped from the
-same upstream rows into distinct proto messages.
+same upstream rows into distinct wire types in the `types` package.
 
 ## Roster and RosterType
 
 A `Roster` is a collection of members grouped by unit, course, or
 status. `RosterType` is an enum identifying which roster is requested;
 its numeric values are used as the `roster_id` foreign key in the
-upstream tables. The three roster RPCs (`GetRoster`, `GetLiteRoster`,
-`GetS1UniformsRoster`) return the same set of members in the
-corresponding profile shape above.
+upstream tables. The three roster routes return the same set of members
+in the corresponding profile shape above.
 
 ## Rank, Position, PositionGroup
 
@@ -64,7 +67,7 @@ a decoration entry.
 ## AWOL
 
 An entry on the AWOL list — members flagged as absent without leave.
-Served by `GetAwol`, used by status-tracking consumers.
+Served by the AWOL route, used by status-tracking consumers.
 
 ## Connected accounts
 
@@ -74,13 +77,15 @@ integrations:
 
 - **Discord** — Discord user id.
 - **Gamertag** — Xbox / PlayStation handle.
-- **Keycloak** — legacy SSO identifier. The Keycloak auth path has been
-  removed; the lookup RPC is on the chopping block and should not be
-  used in new code.
+- **Keycloak** — legacy SSO identifier. The Keycloak auth path was
+  removed, and the lookup route went with the cutover: the route and the
+  `keycloakId` field are gone from the served surface, and the golden
+  corpus records that removal (`stripKeycloakID` in `contract/canon.go`).
+  Nothing in new code should reference either.
 
 ## Tickets
 
-`TicketsService` exposes the forum's ticket system (powered by the
+The tickets surface exposes the forum's ticket system (powered by the
 `NF Tickets` add-on) as a read-only API.
 
 - **`Ticket`** — a thread: title, status, category, participants,
@@ -108,6 +113,49 @@ service. Each token carries a set of named scopes. Current scopes:
 
 Scope membership is checked per-handler; a token with `read` cannot
 read tickets, and vice versa.
+
+## Wire conventions (house style)
+
+The generated stack produced a particular JSON shape; the rewrite kept it
+and adopted it as house style for every new field. The golden corpus and
+the spec replay enforce it on covered routes, and the tag lint in
+`types/wireconventions_test.go` enforces it at declaration time:
+
+- **JSON names are lowerCamelCase** (e.g. `rankId`, not `rank_id`).
+- **Emit everything**, no `omitempty`. An absent key, `""` and `0` are
+  distinct wire states, so every field is always present. Unset nested
+  messages serialize as `null`; empty collections serialize as `[]` / `{}`
+  (never `null`, so the handlers must allocate empty slices and maps).
+- **64-bit integers serialize as JSON strings** (the `,string` tag);
+  32-bit integers stay JSON numbers. `"3"` and `3` are different on the
+  wire, and the contract differ preserves the distinction.
+- **Enums serialize as their name strings**, with the zero value emitting
+  the `*_UNSPECIFIED` name. Values without a name fall back to the bare
+  number. `RosterType` is the worked example.
+
+## Adding an endpoint
+
+The sequence that used to be one proto edit is now a short hand-written
+checklist. The spec and golden steps are CI-enforced, so a missed step
+fails the build naming the operation or field rather than shipping drift:
+
+1. **Wire types** in `types/`: follow the house style above; the tag
+   lint checks the tags with no registration needed.
+2. **Handler** in `rest/`: map the datastore result to the wire types
+   (allocate empty collections), write JSON on success, and write the
+   frozen error message on failure.
+3. **Route registration** in `rest/`'s `routes()`: register the path
+   with its required scope gate and `Cache-Control` max-age.
+4. **Spec operation** in `openapi/openapi.yaml`: its documented responses
+   feed the two-way coverage check.
+5. **Goldens** in `contract/goldens/`: add the route's cases so the
+   replay harness covers it.
+
+`contract/spec_test.go` asserts coverage in both directions: every spec
+operation needs a witnessing golden (with at least one 2xx), and every
+golden route must resolve to an operation. A new endpoint that skips the
+spec or golden step fails that suite; there is no tribal knowledge to
+forget. See `rest/rest.go` and `types/types.go` for the in-code long form.
 
 ## SQL seam (integration-test harness)
 
