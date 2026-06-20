@@ -20,10 +20,9 @@ import "net/http"
 // latch, cacheControlWriter's header stamp, gzipResponseWriter's
 // Content-Length strip and status latch — #175) must mirror that: forward a
 // non-latching 1xx WriteHeader to the delegate and latch nothing, so the
-// subsequent final WriteHeader behaves exactly as a first call (#165). The
-// legacy gateway's statusRecorder still latches on all 1xx — known, tracked
-// in #176, dies at cutover. A new rest-chain wrapper with WriteHeader state
-// starts here — and joins the shared table in informational_internal_test.go.
+// subsequent final WriteHeader behaves exactly as a first call (#165). A new
+// rest-chain wrapper with WriteHeader state starts here — and joins the shared
+// table in informational_internal_test.go.
 //
 // (HTTP/2 would treat all 1xx informationally, but RFC 9113 removes 101 from
 // HTTP/2 entirely, and this server is plain HTTP/1.1 — latching on 101 is

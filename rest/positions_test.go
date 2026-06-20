@@ -97,11 +97,11 @@ func TestNewStack_SearchNilRosterWithNilErrorIsInternalJSON(t *testing.T) {
 	assert.JSONEq(t, `{"code":13,"message":"datastore returned no roster","details":[]}`, rr.Body.String())
 }
 
-// A sparse lite profile must come through the mapper with its nils PRESERVED:
+// A sparse lite profile must come through with its nils PRESERVED:
 // unset User/Rank/Primary stay null on the wire (never fabricated as zeroed
 // &types.User{}/&types.Rank{}) and empty Secondaries is [] — the
 // recording-seed shape (seedDoeLite, contract/fake_datastore_test.go) minus
-// User/Rank, so every nil-guard branch in liteRosterFromProto runs unset.
+// User/Rank, so every nil-guard branch in the lite-roster response runs unset.
 func TestNewStack_SearchSparseLiteProfilePreservesNils(t *testing.T) {
 	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*types.LiteRoster, error) {
 		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{2: {

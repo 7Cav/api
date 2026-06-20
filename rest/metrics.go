@@ -78,9 +78,10 @@ func newMetricsRegistry() *prometheus.Registry {
 //
 // Verify at cutover, from outside the host:
 //
-//	curl https://<public-host>/metrics        → 401 (the public chain's auth
-//	                                            tier answers; this handler is
-//	                                            not mounted there)
+//	curl https://<public-host>/metrics        → 404 (falls through to the docs
+//	                                            file server; the metrics handler
+//	                                            is not mounted on the public
+//	                                            listener)
 //	curl http://<public-host>:<metrics-port>/ → connection refused/timeout
 //	                                            (port unpublished + unrouted)
 //
@@ -115,8 +116,7 @@ type metricLabels struct {
 type metricLabelsContextKey struct{}
 
 // metricLabelsFromContext returns the request's label-holder, or nil when the
-// metrics middleware is not in the chain (e.g. the legacy gateway, which
-// reuses AuthMiddleware until cutover deletes it).
+// metrics middleware is not in the chain.
 func metricLabelsFromContext(ctx context.Context) *metricLabels {
 	v, _ := ctx.Value(metricLabelsContextKey{}).(*metricLabels)
 	return v
@@ -124,11 +124,9 @@ func metricLabelsFromContext(ctx context.Context) *metricLabels {
 
 // routeLabel fills the label-holder's route slot from r.Pattern — it must run
 // INSIDE the mux (wrapping each registered handler), the only place the
-// matched pattern is set on the request the handler sees. The nil-holder
-// check is NOT the legacy-gateway path (that is auth.go's nil check, on the
-// middleware the gateway reuses): routeLabel mounts only inside this
-// package's mux, always under metricsMiddleware — the check exists purely as
-// mis-wiring defense.
+// matched pattern is set on the request the handler sees. routeLabel mounts
+// only inside this package's mux, always under metricsMiddleware — the
+// nil-holder check exists purely as mis-wiring defense.
 func routeLabel(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if labels := metricLabelsFromContext(r.Context()); labels != nil {

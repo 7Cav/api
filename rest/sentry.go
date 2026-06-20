@@ -266,10 +266,6 @@ func sentryLabel(next http.Handler) http.Handler {
 //
 // No-op when the request never passed an enabled sentry middleware: no
 // SENTRY_DSN (the complete-no-op guarantee), or a chain that does not mount
-// it — the legacy gateway reuses AuthMiddleware (and so this choke point)
-// until cutover, but its Phase 0 sentry layer sits INSIDE auth, so on that
-// chain auth's 503s stay unreported until cutover (accepted Phase 0 gap,
-// documented in servers/gateway/gateway.go); the new stack is what closes
 // it. Also a no-op
 // for the recovery layer's own contract-500 write after a panic: that event
 // is already captured, and one failure must not become two issues.
