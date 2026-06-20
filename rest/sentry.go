@@ -102,7 +102,18 @@ func SetupSentry(release string) bool {
 		return false
 	}
 
-	Info.Println("Sentry error capture enabled (errors only), release:", release)
+	// Warn-only reachability pre-check: catches the misconfig class the probe
+	// below structurally cannot (fast send failures drain the queue and so
+	// still "flush"). Never changes the enabled/degraded semantics.
+	sentryDialCheck(dsn)
+
+	// Probe failure still returns true — enabled-degraded, not disabled: a
+	// slow-network false positive must not turn off capture. Do NOT refactor
+	// this into `return sentryStartupProbe()`.
+	if sentryStartupProbe() {
+		Info.Println("Sentry error capture enabled (errors only), release:", release,
+			"— startup probe flushed (queue drained; delivery not verified — set SENTRY_DEBUG=true to confirm)")
+	}
 	return true
 }
 

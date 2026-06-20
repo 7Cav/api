@@ -103,6 +103,15 @@ func (t *transportMock) Events() []*sentry.Event {
 	return append([]*sentry.Event(nil), t.events...)
 }
 
+// reset drops any captured events. enableSentry calls it after SetupSentry so
+// the boot-time startup-probe canary (#134: SetupSentry now drives the probe)
+// does not count toward a test's own event assertions.
+func (t *transportMock) reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = nil
+}
+
 // testRelease is the build-time version stand-in tests pass to SetupSentry.
 const testRelease = "v-test-132"
 
@@ -124,6 +133,7 @@ func enableSentry(t *testing.T) *transportMock {
 		viper.Set("SENTRY_DSN", "")
 	})
 	require.True(t, SetupSentry(testRelease), "SetupSentry must enable capture when SENTRY_DSN is set")
+	tr.reset() // discard the boot-time startup-probe canary so tests count only their own events
 	return tr
 }
 
