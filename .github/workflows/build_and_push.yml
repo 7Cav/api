@@ -12,15 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.3
 
-      # Inject the release tag into proto/openapi sources so that `make
-      # generate` inside the Dockerfile bakes the right version into the
-      # OpenAPI spec served at `/`. The server binary's `version` var is
-      # overridden separately via ldflags (see Dockerfile `ARG VERSION`).
-      - name: Inject release version into proto openapi annotations
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: |
-          sed -i "s/version: \"dev\";/version: \"${VERSION}\";/" proto/milpacs.proto proto/tickets.proto
+      # The release tag reaches the served OpenAPI spec at runtime: the binary's
+      # `version` var (ldflags via Dockerfile ARG VERSION) is stamped onto the
+      # hand-owned spec's info.version when DocsHandler serves it. Phase 4 (#135)
+      # retired the proto sources and the build-time `make generate`, so there is
+      # no proto-version sed step here anymore.
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4.2.0

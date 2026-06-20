@@ -28,7 +28,7 @@ func TestBuildPublicRouter_SplitsApiFromDocs(t *testing.T) {
 		{"/api", "api"},
 		{"/", "docs"},
 		{"/index.html", "docs"},
-		{"/milpacs.swagger.json", "docs"},
+		{"/openapi.yaml", "docs"},
 		// /metrics is internal-only — never the API surface; it falls to the
 		// docs file server (which 404s it), it does NOT reach MetricsHandler.
 		{"/metrics", "docs"},

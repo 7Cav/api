@@ -10,19 +10,12 @@ import (
 	"strings"
 )
 
-// Generate protobufs
-func Generate() error {
-	fmt.Println("Generating protobufs...")
-	return run("buf", "generate")
-}
-
-// Lint and check for breaking changes
+// Lint vets the code. The proto/buf codegen toolchain (and its `buf lint` /
+// `buf breaking` checks) was retired in Phase 4 (#135); the API is plain
+// net/http with hand-written handlers, so `go vet` is the lint gate.
 func Lint() error {
-	fmt.Println("Running lint and breaking changes check...")
-	if err := run("buf", "lint"); err != nil {
-		return err
-	}
-	return run("buf", "breaking", "--against", "https://github.com/7cav/api.git#branch=develop")
+	fmt.Println("Running go vet...")
+	return run("go", "vet", "./...")
 }
 
 // Run the test suite (MariaDB integration tests skip unless TESTDB_ADDR is set)
@@ -57,24 +50,6 @@ func TestIntegration() error {
 		return fmt.Errorf("integration tests failed: %w", err)
 	}
 	return nil
-}
-
-// Install dependencies and tools
-func Install() error {
-	fmt.Println("Installing dependencies and tools...")
-	if err := run("go", "install",
-		"google.golang.org/protobuf/cmd/protoc-gen-go",
-		"google.golang.org/grpc/cmd/protoc-gen-go-grpc",
-		"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway",
-		"github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2",
-	); err != nil {
-		return err
-	}
-	return run("go", "get",
-		"github.com/bufbuild/buf/cmd/buf",
-		"github.com/square/certstrap",
-		"github.com/spf13/cobra",
-	)
 }
 
 // Helper function to run commands
