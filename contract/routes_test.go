@@ -2,8 +2,8 @@ package contract
 
 import "regexp"
 
-// publicRoutes is the single test-side truth for the 16 surviving public
-// routes. Each entry carries a human label (battery coverage in
+// publicRoutes is the single test-side truth for the 17 public routes. Each
+// entry carries a human label (battery coverage in
 // corpus_test.go), the OpenAPI path template (spec coverage and golden
 // replay in spec_test.go), and the regex that classifies battery case paths
 // to the route.
@@ -26,6 +26,7 @@ var publicRoutes = []struct {
 	{"roster", "/api/v1/roster/{roster}", regexp.MustCompile(`^/api/v1/roster/[^/]+$`)},
 	{"s1 uniforms", "/api/v1/s1/uniforms/{roster}", regexp.MustCompile(`^/api/v1/s1/uniforms/[^/]+$`)},
 	{"position groups", "/api/v1/milpacs/position/groups", regexp.MustCompile(`^/api/v1/milpacs/position/groups$`)},
+	{"forum groups", "/api/v1/forum/groups", regexp.MustCompile(`^/api/v1/forum/groups$`)},
 	{"position search", "/api/v1/milpacs/position/search/{positionQuery}", regexp.MustCompile(`^/api/v1/milpacs/position/search(/.*)?$`)},
 	{"ranks", "/api/v1/milpacs/ranks", regexp.MustCompile(`^/api/v1/milpacs/ranks$`)},
 	{"awol", "/api/v1/milpacs/awol", regexp.MustCompile(`^/api/v1/milpacs/awol$`)},

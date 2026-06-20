@@ -542,6 +542,31 @@ func (ds Mysql) FindAllPositionGroups() ([]*types.PositionGroup, error) {
 	return positionGroups, nil
 }
 
+// FindForumGroups loads the whole forum permission-group directory
+// (xf_user_group) ordered by user_group_id ascending and maps it to the
+// {groupId, groupName} wire pairs. Unfiltered (ADR 0007). The returned slice
+// is always non-nil so the handler serializes [], never null, on an empty
+// directory.
+func (ds Mysql) FindForumGroups() ([]*types.ForumGroup, error) {
+	Info.Println("Searching for all forum groups")
+	var rows []xenforo.ForumGroup
+
+	result := ds.Db.Order("user_group_id").Find(&rows)
+	if result.Error != nil {
+		return nil, fmt.Errorf("error fetching forum groups: %w", result.Error)
+	}
+
+	groups := make([]*types.ForumGroup, len(rows))
+	for i, row := range rows {
+		groups[i] = &types.ForumGroup{
+			GroupId:   row.UserGroupID,
+			GroupName: row.Title,
+		}
+	}
+
+	return groups, nil
+}
+
 func getLatestServiceRecordDate(profile milpacs.Profile) string {
 	var latestTimestamp int64
 

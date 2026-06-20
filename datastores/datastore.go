@@ -81,6 +81,11 @@ type Datastore interface {
 	FindAllRanks() ([]*types.RankExpanded, error)
 	FindAllPositionGroups() ([]*types.PositionGroup, error)
 	FindAwol() ([]*types.Awol, error)
+	// FindForumGroups returns the whole forum permission-group directory
+	// (xf_user_group) as {groupId, groupName} pairs ordered by groupId
+	// ascending. Unfiltered (ADR 0007). The slice is non-nil even when empty
+	// so the handler serializes [], never null.
+	FindForumGroups() ([]*types.ForumGroup, error)
 	FindProfileByGamertag(gamertag string) (*types.Profile, error)
 	ValidateApiKey(rawKey string) (*ApiKeyResult, error)
 

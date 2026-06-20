@@ -57,3 +57,17 @@ func (f *fakeDatastore) FindAwol() ([]*types.Awol, error) {
 		},
 	}, nil
 }
+
+// FindForumGroups mirrors the recording seed (contract/fake_datastore_test.go):
+// three forum groups, groupId ascending — the new-stack golden replay against
+// the forum/groups golden depends on the two seeds agreeing.
+func (f *fakeDatastore) FindForumGroups() ([]*types.ForumGroup, error) {
+	if f.findForumGroups != nil {
+		return f.findForumGroups()
+	}
+	return []*types.ForumGroup{
+		{GroupId: 2, GroupName: "Registered"},
+		{GroupId: 3, GroupName: "Administrative"},
+		{GroupId: 10, GroupName: "Rank - Major General"},
+	}, nil
+}

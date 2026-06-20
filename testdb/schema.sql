@@ -3,7 +3,8 @@
 -- Tables are cribbed from the production XenForo database (MariaDB 11.5)
 -- and cover exactly what the API reads: the NF Rosters add-on tables, the
 -- NF Tickets add-on tables, the Cav7 ApiKeyManager tables, and the core
--- xf_user / xf_user_connected_account / xf_post / xf_phrase tables.
+-- xf_user / xf_user_group / xf_user_connected_account / xf_post / xf_phrase
+-- tables.
 --
 -- Index fidelity matters here: the harness carries production's stock
 -- indexes and must NOT carry the four indexes proposed by PRD #112
@@ -93,6 +94,17 @@ CREATE TABLE `xf_user` (
   KEY `siropu_donation_count` (`siropu_donation_count`),
   KEY `siropu_donation_amount` (`siropu_donation_amount`),
   KEY `siropu_donation_date` (`siropu_donation_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- The forum permission-group directory the forum-group endpoint reads
+-- (issue #203). Trimmed to the two columns the API maps (user_group_id,
+-- title); production carries display_style_priority, banner/CSS and the
+-- NF-server group ids besides, none of which this surface exposes (ADR 0007).
+CREATE TABLE `xf_user_group` (
+  `user_group_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `title` varchar(50) NOT NULL,
+  PRIMARY KEY (`user_group_id`),
+  KEY `title` (`title`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- NOTE: stock XenForo indexes only. Production carries no
