@@ -5,8 +5,15 @@ package rest
 // cutover folds that role into this package so one public listener serves both
 // the API (rest.New) and the docs.
 //
-// info.version templating: the generated specs ship with the "dev" sentinel
-// (proto/*.proto's `version: "dev";`). The release workflow used to sed the
+// Phase 4 (#135) retired the generated Swagger 2.0 *.swagger.json files. The
+// reference document is now the hand-owned OpenAPI 3.1 spec (openapi.Spec, from
+// openapi/openapi.yaml), validated against the golden corpus by
+// contract/spec_test.go and served here at /openapi.yaml. The #117 ruling
+// confirmed no consumer codegens from the served spec, so the 3.1 document
+// replaces the 2.0 files outright — no frozen 2.0 alias.
+//
+// info.version templating: the spec ships with the "dev" sentinel
+// (openapi/openapi.yaml: `version: dev`). The release workflow used to sed the
 // build tag into the proto before make generate; with serving in-process the
 // build-time version is stamped onto the spec's info.version at request time
 // instead, so a tagged binary reports its tag and a local `dev` build reports
@@ -17,20 +24,23 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
-	"strings"
 
 	"github.com/7cav/api/openapi"
 )
 
-// specVersionSentinel is the info.version literal the generated swagger specs
-// ship with (proto/*.proto: `version: "dev";`). DocsHandler rewrites it to the
-// build-time version on the two *.swagger.json files.
-const specVersionSentinel = `"version": "dev"`
+// specURLPath is where the OpenAPI 3.1 document is served. The Swagger UI shell
+// (assets/index.html) loads it by this relative path.
+const specURLPath = "/openapi.yaml"
 
-// DocsHandler serves the embedded Swagger UI and OpenAPI specs at the same URLs
-// the old gateway used (everything outside /api). The two *.swagger.json specs
-// have their info.version stamped from version; all other assets are served
-// verbatim from the embedded filesystem.
+// specVersionSentinel is the info.version literal the hand-owned spec ships
+// with (openapi/openapi.yaml: `version: dev`). DocsHandler rewrites it to the
+// build-time version when serving the spec.
+const specVersionSentinel = "version: dev"
+
+// DocsHandler serves the embedded Swagger UI and the OpenAPI 3.1 spec at the
+// same URLs the old gateway used (everything outside /api). The spec has its
+// info.version stamped from version; all other assets are served verbatim from
+// the embedded filesystem.
 //
 // version is the build-time var (servers.version via -ldflags, "dev" locally),
 // threaded in by the composition root.
@@ -47,21 +57,19 @@ func DocsHandler(version string) http.Handler {
 	}
 	fileServer := http.FileServer(http.FS(sub))
 
-	replacement := []byte(`"version": "` + version + `"`)
-	stamp := version != "" && version != "dev"
+	// Stamp the build-time version onto the served spec, replacing the dev
+	// sentinel. A dev build serves the spec untouched.
+	spec := openapi.Spec
+	if version != "" && version != "dev" {
+		spec = bytes.Replace(spec, []byte(specVersionSentinel),
+			[]byte("version: "+version), 1)
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if stamp && strings.HasSuffix(r.URL.Path, ".swagger.json") {
-			name := strings.TrimPrefix(r.URL.Path, "/")
-			raw, err := fs.ReadFile(sub, name)
-			if err == nil {
-				body := bytes.Replace(raw, []byte(specVersionSentinel), replacement, 1)
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write(body)
-				return
-			}
-			// Fall through to the file server on any read miss (it produces the
-			// canonical 404), rather than masking a routing change.
+		if r.URL.Path == specURLPath {
+			w.Header().Set("Content-Type", "application/yaml")
+			_, _ = w.Write(spec)
+			return
 		}
 		fileServer.ServeHTTP(w, r)
 	})

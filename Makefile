@@ -1,8 +1,12 @@
-generate:
-	buf generate
+# The proto/buf codegen toolchain was retired in Phase 4 (#135). The API is a
+# plain net/http JSON service with hand-written handlers and a hand-owned
+# OpenAPI 3.1 spec — there is no generate/install step. `make lint` is `go vet`.
 
 test:
 	go test ./...
+
+lint:
+	go vet ./...
 
 # Dockerized MariaDB integration harness (testdb/). Tests opt into the
 # real database via TESTDB_ADDR; without it they skip.
@@ -24,32 +28,3 @@ test-integration: testdb-up
 	@set -eu; addr=$$($(TESTDB_COMPOSE) port mariadb 3306); \
 	test -n "$$addr" || { echo "harness port discovery failed" >&2; exit 1; }; \
 	TESTDB_ADDR=$$addr go test ./...
-
-lint:
-	buf lint
-	buf breaking --against 'https://github.com/7cav/api.git#branch=develop'
-
-certs:
-	rm -rf out/
-	certstrap init --common-name "ExampleCA" --passphrase ""
-	certstrap request-cert --common-name localhost --ip 0.0.0.0,127.0.0.1 --passphrase ""
-	certstrap sign localhost --CA "ExampleCA"
-
-install:
-	go install \
-		google.golang.org/protobuf/cmd/protoc-gen-go \
-		google.golang.org/grpc/cmd/protoc-gen-go-grpc \
-		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway \
-		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
-	go get \
-		github.com/bufbuild/buf/cmd/buf \
-		github.com/square/certstrap \
-		github.com/spf13/cobra
-
-evans:
-	evans \
-	--tls -cert out/localhost.crt --certkey out/localhost.key --cacert out/ExampleCA.crt \
-	--path /home/jarvis/.cache/buf/mod/grpc-ecosystem/grpc-gateway/240eb01580e34380ae1d138426e0174f/ \
-	--path /home/jarvis/.cache/buf/mod/beta/googleapis/1dc4674e3cb949b388204fa2dc321be7 \
-	--path . proto/milpacs.proto \
-	-p 10000

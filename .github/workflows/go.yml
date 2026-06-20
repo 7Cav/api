@@ -7,17 +7,8 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v6.0.3
-    - name: Install tools
-      run: |
-        make install
-        echo "PATH=$(go env GOPATH)/bin:$PATH" >> $GITHUB_ENV
-    - name: Install buf
-      run: |
-        URL=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name=="buf-Linux-x86_64") | .browser_download_url')
-        curl -sSL "$URL" -o /usr/local/bin/buf
-        chmod +x /usr/local/bin/buf
-    - name: Regenerate files
-      run: make generate
+    # The proto/buf codegen toolchain was retired in Phase 4 (#135): no buf
+    # install, no `make generate`. The repo builds straight from committed Go.
     - name: Tidy
       run: go mod tidy
     - name: Build
@@ -104,12 +95,6 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v6.0.3
-    - name: Install tools
-      run: make install
-    - name: Install buf
-      run: |
-        URL=$(curl -s https://api.github.com/repos/bufbuild/buf/releases/latest | jq -r '.assets[] | select(.name=="buf-Linux-x86_64") | .browser_download_url')
-        curl -sSL "$URL" -o /usr/local/bin/buf
-        chmod +x /usr/local/bin/buf
+    # `make lint` is `go vet` since Phase 4 (#135) retired buf lint/breaking.
     - name: Lint
       run: make lint

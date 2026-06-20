@@ -1,9 +1,11 @@
 # Context
 
-Domain language used by the 7Cav API. The proto files
-(`proto/milpacs.proto`, `proto/tickets.proto`) are the contract; this
-document covers the concepts and any nuance that isn't obvious from
-reading the schema.
+Domain language used by the 7Cav API. The hand-owned OpenAPI 3.1 spec
+(`openapi/openapi.yaml`, validated against the golden corpus) is the
+contract; this document covers the concepts and any nuance that isn't
+obvious from reading the spec. The proto/buf toolchain was retired in
+Phase 4 (#135) — the API is now a plain net/http JSON service with
+hand-written handlers and types.
 
 ## Source data
 
@@ -12,7 +14,7 @@ MySQL database, augmented by the `NF Rosters` add-on (which contributes
 the `xf_nf_rosters_*` tables that hold milpac records) and the
 `Cav7/ApiKeyManager` add-on (which contributes the API-key and scope
 tables). The API itself owns no schema; it queries upstream tables and
-maps them to its own proto types.
+maps them to its own Go types (the `types` package).
 
 ## Milpac
 

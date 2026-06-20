@@ -20,11 +20,11 @@ services:
       - edge
       - xenforo_internal
     restart: always
+    # Single public listener (#134/#135). The old gRPC port (:10000) and its
+    # PORT dial-target env are gone with the gateway.
     ports:
       - "11000:11000"
-      - "10000:10000"
     environment:
-      PORT: 10000
       DB_USERNAME: xenforo
       DB_PASSWORD:
       DB_HOST: xenforo-db
