@@ -58,9 +58,12 @@ func openHarnessDatastore(t *testing.T) datastores.Mysql {
 	// ValidateApiKey fires an async last_used_date bump that outlives the
 	// call. Wire a default observer that records each completed bump; cleanup
 	// then waits — bounded — for the connection to fall idle before closing
-	// the pool, so the goroutine never writes into a closing connection and
-	// logs a spurious "database is closed" (issue #145). Tests that assert the
-	// bump override OnKeyUsed and own the barrier themselves (see awaitKeyUsed).
+	// the pool. This narrows (not eliminates) the window in which the
+	// goroutine could write into a closing connection and log a spurious
+	// "database is closed": a bump that fires after the idle barrier trips
+	// still races teardown, but that's a logged-not-swallowed error, which is
+	// the behavior under test (issue #145). Tests that assert the bump
+	// override OnKeyUsed and own the barrier themselves (see awaitKeyUsed).
 	bumped := make(chan struct{}, 64)
 	ds := datastores.Mysql{
 		Db: gormDB,
