@@ -15,6 +15,13 @@ import (
 
 type Mysql struct {
 	Db *gorm.DB
+
+	// OnKeyUsed, when non-nil, is invoked with the outcome of the async
+	// last_used_date metering bump fired by ValidateApiKey. Production leaves
+	// it nil — failures there are logged via Error instead. Tests wire it to
+	// make the otherwise fire-and-forget side effect observable and awaitable
+	// (issue #145).
+	OnKeyUsed func(error)
 }
 
 const (
@@ -696,7 +703,20 @@ func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
 		scopes[r.ScopeName] = struct{}{}
 	}
 	keyId := rows[0].KeyId
-	go ds.Db.Exec(`UPDATE xf_cav7_api_key SET last_used_date = UNIX_TIMESTAMP() WHERE key_id = ?`, keyId)
+	// Bump last_used_date off the request's critical path: a metering write
+	// must never add latency to — or fail — auth. But its outcome is no
+	// longer discarded (issue #145): a failed UPDATE is logged, and an
+	// optional observer is notified so behavior tests can pin the side effect
+	// and avoid racing harness teardown.
+	go func() {
+		err := ds.Db.Exec(`UPDATE xf_cav7_api_key SET last_used_date = UNIX_TIMESTAMP() WHERE key_id = ?`, keyId).Error
+		if err != nil {
+			Error.Printf("bumping last_used_date for key_id %d: %v", keyId, err)
+		}
+		if ds.OnKeyUsed != nil {
+			ds.OnKeyUsed(err)
+		}
+	}()
 	return &ApiKeyResult{
 		KeyId:  keyId,
 		UserId: rows[0].UserId,
