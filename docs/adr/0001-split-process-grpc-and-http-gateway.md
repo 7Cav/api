@@ -1,5 +1,12 @@
 # ADR 0001: Split-process gRPC server + HTTP/JSON gateway from a single proto
 
+> **Status: Superseded** by ADR 0006 (single-listener net/http service with
+> a hand-owned OpenAPI 3.1 contract), PRD #112 Phase 4. The delete sweep
+> landed in #135 (PR #207). The gRPC listener, the gateway translation
+> layer, the proto files, and the buf/protoc toolchain are gone; the API is
+> now one `net/http` JSON service. This ADR records the design as it stood
+> and why it was retired.
+
 ## Context
 
 The API exposes the same surface over two transports: a gRPC service for

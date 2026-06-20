@@ -1,5 +1,11 @@
 # ADR 0002: Intra-process plaintext gRPC dial; TLS terminates at the reverse proxy
 
+> **Status: Superseded** by ADR 0006 (single-listener net/http service with
+> a hand-owned OpenAPI 3.1 contract), PRD #112 Phase 4; landed in #135 (PR
+> #207). With the second listener gone there is no intra-process hop to
+> secure, so the plaintext-dial decision below no longer applies. TLS still
+> terminates at the reverse proxy.
+
 ## Context
 
 The binary runs two listeners (see ADR 0001): the gRPC server on one port
