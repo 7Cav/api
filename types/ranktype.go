@@ -89,25 +89,19 @@ var rankTypeNames = map[RankType]string{
 
 // String returns the wire name, or the bare decimal number for values the
 // catalog has no name for — mirroring the generated proto String() so the
-// derived RankShort stays identical.
+// derived RankShort stays identical. strconv.FormatInt (int64) matches the
+// proto's EnumNumber (int32) formatting across the full range, including
+// negatives (-1, not 4294967295).
 func (rt RankType) String() string {
 	if name, ok := rankTypeNames[rt]; ok {
 		return name
 	}
-	return decimalString(int64(rt))
+	return strconv.FormatInt(int64(rt), 10)
 }
 
 // RankShort is the short rank name the datastore stamps onto profiles: the
 // enum name with the RANK_TYPE_ prefix stripped (e.g. "COL"). For uncataloged
 // ids it is the bare decimal (the prefix strip is a no-op on a number).
 func (rt RankType) RankShort() string {
-	return trimRankPrefix(rt.String())
-}
-
-func decimalString(v int64) string {
-	return strconv.FormatInt(v, 10)
-}
-
-func trimRankPrefix(name string) string {
-	return strings.TrimPrefix(name, "RANK_TYPE_")
+	return strings.TrimPrefix(rt.String(), "RANK_TYPE_")
 }

@@ -1,6 +1,9 @@
 package types
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 // TestRankType_String_MatchesProtoNames pins a representative set of rank ids
 // to their wire names. The values are cross-checked against the generated
@@ -39,7 +42,7 @@ func TestRankType_String_MatchesProtoNames(t *testing.T) {
 // number, not an empty short name.
 func TestRankType_String_GapAndUnknownFallBackToDecimal(t *testing.T) {
 	for _, id := range []RankType{24, 25, 99, -1} {
-		want := decimalString(int64(id))
+		want := strconv.FormatInt(int64(id), 10)
 		if got := id.String(); got != want {
 			t.Errorf("RankType(%d).String() = %q, want %q", id, got, want)
 		}
@@ -47,7 +50,7 @@ func TestRankType_String_GapAndUnknownFallBackToDecimal(t *testing.T) {
 }
 
 // TestRankType_RankShort_StripsPrefix checks the actual RankShort derivation
-// the datastore performs.
+// the datastore performs, through the public RankShort() method.
 func TestRankType_RankShort_StripsPrefix(t *testing.T) {
 	cases := map[RankType]string{
 		1:  "GOA",
@@ -57,9 +60,8 @@ func TestRankType_RankShort_StripsPrefix(t *testing.T) {
 		31: "AR",
 	}
 	for id, short := range cases {
-		got := trimRankPrefix(id.String())
-		if got != short {
-			t.Errorf("RankShort for RankType(%d) = %q, want %q", id, got, short)
+		if got := id.RankShort(); got != short {
+			t.Errorf("RankType(%d).RankShort() = %q, want %q", id, got, short)
 		}
 	}
 }
