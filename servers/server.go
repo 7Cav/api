@@ -103,6 +103,28 @@ func setupDatasource() *datastores.Mysql {
 		os.Exit(1)
 	}
 
+	// Bound the underlying database/sql connection pool (#204). GORM leaves it
+	// unbounded (MaxOpenConns == 0), so a single-key burst can exhaust the
+	// shared MariaDB max_connections and starve the forum. poolConfig is the
+	// pure env->settings mapper (defaults + clamping); see pool.go for the
+	// rationale and the DB_* overrides.
+	sqlDB, err := conn.DB()
+	if err != nil {
+		// A gorm conn that can't surface its *sql.DB can't be pool-bounded, so
+		// it must not serve traffic — fail boot the same way a failed
+		// gorm.Open does, rather than silently running unbounded.
+		Error.Println("issue obtaining underlying sql.DB for connection-pool setup", err)
+		os.Exit(1)
+	}
+	pool := poolConfig(
+		viper.GetInt("db_max_open_conns"),
+		viper.GetInt("db_max_idle_conns"),
+		viper.GetString("db_conn_max_lifetime"),
+	)
+	sqlDB.SetMaxOpenConns(pool.MaxOpen)
+	sqlDB.SetMaxIdleConns(pool.MaxIdle)
+	sqlDB.SetConnMaxLifetime(pool.MaxLifetime)
+
 	return &datastores.Mysql{Db: conn}
 }
 
