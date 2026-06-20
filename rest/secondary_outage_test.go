@@ -33,34 +33,78 @@ func secondaryOutageGet(t *testing.T, h http.Handler, path string) *httptest.Res
 	return rr
 }
 
-// #154 — a secondary-position lookup failure on the by-id FULL-profile route
-// must surface as the contract 500, NOT a 404. The datastore wraps the
-// secondary First() error with %v (see collectSecondaryPositions): masking the
-// gorm not-found sentinel keeps a vanished secondary row — while the MEMBER
-// still resolves — on the outage path, instead of the single-profile handler's
-// errors.Is(gorm.ErrRecordNotFound)→404 "no profile found" branch mislabeling
-// the present member as missing. This is the precise trap the %v (not %w)
-// choice avoids; the fake reproduces the post-wrap error shape the datastore
-// now returns.
+// #154 — a secondary-position lookup failure on ANY of the four single-profile
+// routes must surface as the contract 500, NOT a 404. All four handlers share
+// the identical errors.Is(gorm.ErrRecordNotFound)→404 else→500 branch and all
+// reach collectSecondaryPositions via generateProtoProfile, so the guard must
+// hold on every one — not just by-id.
+//
+// The datastore wraps the secondary First() error with %v (see
+// collectSecondaryPositions): masking the gorm not-found sentinel keeps a
+// vanished secondary row — while the MEMBER still resolves — on the outage
+// path, instead of the single-profile handler's 404 "no profile found" branch
+// mislabeling the present member as missing. This is the precise trap the %v
+// (not %w) choice avoids. Each fake reproduces the post-wrap error shape the
+// datastore now returns; each route's own internal-error prefix is asserted in
+// full, so a %w regression (which would flip every row to 404) flips these to
+// red. The wrapped-error guard below proves the shape is the actual %v one.
 func TestNewStack_SecondaryPositionLookupFailureIsInternalNot404(t *testing.T) {
 	// The shape datastores.collectSecondaryPositions returns: the gorm
 	// sentinel's MESSAGE preserved but its IDENTITY masked (%v, not %w), so
-	// errors.Is(err, gorm.ErrRecordNotFound) is false.
+	// errors.Is(err, gorm.ErrRecordNotFound) is false. If the datastore
+	// regressed to %w, this guard's premise breaks and the route 404s a present
+	// member — exactly what the per-route 500 assertions below would catch.
 	wrapped := fmt.Errorf("collect secondary positions: lookup secondary position %q: %v", "20", gorm.ErrRecordNotFound)
 	require.False(t, errors.Is(wrapped, gorm.ErrRecordNotFound),
-		"the propagated secondary-lookup error must NOT alias gorm.ErrRecordNotFound, or the by-id route 404s a present member")
+		"the propagated secondary-lookup error must NOT alias gorm.ErrRecordNotFound, or the single-profile routes 404 a present member")
 
-	h := rest.New(&fakeDatastore{
-		findProfilesById: func(...uint64) ([]*types.Profile, error) { return nil, wrapped },
-	}, &stubReferenceCache{})
+	// One fake serving every single-profile method the wrapped secondary error;
+	// each route is driven independently so a missing per-route 500 guard fails
+	// its own row.
+	fake := &fakeDatastore{
+		findProfilesById:       func(...uint64) ([]*types.Profile, error) { return nil, wrapped },
+		findProfilesByUsername: func(string) ([]*types.Profile, error) { return nil, wrapped },
+		findProfileByDiscordID: func(string) (*types.Profile, error) { return nil, wrapped },
+		findProfileByGamertag:  func(string) (*types.Profile, error) { return nil, wrapped },
+	}
+	h := rest.New(fake, &stubReferenceCache{})
 
-	rr := secondaryOutageGet(t, h, "/api/v1/milpacs/profile/id/1")
-
-	require.Equal(t, http.StatusInternalServerError, rr.Code,
-		"a secondary-lookup outage on a resolving member is the contract 500, never a 404")
-	assert.JSONEq(t,
-		`{"code":13,"message":"fetch profile by user id: collect secondary positions: lookup secondary position \"20\": record not found","details":[]}`,
-		rr.Body.String())
+	cases := []struct {
+		name string
+		path string
+		// want is each handler's own internal-error wrap of the propagated
+		// secondary failure (prefixes frozen from rest/milpacs.go).
+		want string
+	}{
+		{
+			name: "by_id",
+			path: "/api/v1/milpacs/profile/id/1",
+			want: `fetch profile by user id: collect secondary positions: lookup secondary position \"20\": record not found`,
+		},
+		{
+			name: "by_username",
+			path: "/api/v1/milpacs/profile/username/Jarvis.A",
+			want: `fetch profile by username: collect secondary positions: lookup secondary position \"20\": record not found`,
+		},
+		{
+			name: "by_discord",
+			path: "/api/v1/milpac/discord/112233445566778899",
+			want: `fetch profile by discord id: collect secondary positions: lookup secondary position \"20\": record not found`,
+		},
+		{
+			name: "by_gamertag",
+			path: "/api/v1/milpac/gamertag/CavGamer77",
+			want: `fetch profile by gamertag: collect secondary positions: lookup secondary position \"20\": record not found`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := secondaryOutageGet(t, h, tc.path)
+			require.Equal(t, http.StatusInternalServerError, rr.Code,
+				"a secondary-lookup outage on a resolving member is the contract 500, never a 404")
+			assert.JSONEq(t, `{"code":13,"message":"`+tc.want+`","details":[]}`, rr.Body.String())
+		})
+	}
 }
 
 // Regression guard for the masking decision: a genuine WHOLE-METHOD
@@ -141,4 +185,27 @@ func TestNewStack_RosterSecondaryAndPostDateOutagesAreInternal(t *testing.T) {
 			assert.JSONEq(t, `{"code":13,"message":"`+tc.want+`","details":[]}`, rr.Body.String())
 		})
 	}
+}
+
+// #154 — the position-search LITE route (FindProfilesByPosition →
+// processLiteProfiles → generateLiteProtoProfile → collectSecondaryPositions)
+// is the one lite consumer of the changed helper with no HTTP outage test. Its
+// handler (searchByPosition, rest/positions.go) maps ANY datastore error to the
+// contract 500 unconditionally — no 404 branch — so a propagated secondary
+// failure must surface as the 500 with the frozen "error searching profiles by
+// position" wrap, never a fabricated empty {"profiles":{}} 200.
+func TestNewStack_PositionSearchSecondaryOutageIsInternal(t *testing.T) {
+	secondary := fmt.Errorf("error generating profiles: collect secondary positions: lookup secondary position %q: %v", "20", gorm.ErrRecordNotFound)
+
+	h := rest.New(&fakeDatastore{
+		findProfilesByPosition: func(string) (*types.LiteRoster, error) { return nil, secondary },
+	}, &stubReferenceCache{})
+
+	rr := secondaryOutageGet(t, h, "/api/v1/milpacs/position/search/Military%20Police")
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code,
+		"a propagated secondary-lookup outage on the position-search route is the contract 500, never a degraded empty 200")
+	assert.JSONEq(t,
+		`{"code":13,"message":"error searching profiles by position: error generating profiles: collect secondary positions: lookup secondary position \"20\": record not found","details":[]}`,
+		rr.Body.String())
 }

@@ -90,6 +90,38 @@ func TestFindS1UniformsRosterByType_SecondaryPositionLookupFailurePropagates(t *
 	}
 }
 
+// #154 — first-error-aborts / no-partial-200. A member with MULTIPLE secondary
+// ids where one RESOLVES and a later one ERRORS must fail the WHOLE call, not
+// return a partial 1-element success. collectSecondaryPositions returns on the
+// first failing id with a nil slice; a future "skip the bad one, keep the good
+// ones" change would silently reintroduce the degraded-200 (the exact bug class
+// #154 fixes), and this test would flip from the asserted nil-result error to a
+// partial profile.
+//
+// Relation 1 normally carries a single secondary (id 20). Within this test's
+// own disposable database (each openHarnessDatastore call gets a fresh seed),
+// rewrite it to "20,99999": id 20 resolves first, id 99999 has no row and
+// fails second. The fixtures are untouched outside this transaction, so the
+// existing single-secondary assertions on relation 1 still hold elsewhere.
+func TestFindProfilesById_SecondaryLookupFirstErrorAbortsNoPartial(t *testing.T) {
+	ds := openHarnessDatastore(t)
+
+	// 20 resolves (Military Police); 99999 is absent — the second id fails.
+	if err := ds.Db.Exec(
+		`UPDATE xf_nf_rosters_user SET secondary_position_ids = '20,99999' WHERE relation_id = 1`,
+	).Error; err != nil {
+		t.Fatalf("rewriting relation 1's secondary ids to a resolves-then-fails pair: %v", err)
+	}
+
+	profiles, err := ds.FindProfilesById(1)
+	if err == nil {
+		t.Fatal("a multi-secondary member whose SECOND id fails must error the whole call, not return a partial profile (no degraded 200)")
+	}
+	if profiles != nil {
+		t.Fatalf("the failing call must return a nil result, not a partial slice; got %d profile(s)", len(profiles))
+	}
+}
+
 // #155 — the FULL roster route propagates a failed forum-post-date
 // aggregation (getLatestForumPostDates via processProfiles).
 func TestFindRosterByType_ForumPostDateFailurePropagates(t *testing.T) {
