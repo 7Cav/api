@@ -181,3 +181,55 @@ func TestStart_MakesMalformedTrustedProxiesFatal(t *testing.T) {
 	require.True(t, guarded,
 		"the rest.InitTrustedProxies() error must be made fatal via Error.Fatalf in the same if-block — a swallowed error boots a misconfigured trust set silently trusting nothing (ADR 0005)")
 }
+
+// TestStart_InstallsShutdownFlushOnlyWhenSentryEnabled pins the Sentry boot
+// wiring: Start must install the SIGTERM flush handler
+// (rest.FlushSentryOnShutdown) ONLY inside the if-block gated on
+// rest.SetupSentry(...). Installing it unconditionally would rewrite the
+// process's signal semantics even when capture is disabled; dropping the call
+// would silently lose final-moment error events on every redeploy (Watchtower
+// recreates the container on each release). Source-level because Start blocks on
+// Serve and can't be driven in-process — and because SetupSentry /
+// FlushSentryOnShutdown JUST moved packages (servers -> rest) in the #134
+// cutover, the exact "a refactor silently drops the wiring" moment this idiom
+// guards.
+func TestStart_InstallsShutdownFlushOnlyWhenSentryEnabled(t *testing.T) {
+	_, start := startMethodDecl(t)
+
+	// The gate is `if rest.SetupSentry(version) { rest.FlushSentryOnShutdown() }`
+	// — SetupSentry in the condition, FlushSentryOnShutdown in the body.
+	var gated bool
+	ast.Inspect(start, func(n ast.Node) bool {
+		ifStmt, ok := n.(*ast.IfStmt)
+		if !ok {
+			return true
+		}
+		if _, cond := selectorCall(ifStmt.Cond, "rest", "SetupSentry"); !cond {
+			return true
+		}
+		if _, body := selectorCall(ifStmt.Body, "rest", "FlushSentryOnShutdown"); body {
+			gated = true
+		}
+		return false
+	})
+	require.True(t, gated,
+		"Start must call rest.FlushSentryOnShutdown() inside the `if rest.SetupSentry(...)` block — dropping or ungating it rewrites SIGTERM semantics when capture is off and loses final-moment error events on redeploy. The functions moved packages in the #134 cutover; this guard catches a dropped or ungated call.")
+
+	// Defense-in-depth: the gated call must be the ONLY FlushSentryOnShutdown
+	// call in Start, so it can't also be installed unconditionally elsewhere.
+	count := 0
+	ast.Inspect(start, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			if x, ok := sel.X.(*ast.Ident); ok && x.Name == "rest" && sel.Sel.Name == "FlushSentryOnShutdown" {
+				count++
+			}
+		}
+		return true
+	})
+	require.Equal(t, 1, count,
+		"expected exactly one rest.FlushSentryOnShutdown() call in Start (the SetupSentry-gated one) — a second, ungated call would install the shutdown handler even when Sentry is disabled")
+}

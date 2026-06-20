@@ -130,15 +130,11 @@ func (server *MicroServer) Start() {
 		rest.FlushSentryOnShutdown()
 	}
 
-	// plain-TCP listeners (no TLS — nginx terminates the public one; the metrics
-	// listener is internal-only).
+	// plain-TCP public listener (no TLS — nginx terminates it). A bind failure
+	// here is fatal: this listener IS the service.
 	publicL, err := net.Listen("tcp", publicAddr)
 	if err != nil {
 		Error.Fatalf("Failed to listen on %s: %v", publicAddr, err)
-	}
-	metricsL, err := net.Listen("tcp", metricsAddr)
-	if err != nil {
-		Error.Fatalf("Failed to listen on %s: %v", metricsAddr, err)
 	}
 
 	ds := setupDatasource()
@@ -151,8 +147,17 @@ func (server *MicroServer) Start() {
 	}
 	go runReferenceCacheRefresh(context.Background(), server.referenceCache)
 
-	Info.Println("Starting metrics listener on", metricsAddr)
-	go servMetrics(server, metricsL)
+	// Internal-only metrics listener — best-effort. Metrics are observability,
+	// not the service: a bind failure here must NOT take the public API down
+	// (unlike the old dual stack, where both listeners served traffic and a
+	// fatal bind was right for each). Log loudly and serve without metrics.
+	if metricsL, mErr := net.Listen("tcp", metricsAddr); mErr != nil {
+		Error.Printf("metrics listener bind failed on %s (%v) — continuing WITHOUT metrics; public API unaffected", metricsAddr, mErr)
+	} else {
+		Info.Println("Starting metrics listener on", metricsAddr)
+		go servMetrics(server, metricsL)
+	}
+
 	Info.Println("Starting public listener on", publicAddr)
 	servPublic(server, publicL, ds)
 }
@@ -162,21 +167,28 @@ func (server *MicroServer) Start() {
 // grpc-gateway used. rest.New is the API handler; rest.DocsHandler serves the
 // docs with the spec's info.version stamped from the build-time version.
 func servPublic(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
-	apiHandler := rest.New(ds, server.referenceCache)
-	docsHandler := rest.DocsHandler(version)
+	root := buildPublicRouter(rest.New(ds, server.referenceCache), rest.DocsHandler(version))
+	server.publicServer = &http.Server{Handler: root}
+	if err := server.publicServer.Serve(lis); err != nil {
+		Error.Fatalf("unable to start public HTTP server: %v", err)
+	}
+}
 
-	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// buildPublicRouter is the public listener's path split: /api* goes to the API
+// handler (rest.New), everything else to the docs handler (rest.DocsHandler).
+// Extracted from servPublic so the split is unit-testable without opening a
+// listener (see TestBuildPublicRouter_SplitsApiFromDocs). Note: only /api* is
+// the gated API surface — /metrics is NOT served here (it lives on the internal
+// listener), so a public /metrics request falls through to the docs file server
+// and 404s.
+func buildPublicRouter(apiHandler, docsHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api") {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
 		docsHandler.ServeHTTP(w, r)
 	})
-
-	server.publicServer = &http.Server{Handler: root}
-	if err := server.publicServer.Serve(lis); err != nil {
-		Error.Fatalf("unable to start public HTTP server: %v", err)
-	}
 }
 
 // servMetrics serves the internal Prometheus metrics endpoint on its own
@@ -185,8 +197,11 @@ func servPublic(server *MicroServer, lis net.Listener, ds datastores.Datastore) 
 // not code).
 func servMetrics(server *MicroServer, lis net.Listener) {
 	server.metricsServer = &http.Server{Handler: rest.MetricsHandler()}
-	if err := server.metricsServer.Serve(lis); err != nil {
-		Error.Fatalf("unable to start metrics HTTP server: %v", err)
+	// Internal-only observability: a Serve error must NOT take the public API
+	// down. Log loudly and let the public listener keep serving. ErrServerClosed
+	// is the clean-shutdown signal, not an error to report.
+	if err := server.metricsServer.Serve(lis); err != nil && err != http.ErrServerClosed {
+		Error.Printf("metrics HTTP server stopped: %v — public API continues without metrics", err)
 	}
 }
 
