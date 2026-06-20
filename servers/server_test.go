@@ -135,10 +135,10 @@ func TestStart_WiresInitTrustedProxiesBeforeServing(t *testing.T) {
 	// AuthMiddleware that reads it.
 	require.Less(t, int(initPos), int(firstSelectorCallPos(start, "net", "Listen")),
 		"rest.InitTrustedProxies() must run BEFORE net.Listen opens a socket — the trusted set must be cached before any request can reach the 401 log sites")
-	require.Less(t, int(initPos), int(firstIdentCallPos(start, "servHTTP")),
-		"rest.InitTrustedProxies() must run BEFORE servHTTP starts serving")
-	require.Less(t, int(initPos), int(firstIdentCallPos(start, "servGRPC")),
-		"rest.InitTrustedProxies() must run BEFORE servGRPC starts serving")
+	require.Less(t, int(initPos), int(firstIdentCallPos(start, "servPublic")),
+		"rest.InitTrustedProxies() must run BEFORE servPublic starts serving")
+	require.Less(t, int(initPos), int(firstIdentCallPos(start, "servMetrics")),
+		"rest.InitTrustedProxies() must run BEFORE servMetrics starts serving")
 }
 
 // TestStart_MakesMalformedTrustedProxiesFatal pins the error handling on the
