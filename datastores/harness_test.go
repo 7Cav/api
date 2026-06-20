@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/referencecache"
@@ -54,12 +55,42 @@ func openHarnessDatastore(t *testing.T) datastores.Mysql {
 	if err != nil {
 		t.Fatalf("unwrapping gorm connection pool: %v", err)
 	}
+	// ValidateApiKey fires an async last_used_date bump that outlives the
+	// call. Wire a default observer that records each completed bump; cleanup
+	// then waits — bounded — for the connection to fall idle before closing
+	// the pool, so the goroutine never writes into a closing connection and
+	// logs a spurious "database is closed" (issue #145). Tests that assert the
+	// bump override OnKeyUsed and own the barrier themselves (see awaitKeyUsed).
+	bumped := make(chan struct{}, 64)
+	ds := datastores.Mysql{
+		Db: gormDB,
+		OnKeyUsed: func(error) {
+			select {
+			case bumped <- struct{}{}:
+			default:
+			}
+		},
+	}
 	t.Cleanup(func() {
-		if err := sqlDB.Close(); err != nil {
-			t.Errorf("closing gorm pool: %v", err)
+		// Wait for in-flight bumps to settle, but never block teardown for
+		// long: a localhost UPDATE completes in single-digit ms, so a short
+		// idle window is ample, and exiting early just means an already-logged
+		// (not swallowed) bump error — which is the behavior under test.
+		idle := time.NewTimer(150 * time.Millisecond)
+		defer idle.Stop()
+		for {
+			select {
+			case <-bumped:
+				idle.Reset(150 * time.Millisecond)
+			case <-idle.C:
+				if err := sqlDB.Close(); err != nil {
+					t.Errorf("closing gorm pool: %v", err)
+				}
+				return
+			}
 		}
 	})
-	return datastores.Mysql{Db: gormDB}
+	return ds
 }
 
 // openTicketsHarness additionally builds the REAL reference cache from
