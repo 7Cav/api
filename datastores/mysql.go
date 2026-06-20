@@ -123,6 +123,11 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*types.Profile, error)
 }
 
 func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*types.Profile, error) {
+	secondaries, err := ds.collectSecondaryPositions(profile.SecondaryPositionIds)
+	if err != nil {
+		return nil, fmt.Errorf("collect secondary positions: %w", err)
+	}
+
 	milpac := &types.Profile{
 		User: &types.User{
 			UserId:   profile.XfUser.UserID,
@@ -141,7 +146,7 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*types.Profile, e
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
-		Secondaries:     ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		Secondaries:     secondaries,
 		Records:         collectRecords(profile.Records),
 		Awards:          collectAwards(profile.AwardRecords),
 		JoinDate:        profile.UnmarshalCustomFields().JoinDate,
@@ -164,22 +169,40 @@ func extractDiscordID(profile milpacs.Profile) string {
 	return ""
 }
 
-func (ds Mysql) collectSecondaryPositions(positionIds string) []*types.Position {
+// collectSecondaryPositions resolves the comma-separated secondary-position
+// id list into full position entries. A failed lookup of ANY class (connection
+// failure, timeout, OR a missing row) is propagated rather than swallowed: the
+// route answers its outage path (the contract 500) instead of appending a
+// fabricated blank position to a degraded 200 (issue #154, reversed ruling
+// 2026-06-20 — a silent hole is worse than an honest error). A genuinely-
+// missing position row is a data fault the consumer must not mistake for real
+// data, so ErrRecordNotFound propagates alongside the connection classes.
+//
+// The error is wrapped with %v (NOT %w) deliberately: the single-profile
+// handlers (rest/milpacs.go getProfileByID and siblings) map an error that
+// errors.Is(gorm.ErrRecordNotFound) to a 404 "no profile found". A secondary-
+// position row that has vanished while the MEMBER still resolves is an outage,
+// not a missing member — masking the gorm sentinel keeps it on the contract
+// 500 outage path instead of mislabeling the member as 404. The underlying
+// message is preserved verbatim for diagnosis.
+func (ds Mysql) collectSecondaryPositions(positionIds string) ([]*types.Position, error) {
 	var positions []*types.Position
 
 	if positionIds == "" {
-		return positions
+		return positions, nil
 	}
 
 	for _, id := range strings.Split(positionIds, ",") {
 		var position milpacs.Position
-		ds.Db.First(&position, id)
+		if err := ds.Db.First(&position, id).Error; err != nil {
+			return nil, fmt.Errorf("lookup secondary position %q: %v", id, err)
+		}
 		positions = append(positions, &types.Position{
 			PositionTitle: position.PositionTitle,
 			PositionId:    position.PositionId,
 		})
 	}
-	return positions
+	return positions, nil
 }
 
 func collectRecords(recordRows []milpacs.Record) []*types.Record {
@@ -245,6 +268,11 @@ func (ds Mysql) FindLiteRosterByType(rosterType types.RosterType) (*types.LiteRo
 }
 
 func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*types.LiteProfile, error) {
+	secondaries, err := ds.collectSecondaryPositions(profile.SecondaryPositionIds)
+	if err != nil {
+		return nil, fmt.Errorf("collect secondary positions: %w", err)
+	}
+
 	milpac := &types.LiteProfile{
 		User: &types.User{
 			UserId:   profile.XfUser.UserID,
@@ -263,7 +291,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*types.LitePr
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
-		Secondaries:     ds.collectSecondaryPositions(profile.SecondaryPositionIds),
+		Secondaries:     secondaries,
 		JoinDate:        profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate:   profile.UnmarshalCustomFields().PromoDate,
 		Mos:             profile.UnmarshalCustomFields().Mos,
@@ -334,6 +362,11 @@ func (ds Mysql) FindS1UniformsRosterByType(rosterType types.RosterType) (*types.
 }
 
 func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*types.S1UniformsProfile, error) {
+	secondaries, err := ds.collectS1UniformsSecondaryPositions(profile.SecondaryPositionIds)
+	if err != nil {
+		return nil, fmt.Errorf("collect secondary positions: %w", err)
+	}
+
 	milpac := &types.S1UniformsProfile{
 		User: &types.User{
 			UserId:   profile.XfUser.UserID,
@@ -350,7 +383,7 @@ func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*types.
 		UniformUpdateTriggerDate: getUniformUpdateTriggerDate(profile),
 		Roster:                   types.RosterType(profile.RosterId),
 		PrimaryPositionTitle:     profile.Primary.PositionTitle,
-		Secondaries:              ds.collectS1UniformsSecondaryPositions(profile.SecondaryPositionIds),
+		Secondaries:              secondaries,
 		JoinDate:                 profile.UnmarshalCustomFields().JoinDate,
 		PromotionDate:            profile.UnmarshalCustomFields().PromoDate,
 		AreaOfResponsibility:     getPositionGroup(profile),
@@ -359,21 +392,30 @@ func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*types.
 	return milpac, nil
 }
 
-func (ds Mysql) collectS1UniformsSecondaryPositions(positionIds string) []*types.S1UniformsPosition {
+// collectS1UniformsSecondaryPositions resolves the secondary-position id list
+// into the S1 uniforms shape. Like collectSecondaryPositions, a failed lookup
+// of any class (connection failure, timeout, OR a missing row) is propagated
+// so the route answers its outage path rather than emitting a fabricated blank
+// position on a degraded 200 (issue #154, reversed ruling 2026-06-20). The
+// error is wrapped with %v (not %w) for the same reason as the sibling: the
+// gorm not-found sentinel must not leak into the single-profile 404 mapping.
+func (ds Mysql) collectS1UniformsSecondaryPositions(positionIds string) ([]*types.S1UniformsPosition, error) {
 	var positions []*types.S1UniformsPosition
 
 	if positionIds == "" {
-		return positions
+		return positions, nil
 	}
 
 	for _, id := range strings.Split(positionIds, ",") {
 		var position milpacs.Position
-		ds.Db.First(&position, id)
+		if err := ds.Db.First(&position, id).Error; err != nil {
+			return nil, fmt.Errorf("lookup secondary position %q: %v", id, err)
+		}
 		positions = append(positions, &types.S1UniformsPosition{
 			PositionTitle: position.PositionTitle,
 		})
 	}
-	return positions
+	return positions, nil
 }
 
 func getUniformDate(profile milpacs.Profile) string {
@@ -549,7 +591,14 @@ const (
 )
 
 // bear witness to my despair, as i try to optimize queries to a table with a gazillion rows
-func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]string {
+//
+// A failed aggregation is propagated rather than degraded to an empty map
+// (issue #155, reversed ruling 2026-06-20). The old swallow blanked every
+// lastForumPostDate on a 200 during a partial outage, indistinguishable from
+// a member who genuinely never posted; the route now answers its outage path
+// (the contract 500). The error is still logged for observability before it
+// propagates.
+func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) (map[uint64]string, error) {
 	dates := make(map[uint64]string)
 
 	var results []struct {
@@ -564,7 +613,7 @@ func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]s
 
 	if err := query.Find(&results).Error; err != nil {
 		Error.Printf("Error fetching forum post dates: %v", err)
-		return dates
+		return nil, fmt.Errorf("fetch forum post dates: %w", err)
 	}
 
 	for _, result := range results {
@@ -575,7 +624,7 @@ func (ds Mysql) getLatestForumPostDates(profiles []milpacs.Profile) map[uint64]s
 		}
 	}
 
-	return dates
+	return dates, nil
 }
 
 func getUserIDs(profiles []milpacs.Profile) []uint64 {
@@ -588,7 +637,10 @@ func getUserIDs(profiles []milpacs.Profile) []uint64 {
 
 // ohgodwhy
 func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*types.LiteProfile, error) {
-	forumPostDates := ds.getLatestForumPostDates(profiles)
+	forumPostDates, err := ds.getLatestForumPostDates(profiles)
+	if err != nil {
+		return nil, err
+	}
 
 	var profileMap = make(map[uint64]*types.LiteProfile, len(profiles))
 	for _, profile := range profiles {
@@ -605,7 +657,10 @@ func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*typ
 }
 
 func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*types.Profile, error) {
-	forumPostDates := ds.getLatestForumPostDates(profiles)
+	forumPostDates, err := ds.getLatestForumPostDates(profiles)
+	if err != nil {
+		return nil, err
+	}
 
 	var profileMap = make(map[uint64]*types.Profile, len(profiles))
 	for _, profile := range profiles {
