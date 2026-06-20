@@ -5,7 +5,7 @@
 # ignore database copy for local dev work
 *.gz
 
-# ignore cert file areas
+# local build/scratch output (binaries, logs, generated reports)
 out/
 
 # don't accidentally publish the binary

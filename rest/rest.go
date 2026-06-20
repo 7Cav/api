@@ -3,6 +3,14 @@
 // made this the single public production listener. The single public listener
 // serves every route through New/routes.
 //
+// Most of this package is HTTP plumbing the gateway used to provide for free:
+// gzip (gzip.go), query binding (query.go), the error-code→HTTP-status mapping
+// (write.go), clean-path redirects (redirect.go), client-IP resolution
+// (clientip.go), Cache-Control grouping (cachecontrol.go) and Sentry
+// (sentry.go, sentry_boot.go). The request-handling business logic is the
+// per-resource files — milpacs.go, rosters.go, positions.go, awol.go,
+// tickets.go — and that is where new work usually lands.
+//
 // # Middleware chain (PRD order — assembled in chain, New's composition)
 //
 //	sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 → mux

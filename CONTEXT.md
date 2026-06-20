@@ -157,6 +157,24 @@ golden route must resolve to an operation. A new endpoint that skips the
 spec or golden step fails that suite; there is no tribal knowledge to
 forget. See `rest/rest.go` and `types/types.go` for the in-code long form.
 
+## Which test do I write?
+
+The repo has several test idioms; a change usually touches more than one:
+
+- **Handler behavior** → a test in `rest/`: black-box (`package rest_test`,
+  driving the mounted handler) for request/response behavior, white-box
+  (`package rest`) for an unexported seam.
+- **Wire contract** → a golden in `contract/goldens/` plus the matching
+  operation in `openapi/openapi.yaml`; `contract/spec_test.go` enforces the
+  two-way coverage and fails naming the gap.
+- **SQL / datastore** → a `datastores/*_harness_test.go` against the MariaDB
+  seam below (`testdb.Open(t)`), and only when you touched a query or schema.
+
+Rule of thumb for a new endpoint: unit-test the handler in `rest/`, add the
+golden in `contract/`, and add a datastore harness test only if SQL changed. CI
+runs the unit + contract suite on every push and the harness suite against a
+MariaDB service container; run `make test-integration` for the harness locally.
+
 ## SQL seam (integration-test harness)
 
 `testdb/` is the dockerized MariaDB harness — the "SQL seam" from PRD

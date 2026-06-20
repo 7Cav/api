@@ -72,13 +72,17 @@ needs one. The exported surface is exactly five entries:
 ## How the corpus was recorded
 
 `TestMain` (`harness_test.go`) mounts the **current production stack**
-in-process: the real `gateway.Service.Server()` handler (auth middleware,
-sentry, compression, `/api` routing, grpc-gateway mux) dialing a real
-`grpc.Server` over TCP with the production interceptor chain, over a seeded
-deterministic fake datastore (`fake_datastore_test.go`). No MySQL, no Redis,
-no docker. (The response cache left at Phase 2 de-cache: middleware at #123,
-the cache package and Redis at #124 — the production stack has no cache
-backend at all.)
+in-process exactly once via `rest.New(ds, stubReferenceCache{})`: the real
+stdlib `net/http` `rest` package — real `/api` routing, auth middleware, and
+the sentry/gzip chain — over a seeded deterministic fake datastore
+(`fake_datastore_test.go`). Since the single-listener cutover (#134) there is
+one stack; the gRPC server and the grpc-gateway translation layer are gone, so
+the harness mounts `rest.New` directly instead of dialing a gRPC server behind a
+gateway. `SENTRY_DSN` is unset (TestMain enforces it) so the sentry layer is a
+pass-through, and the reference cache is a no-op stub — the fake bakes its
+reference-name resolution into the seeds. No gRPC, no MySQL, no Redis, no
+docker. (The response cache went at Phase 2 de-cache: middleware at #123, the
+package and Redis at #124 — the stack has no cache backend at all.)
 
 Seed highlights (all referenced by path literals in the battery):
 
