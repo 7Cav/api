@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 	"gorm.io/gorm"
 )
 
@@ -73,7 +73,7 @@ func TestFindProfilesById_ReturnsFullProfileShape(t *testing.T) {
 	if got.UniformUrl != "https://7cav.us/data/roster_uniforms/0/205.jpg" {
 		t.Errorf("UniformUrl = %q", got.UniformUrl)
 	}
-	if got.Roster != proto.RosterType_ROSTER_TYPE_COMBAT {
+	if got.Roster != types.RosterTypeCombat {
 		t.Errorf("Roster = %v, want COMBAT", got.Roster)
 	}
 	if got.Primary.PositionId != 10 || got.Primary.PositionTitle != "Rifleman" {
@@ -101,7 +101,7 @@ func TestFindProfilesById_ReturnsFullProfileShape(t *testing.T) {
 	if len(got.Records) != 2 {
 		t.Fatalf("expected 2 service records, got %d", len(got.Records))
 	}
-	byUID := map[uint64]*proto.Record{}
+	byUID := map[uint64]*types.Record{}
 	for _, r := range got.Records {
 		byUID[r.RecordUid] = r
 	}
@@ -109,7 +109,7 @@ func TestFindProfilesById_ReturnsFullProfileShape(t *testing.T) {
 	if promo == nil {
 		t.Fatal("expected service record uid 1004")
 	}
-	if promo.RecordType != proto.RecordType_RECORD_TYPE_PROMOTION {
+	if promo.RecordType != types.RecordTypePromotion {
 		t.Errorf("record 1004 type = %v, want PROMOTION", promo.RecordType)
 	}
 	if promo.RecordDetails != "Promoted to Specialist" {

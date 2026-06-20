@@ -17,14 +17,14 @@ import (
 	"strings"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 	"gorm.io/gorm"
 )
 
 // seedTickets returns the ticket world sorted by last_modified_date DESC,
 // ticket_id DESC — the order the real datastore queries in.
-func seedTickets() []*proto.Ticket {
-	return []*proto.Ticket{
+func seedTickets() []*types.Ticket {
+	return []*types.Ticket{
 		{
 			TicketId:            44,
 			TicketRef:           "ZZTOP44Q",
@@ -45,7 +45,7 @@ func seedTickets() []*proto.Ticket {
 			StarterUsername:     "John.Doe",
 			AssignedUserId:      3,
 			AssignedUsername:    "Jarvis.A",
-			Participants: []*proto.TicketParticipant{
+			Participants: []*types.TicketParticipant{
 				{UserId: 8, LastReadDate: 1748690000},
 				{UserId: 3, LastReadDate: 1748695000},
 			},
@@ -74,7 +74,7 @@ func seedTickets() []*proto.Ticket {
 			DiscussionState:     "visible",
 			StarterUserId:       3,
 			StarterUsername:     "Jarvis.A",
-			Participants:        []*proto.TicketParticipant{},
+			Participants:        []*types.TicketParticipant{},
 			StartDate:           1748500000,
 			LastMessageDate:     1748590000,
 			LastMessageUserId:   3,
@@ -102,7 +102,7 @@ func seedTickets() []*proto.Ticket {
 			DiscussionState:     "visible",
 			StarterUserId:       8,
 			StarterUsername:     "John.Doe",
-			Participants:        []*proto.TicketParticipant{{UserId: 8, LastReadDate: 1748450000}},
+			Participants:        []*types.TicketParticipant{{UserId: 8, LastReadDate: 1748450000}},
 			StartDate:           1748400000,
 			LastMessageDate:     1748480000,
 			LastMessageUserId:   8,
@@ -117,8 +117,8 @@ func seedTickets() []*proto.Ticket {
 }
 
 // seedMessages42 is the message thread for ticket 42, position ascending.
-func seedMessages42() []*proto.Message {
-	return []*proto.Message{
+func seedMessages42() []*types.Message {
+	return []*types.Message{
 		{
 			MessageId:    9001,
 			TicketId:     42,
@@ -200,7 +200,7 @@ func decodeMessageCursor(c string) (uint32, error) {
 	return uint32(pos), nil
 }
 
-func (f *fakeDatastore) ListTickets(_ context.Context, rc datastores.TicketReferenceCache, flt *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+func (f *fakeDatastore) ListTickets(_ context.Context, rc datastores.TicketReferenceCache, flt *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 	f.lastRC = rc
 	if f.listTickets != nil {
 		return f.listTickets(flt)
@@ -222,7 +222,7 @@ func (f *fakeDatastore) ListTickets(_ context.Context, rc datastores.TicketRefer
 		}
 	}
 
-	var rows []*proto.Ticket
+	var rows []*types.Ticket
 	for _, t := range seedTickets() {
 		if hasCursor && !(t.LastModifiedDate < afterTs || (t.LastModifiedDate == afterTs && t.TicketId < afterId)) {
 			continue
@@ -243,12 +243,12 @@ func (f *fakeDatastore) ListTickets(_ context.Context, rc datastores.TicketRefer
 		next = encodeTicketCursor(last.LastModifiedDate, last.TicketId)
 	}
 	if rows == nil {
-		rows = []*proto.Ticket{}
+		rows = []*types.Ticket{}
 	}
 	return rows, next, hasMore, nil
 }
 
-func matchTicket(t *proto.Ticket, f *datastores.ListTicketsFilter) bool {
+func matchTicket(t *types.Ticket, f *datastores.ListTicketsFilter) bool {
 	if len(f.CategoryIDs) > 0 {
 		match := containsU32(f.CategoryIDs, t.CategoryId)
 		if !match && !f.ExcludeSubcategories {
@@ -302,7 +302,7 @@ func containsStr(haystack []string, needle string) bool {
 	return false
 }
 
-func (f *fakeDatastore) GetTicket(_ context.Context, rc datastores.TicketReferenceCache, ticketID uint32, _ string) (*proto.Ticket, error) {
+func (f *fakeDatastore) GetTicket(_ context.Context, rc datastores.TicketReferenceCache, ticketID uint32, _ string) (*types.Ticket, error) {
 	f.lastRC = rc
 	if f.getTicket != nil {
 		return f.getTicket(ticketID)
@@ -315,7 +315,7 @@ func (f *fakeDatastore) GetTicket(_ context.Context, rc datastores.TicketReferen
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketReferenceCache, ref string, _ string) (*proto.Ticket, error) {
+func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketReferenceCache, ref string, _ string) (*types.Ticket, error) {
 	f.lastRC = rc
 	if f.getTicketByRef != nil {
 		return f.getTicketByRef(ref)
@@ -328,12 +328,12 @@ func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketRe
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error) {
+func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, uint32, error) {
 	if f.getTicketFirstMessages != nil {
 		return f.getTicketFirstMessages(ticketID, n, includeHidden)
 	}
 	if ticketID != 42 {
-		return []*proto.Message{}, 0, nil
+		return []*types.Message{}, 0, nil
 	}
 	msgs := seedMessages42()
 	total := uint32(len(msgs))
@@ -343,7 +343,7 @@ func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint3
 	return msgs, total, nil
 }
 
-func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error) {
+func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*types.Message, string, bool, error) {
 	if f.listTicketMessages != nil {
 		return f.listTicketMessages(ticketID, afterCursor, perPage, includeHidden)
 	}
@@ -356,7 +356,7 @@ func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, a
 	} else if perPage > 100 {
 		perPage = 100
 	}
-	var rows []*proto.Message
+	var rows []*types.Message
 	if ticketID == 42 {
 		for _, m := range seedMessages42() {
 			if m.Position >= from {
@@ -373,17 +373,17 @@ func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, a
 		next = encodeMessageCursor(rows[len(rows)-1].Position + 1)
 	}
 	if rows == nil {
-		rows = []*proto.Message{}
+		rows = []*types.Message{}
 	}
 	return rows, next, hasMore, nil
 }
 
-func (f *fakeDatastore) ListCategories(_ context.Context, rc datastores.TicketReferenceCache) ([]*proto.Category, error) {
+func (f *fakeDatastore) ListCategories(_ context.Context, rc datastores.TicketReferenceCache) ([]*types.Category, error) {
 	f.lastRC = rc
 	if f.listCategories != nil {
 		return f.listCategories()
 	}
-	return []*proto.Category{
+	return []*types.Category{
 		{CategoryId: 1, Title: "Recruiting", Description: "Enlistment & recruiting questions", ParentCategoryId: 0, Depth: 0, DisplayOrder: 10, TicketCount: 120},
 		{CategoryId: 5, Title: "S1 Personnel", Description: "", ParentCategoryId: 1, Depth: 1, DisplayOrder: 20, TicketCount: 34},
 		{CategoryId: 7, Title: "S6 Technical Support", Description: "Teamspeak, forum & game-server help", ParentCategoryId: 0, Depth: 0, DisplayOrder: 30, TicketCount: 78},

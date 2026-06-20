@@ -8,9 +8,7 @@ import (
 	"github.com/7cav/api/datastores"
 )
 
-// The HTTP auth middleware below moved here verbatim from servers/gateway
-// (its original seam) for the Phase 3 rewrite: the gateway delegates to this
-// implementation until it is deleted, so the two stacks can never diverge.
+// The HTTP auth middleware below is the single public listener's auth tier.
 // The two-tier 401 behavior is golden-pinned (#106): scheme errors name the
 // expected header form, unknown keys get the generic line, both plain text,
 // no WWW-Authenticate challenge.
@@ -33,8 +31,7 @@ const errBearerScheme = "Unauthorized: expected 'Authorization: Bearer <key>' he
 // (golden-pinned). Authorization (scope membership) is per-route: see
 // requireScope.
 //
-// Exported because the legacy gateway chain reuses it until cutover deletes
-// that stack.
+// The public middleware constructor the chain composition uses (rest.New).
 func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := datastores.ParseBearerToken(r.Header.Get("Authorization"), maxTokenLen)
@@ -70,20 +67,20 @@ func AuthMiddleware(ds datastores.Datastore, next http.Handler) http.Handler {
 		// clones the request, so the key attached to the INNER context never
 		// reaches it — the mutable holder in the (shared parent) context is
 		// the only channel. The id, never the bearer token (same rule as the
-		// Sentry key_id tag). nil holder = chain without metrics (the legacy
-		// gateway reuses this middleware until cutover deletes that stack).
+		// Sentry key_id tag). The nil-holder check is mis-wiring defense: this
+		// middleware always runs under metricsMiddleware in chain, so the
+		// holder is present in production — a nil holder means a chain
+		// assembled without metricsMiddleware.
 		if labels := metricLabelsFromContext(r.Context()); labels != nil {
 			labels.keyID = strconv.FormatUint(uint64(key.KeyId), 10)
 		}
 
 		// Attach the validated key to the request ctx so INNER consumers can
 		// identify the caller without ever seeing the bearer token: the
-		// per-route scope checks (requireScope) and, until cutover deletes
-		// it, the legacy gateway's Sentry key-id tagging (its sentry layer
-		// sits inside auth). The new stack's sentry/metrics middlewares are
-		// UPSTREAM (outer) of auth — r.WithContext clones the request, so
-		// their request never carries this value; key-id reaches them via
-		// the context label-holder mechanism (#130), not this key.
+		// per-route scope checks (requireScope). The sentry/metrics
+		// middlewares are UPSTREAM (outer) of auth — r.WithContext clones the
+		// request, so their request never carries this value; key-id reaches
+		// them via the context label-holder mechanism (#130), not this key.
 		next.ServeHTTP(w, r.WithContext(ContextWithKey(r.Context(), key)))
 	})
 }

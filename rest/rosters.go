@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/types"
 )
 
@@ -60,7 +59,7 @@ func getRoster(ds datastores.Datastore) http.Handler {
 		if !ok {
 			return
 		}
-		roster, err := ds.FindRosterByType(proto.RosterType(rt))
+		roster, err := ds.FindRosterByType(rt)
 		if err != nil {
 			writeError(w, r, codeInternal, "fetch roster %s: %v", rt, err)
 			return
@@ -72,11 +71,13 @@ func getRoster(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
 		}
-		out := types.Roster{Profiles: make(map[uint64]*types.Profile, len(roster.GetProfiles()))}
-		for id, p := range roster.GetProfiles() {
-			out.Profiles[id] = profileFromProto(p)
+		if roster.Profiles == nil {
+			// Frozen empty-result form: {"profiles":{}}, never null (#137). The
+			// real datastore always allocates; this guards a nil map slipping
+			// through (the old stack's EmitUnpopulated marshaler emitted {}).
+			roster.Profiles = map[uint64]*types.Profile{}
 		}
-		writeJSON(w, r, out)
+		writeJSON(w, r, roster)
 	})
 }
 
@@ -89,7 +90,7 @@ func getLiteRoster(ds datastores.Datastore) http.Handler {
 		if !ok {
 			return
 		}
-		roster, err := ds.FindLiteRosterByType(proto.RosterType(rt))
+		roster, err := ds.FindLiteRosterByType(rt)
 		if err != nil {
 			writeError(w, r, codeInternal, "fetch lite roster %s: %v", rt, err)
 			return
@@ -98,49 +99,11 @@ func getLiteRoster(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
 		}
-		out := types.LiteRoster{Profiles: make(map[uint64]*types.LiteProfile, len(roster.GetProfiles()))}
-		for id, p := range roster.GetProfiles() {
-			out.Profiles[id] = liteProfileFromProto(p)
+		if roster.Profiles == nil {
+			roster.Profiles = map[uint64]*types.LiteProfile{}
 		}
-		writeJSON(w, r, out)
+		writeJSON(w, r, roster)
 	})
-}
-
-// liteProfileFromProto maps the datastore's proto-typed lite profile to the
-// wire type. Same discipline as profileFromProto: collections always
-// allocated, unset nested messages stay nil, keycloakId dropped (the wire
-// type never had the field — documented break).
-func liteProfileFromProto(p *proto.LiteProfile) *types.LiteProfile {
-	out := &types.LiteProfile{
-		RealName:          p.GetRealName(),
-		UniformUrl:        p.GetUniformUrl(),
-		Roster:            types.RosterType(p.GetRoster()),
-		Secondaries:       make([]*types.Position, 0, len(p.GetSecondaries())),
-		JoinDate:          p.GetJoinDate(),
-		PromotionDate:     p.GetPromotionDate(),
-		DiscordId:         p.GetDiscordId(),
-		AwardDate:         p.GetAwardDate(),
-		RecordDate:        p.GetRecordDate(),
-		LastForumPostDate: p.GetLastForumPostDate(),
-		Mos:               p.GetMos(),
-		ConsoleGamertag:   p.GetConsoleGamertag(),
-	}
-	if u := p.GetUser(); u != nil {
-		out.User = &types.User{UserId: u.GetUserId(), Username: u.GetUsername()}
-	}
-	if rk := p.GetRank(); rk != nil {
-		out.Rank = &types.Rank{
-			RankShort:    rk.GetRankShort(),
-			RankFull:     rk.GetRankFull(),
-			RankImageUrl: rk.GetRankImageUrl(),
-			RankId:       rk.GetRankId(),
-		}
-	}
-	out.Primary = positionFromProto(p.GetPrimary())
-	for _, s := range p.GetSecondaries() {
-		out.Secondaries = append(out.Secondaries, positionFromProto(s))
-	}
-	return out
 }
 
 // getS1UniformsRoster serves GET /api/v1/s1/uniforms/{roster}: the same
@@ -152,7 +115,7 @@ func getS1UniformsRoster(ds datastores.Datastore) http.Handler {
 		if !ok {
 			return
 		}
-		roster, err := ds.FindS1UniformsRosterByType(proto.RosterType(rt))
+		roster, err := ds.FindS1UniformsRosterByType(rt)
 		if err != nil {
 			writeError(w, r, codeInternal, "fetch s1 uniforms roster %s: %v", rt, err)
 			return
@@ -161,50 +124,9 @@ func getS1UniformsRoster(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
 		}
-		out := types.S1UniformsRoster{Profiles: make(map[uint64]*types.S1UniformsProfile, len(roster.GetProfiles()))}
-		for id, p := range roster.GetProfiles() {
-			out.Profiles[id] = s1UniformsProfileFromProto(p)
+		if roster.Profiles == nil {
+			roster.Profiles = map[uint64]*types.S1UniformsProfile{}
 		}
-		writeJSON(w, r, out)
+		writeJSON(w, r, roster)
 	})
-}
-
-// s1UniformsProfileFromProto maps the datastore's proto-typed S1 uniforms
-// profile to the wire type — same discipline as the other two mappers.
-func s1UniformsProfileFromProto(p *proto.S1UniformsProfile) *types.S1UniformsProfile {
-	out := &types.S1UniformsProfile{
-		RealName:                 p.GetRealName(),
-		UniformUrl:               p.GetUniformUrl(),
-		UniformDate:              p.GetUniformDate(),
-		UniformUpdateTriggerDate: p.GetUniformUpdateTriggerDate(),
-		Roster:                   types.RosterType(p.GetRoster()),
-		PrimaryPositionTitle:     p.GetPrimaryPositionTitle(),
-		Secondaries:              make([]*types.S1UniformsPosition, 0, len(p.GetSecondaries())),
-		JoinDate:                 p.GetJoinDate(),
-		PromotionDate:            p.GetPromotionDate(),
-		AreaOfResponsibility:     p.GetAreaOfResponsibility(),
-	}
-	if u := p.GetUser(); u != nil {
-		out.User = &types.User{UserId: u.GetUserId(), Username: u.GetUsername()}
-	}
-	if rk := p.GetRank(); rk != nil {
-		out.Rank = &types.S1UniformsRank{
-			RankShort:    rk.GetRankShort(),
-			RankFull:     rk.GetRankFull(),
-			RankImageUrl: rk.GetRankImageUrl(),
-		}
-	}
-	for _, s := range p.GetSecondaries() {
-		out.Secondaries = append(out.Secondaries, s1PositionFromProto(s))
-	}
-	return out
-}
-
-// s1PositionFromProto maps an S1 uniforms position, preserving nil (null on
-// the wire) — the S1 counterpart of positionFromProto.
-func s1PositionFromProto(p *proto.S1UniformsPosition) *types.S1UniformsPosition {
-	if p == nil {
-		return nil
-	}
-	return &types.S1UniformsPosition{PositionTitle: p.GetPositionTitle()}
 }

@@ -24,8 +24,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"github.com/7cav/api/types"
 )
 
 var (
@@ -71,27 +71,26 @@ type Datastore interface {
 	// non-nil profiles on a nil error — no-match is gorm.ErrRecordNotFound,
 	// never an empty slice. Handlers index [0] under this invariant (with a
 	// defensive 500 guard for implementations that break it).
-	FindProfilesById(userId ...uint64) ([]*proto.Profile, error)
-	FindProfilesByUsername(username string) ([]*proto.Profile, error)
-	FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error)
-	FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRoster, error)
-	FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error)
-	FindProfileByDiscordID(discordId string) (*proto.Profile, error)
-	FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error)
-	FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.S1UniformsRoster, error)
-	FindAllRanks() ([]*proto.RankExpanded, error)
-	FindAllPositionGroups() ([]*proto.PositionGroup, error)
-	FindAwol() ([]*proto.Awol, error)
-	FindProfileByGamertag(gamertag string) (*proto.Profile, error)
+	FindProfilesById(userId ...uint64) ([]*types.Profile, error)
+	FindProfilesByUsername(username string) ([]*types.Profile, error)
+	FindRosterByType(rosterType types.RosterType) (*types.Roster, error)
+	FindLiteRosterByType(rosterType types.RosterType) (*types.LiteRoster, error)
+	FindProfileByDiscordID(discordId string) (*types.Profile, error)
+	FindProfilesByPosition(positionQuery string) (*types.LiteRoster, error)
+	FindS1UniformsRosterByType(rosterType types.RosterType) (*types.S1UniformsRoster, error)
+	FindAllRanks() ([]*types.RankExpanded, error)
+	FindAllPositionGroups() ([]*types.PositionGroup, error)
+	FindAwol() ([]*types.Awol, error)
+	FindProfileByGamertag(gamertag string) (*types.Profile, error)
 	ValidateApiKey(rawKey string) (*ApiKeyResult, error)
 
 	// Tickets
-	ListTickets(ctx context.Context, rc TicketReferenceCache, filter *ListTicketsFilter) (tickets []*proto.Ticket, nextCursor string, hasMore bool, err error)
-	GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBaseURL string) (*proto.Ticket, error)
-	GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBaseURL string) (*proto.Ticket, error)
-	GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) (msgs []*proto.Message, totalCount uint32, err error)
-	ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) (msgs []*proto.Message, nextCursor string, hasMore bool, err error)
-	ListCategories(ctx context.Context, rc TicketReferenceCache) ([]*proto.Category, error)
+	ListTickets(ctx context.Context, rc TicketReferenceCache, filter *ListTicketsFilter) (tickets []*types.Ticket, nextCursor string, hasMore bool, err error)
+	GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBaseURL string) (*types.Ticket, error)
+	GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBaseURL string) (*types.Ticket, error)
+	GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) (msgs []*types.Message, totalCount uint32, err error)
+	ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) (msgs []*types.Message, nextCursor string, hasMore bool, err error)
+	ListCategories(ctx context.Context, rc TicketReferenceCache) ([]*types.Category, error)
 }
 
 // TicketReferenceCache is the slice of referencecache.ReferenceCache that
@@ -107,7 +106,6 @@ type TicketReferenceCache interface {
 	ExpandSubtree(ids []uint32) []uint32
 }
 
-// Conformance pin: the production cache satisfies the slice. Lives HERE (not
-// next to the grpc server that also consumes the cache) so the check
-// survives Phase 4's deletion of the grpc stack.
+// Conformance pin: the production cache satisfies the slice. Kept here, on the
+// interface it serves, so it lives with the only consumer.
 var _ TicketReferenceCache = (*referencecache.Cache)(nil)

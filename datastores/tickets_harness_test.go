@@ -8,14 +8,14 @@ import (
 	"testing"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 	"github.com/spf13/viper"
 	"gorm.io/gorm"
 )
 
 // ticketIDs flattens a ticket slice to ids, preserving order, for
 // readable ordering assertions.
-func ticketIDs(tickets []*proto.Ticket) []uint32 {
+func ticketIDs(tickets []*types.Ticket) []uint32 {
 	ids := make([]uint32, len(tickets))
 	for i, t := range tickets {
 		ids[i] = t.TicketId
@@ -23,7 +23,7 @@ func ticketIDs(tickets []*proto.Ticket) []uint32 {
 	return ids
 }
 
-func assertTicketOrder(t *testing.T, tickets []*proto.Ticket, want []uint32) {
+func assertTicketOrder(t *testing.T, tickets []*types.Ticket, want []uint32) {
 	t.Helper()
 	got := ticketIDs(tickets)
 	if len(got) != len(want) {
@@ -561,7 +561,7 @@ func TestListCategories_ServesCategoryTree(t *testing.T) {
 	}
 }
 
-func messagePositions(msgs []*proto.Message) []uint32 {
+func messagePositions(msgs []*types.Message) []uint32 {
 	out := make([]uint32, len(msgs))
 	for i, m := range msgs {
 		out[i] = m.Position

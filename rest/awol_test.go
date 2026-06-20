@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +16,7 @@ import (
 // witness populated. Empty is also this route's NORMAL state: nobody AWOL is
 // the healthy regiment, so the empty form matters more here than anywhere.
 func TestNewStack_EmptyAwolListIsEmptyArray(t *testing.T) {
-	h := rest.New(&fakeDatastore{findAwol: func() ([]*proto.Awol, error) {
+	h := rest.New(&fakeDatastore{findAwol: func() ([]*types.Awol, error) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 

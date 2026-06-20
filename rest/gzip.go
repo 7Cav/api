@@ -7,14 +7,9 @@ import (
 	"strings"
 )
 
-// GzipMiddleware moved here verbatim from servers/gateway (compression
-// middleware) for the Phase 3 rewrite; the gateway delegates to it until
-// cutover deletes that stack. It sits inside auth (401s are never gzipped)
-// and outside the mux, so every routed response — including the JSON 404 —
-// compresses when the client asks.
-//
-// Exported because the legacy gateway chain reuses it until cutover deletes
-// that stack.
+// GzipMiddleware is the compression layer. It sits inside auth (401s are
+// never gzipped) and outside the mux, so every routed response — including
+// the JSON 404 — compresses when the client asks.
 //
 // A handler-sent 1xx on a gzip-negotiated request carries Content-Encoding:
 // gzip in the interim response — the stdlib sends the live header map per

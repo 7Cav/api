@@ -19,22 +19,20 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/7cav/api/servers"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Launches the api servers",
+	Short: "Launches the api server",
 	Run: func(cmd *cobra.Command, args []string) {
-		// PORT is the port the HTTP gateway dials to reach the in-process gRPC server.
-		// It is NOT a listen port: both the gRPC server (:10000) and HTTP gateway (:11000) listen
-		// ports are hardcoded in servers/server.go. PORT must match the hardcoded gRPC port (10000)
-		// for the gateway-to-gRPC dial to succeed.
-		server := servers.New(fmt.Sprintf("0.0.0.0:%s", viper.GetString("port")))
+		// The public (:11000) and internal metrics (:9090) listen ports are
+		// constants in servers/server.go. The old PORT env var was only the
+		// gateway's gRPC dial target; the gRPC server is gone (#134), so PORT is
+		// no longer read.
+		server := servers.New()
 		server.Start()
 	},
 }

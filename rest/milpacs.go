@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/types"
 	"gorm.io/gorm"
 )
@@ -25,7 +24,7 @@ func getAllRanks(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "error fetching ranks: %v", err)
 			return
 		}
-		writeJSON(w, r, types.RanksResponse{Ranks: ranksFromProto(ranks)})
+		writeJSON(w, r, types.RanksResponse{Ranks: ranks})
 	})
 }
 
@@ -283,95 +282,13 @@ func queryField(r *http.Request, protoName, jsonName string) (vals []string, err
 	return vals, nil
 }
 
-// writeProfile maps one datastore profile to the wire type and writes it. A
-// nil profile with no error is a datastore-invariant violation (unreachable
-// through the real datastore): a clean 500, not a fabricated sparse 200 —
-// the proto getters would happily marshal a zero-value profile.
-func writeProfile(w http.ResponseWriter, r *http.Request, p *proto.Profile) {
+// writeProfile writes one datastore profile. A nil profile with no error is a
+// datastore-invariant violation (unreachable through the real datastore): a
+// clean 500, not a fabricated sparse 200.
+func writeProfile(w http.ResponseWriter, r *http.Request, p *types.Profile) {
 	if p == nil {
 		writeError(w, r, codeInternal, "datastore returned no profile")
 		return
 	}
-	writeJSON(w, r, profileFromProto(p))
-}
-
-// profileFromProto maps the datastore's proto-typed profile to the wire type.
-// Allocation discipline: collections are always allocated ([] on the wire,
-// never null); unset nested messages stay nil (null on the wire). keycloakId
-// is dropped here — the wire type never had the field (documented break).
-func profileFromProto(p *proto.Profile) *types.Profile {
-	out := &types.Profile{
-		RealName:          p.GetRealName(),
-		UniformUrl:        p.GetUniformUrl(),
-		Roster:            types.RosterType(p.GetRoster()),
-		Secondaries:       make([]*types.Position, 0, len(p.GetSecondaries())),
-		Records:           make([]*types.Record, 0, len(p.GetRecords())),
-		Awards:            make([]*types.Award, 0, len(p.GetAwards())),
-		JoinDate:          p.GetJoinDate(),
-		PromotionDate:     p.GetPromotionDate(),
-		DiscordId:         p.GetDiscordId(),
-		LastForumPostDate: p.GetLastForumPostDate(),
-		Mos:               p.GetMos(),
-		ConsoleGamertag:   p.GetConsoleGamertag(),
-	}
-	if u := p.GetUser(); u != nil {
-		out.User = &types.User{UserId: u.GetUserId(), Username: u.GetUsername()}
-	}
-	if rk := p.GetRank(); rk != nil {
-		out.Rank = &types.Rank{
-			RankShort:    rk.GetRankShort(),
-			RankFull:     rk.GetRankFull(),
-			RankImageUrl: rk.GetRankImageUrl(),
-			RankId:       rk.GetRankId(),
-		}
-	}
-	out.Primary = positionFromProto(p.GetPrimary())
-	for _, s := range p.GetSecondaries() {
-		out.Secondaries = append(out.Secondaries, positionFromProto(s))
-	}
-	for _, rec := range p.GetRecords() {
-		out.Records = append(out.Records, &types.Record{
-			RecordDetails: rec.GetRecordDetails(),
-			RecordType:    types.RecordType(rec.GetRecordType()),
-			RecordDate:    rec.GetRecordDate(),
-			RecordUid:     rec.GetRecordUid(),
-		})
-	}
-	for _, a := range p.GetAwards() {
-		out.Awards = append(out.Awards, &types.Award{
-			AwardDetails:  a.GetAwardDetails(),
-			AwardName:     a.GetAwardName(),
-			AwardDate:     a.GetAwardDate(),
-			AwardImageUrl: a.GetAwardImageUrl(),
-			AwardUid:      a.GetAwardUid(),
-		})
-	}
-	return out
-}
-
-// positionFromProto maps a position, preserving nil (null on the wire).
-func positionFromProto(p *proto.Position) *types.Position {
-	if p == nil {
-		return nil
-	}
-	return &types.Position{PositionTitle: p.GetPositionTitle(), PositionId: p.GetPositionId()}
-}
-
-// ranksFromProto maps the datastore's proto-typed rows to the wire types.
-// The mapping layer disappears at cutover (#134) when the Datastore
-// interface itself moves to the types package; until then each handler owns
-// its map — and the allocation discipline: empty collections are allocated
-// ([] on the wire), never nil.
-func ranksFromProto(in []*proto.RankExpanded) []*types.RankExpanded {
-	out := make([]*types.RankExpanded, 0, len(in))
-	for _, r := range in {
-		out = append(out, &types.RankExpanded{
-			RankShort:        r.GetRankShort(),
-			RankFull:         r.GetRankFull(),
-			RankImageUrl:     r.GetRankImageUrl(),
-			RankId:           r.GetRankId(),
-			RankDisplayOrder: r.GetRankDisplayOrder(),
-		})
-	}
-	return out
+	writeJSON(w, r, p)
 }

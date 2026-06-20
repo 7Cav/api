@@ -102,7 +102,18 @@ func SetupSentry(release string) bool {
 		return false
 	}
 
-	Info.Println("Sentry error capture enabled (errors only), release:", release)
+	// Warn-only reachability pre-check: catches the misconfig class the probe
+	// below structurally cannot (fast send failures drain the queue and so
+	// still "flush"). Never changes the enabled/degraded semantics.
+	sentryDialCheck(dsn)
+
+	// Probe failure still returns true — enabled-degraded, not disabled: a
+	// slow-network false positive must not turn off capture. Do NOT refactor
+	// this into `return sentryStartupProbe()`.
+	if sentryStartupProbe() {
+		Info.Println("Sentry error capture enabled (errors only), release:", release,
+			"— startup probe flushed (queue drained; delivery not verified — set SENTRY_DEBUG=true to confirm)")
+	}
 	return true
 }
 
@@ -255,10 +266,6 @@ func sentryLabel(next http.Handler) http.Handler {
 //
 // No-op when the request never passed an enabled sentry middleware: no
 // SENTRY_DSN (the complete-no-op guarantee), or a chain that does not mount
-// it — the legacy gateway reuses AuthMiddleware (and so this choke point)
-// until cutover, but its Phase 0 sentry layer sits INSIDE auth, so on that
-// chain auth's 503s stay unreported until cutover (accepted Phase 0 gap,
-// documented in servers/gateway/gateway.go); the new stack is what closes
 // it. Also a no-op
 // for the recovery layer's own contract-500 write after a panic: that event
 // is already captured, and one failure must not become two issues.

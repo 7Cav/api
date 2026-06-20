@@ -1,11 +1,7 @@
-// Package rest is the stdlib net/http stack that replaces the gRPC server +
-// grpc-gateway pair (PRD #112, Phase 3). Two of its layers ALREADY serve
-// production: the legacy gateway delegates auth and gzip to
-// rest.AuthMiddleware/rest.GzipMiddleware (single source, so the stacks
-// cannot diverge while both are in-tree). The handler stack itself
-// (New/routes) is test-mounted only until the cutover slice (#134); this
-// package is the permanent home — at cutover the single public listener
-// serves every route through it, and Phase 4 deletes the old stacks.
+// Package rest is the stdlib net/http stack that replaced the gRPC server +
+// grpc-gateway pair (PRD #112, Phase 3); the #134 cutover removed those and
+// made this the single public production listener. The single public listener
+// serves every route through New/routes.
 //
 // # Middleware chain (PRD order — assembled in chain, New's composition)
 //
@@ -26,9 +22,8 @@
 //     labels reach this OUTER layer via the context label-holder
 //     (metricLabels): AuthMiddleware fills the key-id slot, the routeLabel
 //     wrapper inside the mux fills the route slot from r.Pattern. The
-//     exposition is never served through this chain; the cutover slice
-//     (#134) mounts MetricsHandler on its own INTERNAL-ONLY listener — until
-//     then it is test-mounted only.
+//     exposition is never served through this chain; MetricsHandler is served
+//     on its own INTERNAL-ONLY listener (:9090, servers/server.go).
 //   - AuthMiddleware: bearer-key validation with the golden-pinned two-tier
 //     plain-text 401s. Runs BEFORE routing, so an unknown path without
 //     credentials is a 401, not a 404 (golden-pinned). Scope checks are
@@ -91,8 +86,8 @@ var (
 // New assembles the new stack: the route mux wrapped in the PRD middleware
 // chain (sentry → metrics → auth (→ sentryLabel) → gzip → clean-path 307 →
 // mux; the one definition lives on chain below). The returned handler serves
-// the /api surface; non-API paths (the docs UI) are the cutover slice's
-// concern (#134) and 404 here until then.
+// the /api surface; non-API paths (the docs UI) are served by rest.DocsHandler
+// on the same listener (composed in servers.servPublic).
 //
 // rc is the tickets reference cache (status/priority/prefix names, the
 // category tree) the tickets datastore methods consume — at cutover (#134)

@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func ticketsGet(t *testing.T, h http.Handler, path string) *httptest.ResponseRec
 // A datastore outage on the ticket fetch must surface as the frozen Internal
 // shape (message text mirrors the old handler verbatim: "fetch ticket: %v").
 func TestNewStack_GetTicketDatastoreOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{getTicket: func(uint32) (*proto.Ticket, error) {
+	h := rest.New(&fakeDatastore{getTicket: func(uint32) (*types.Ticket, error) {
 		return nil, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -47,7 +47,7 @@ func TestNewStack_GetTicketDatastoreOutageIsInternalJSON(t *testing.T) {
 // must be the frozen Internal shape, never a zeroed-garbage 200 via the
 // nil-safe proto getters.
 func TestNewStack_NilTicketWithNilErrorIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{getTicket: func(uint32) (*proto.Ticket, error) {
+	h := rest.New(&fakeDatastore{getTicket: func(uint32) (*types.Ticket, error) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 
@@ -59,7 +59,7 @@ func TestNewStack_NilTicketWithNilErrorIsInternalJSON(t *testing.T) {
 // An outage on the first-messages fetch (after the ticket resolved) keeps its
 // own frozen message string: "fetch ticket messages: %v".
 func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int, bool) ([]*proto.Message, uint32, error) {
+	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int, bool) ([]*types.Message, uint32, error) {
 		return nil, 0, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -70,7 +70,7 @@ func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {
 
 // An outage on the categories list: "list ticket categories: %v".
 func TestNewStack_ListCategoriesOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{listCategories: func() ([]*proto.Category, error) {
+	h := rest.New(&fakeDatastore{listCategories: func() ([]*types.Category, error) {
 		return nil, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -81,7 +81,7 @@ func TestNewStack_ListCategoriesOutageIsInternalJSON(t *testing.T) {
 
 // An outage on the tickets list: "list tickets: %v".
 func TestNewStack_ListTicketsOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		return nil, "", false, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -93,7 +93,7 @@ func TestNewStack_ListTicketsOutageIsInternalJSON(t *testing.T) {
 // An empty tickets page must serialize with the collections allocated:
 // {"tickets":[],...} — never null.
 func TestNewStack_EmptyTicketsPageIsEmptyArray(t *testing.T) {
-	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTickets: func(*datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		return nil, "", false, nil
 	}}, &stubReferenceCache{})
 
@@ -104,7 +104,7 @@ func TestNewStack_EmptyTicketsPageIsEmptyArray(t *testing.T) {
 
 // An outage on the messages list: "list ticket messages: %v".
 func TestNewStack_ListTicketMessagesOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32, bool) ([]*proto.Message, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTicketMessages: func(uint32, string, uint32, bool) ([]*types.Message, string, bool, error) {
 		return nil, "", false, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -363,9 +363,9 @@ func TestNewStack_ScopeGatePrecedesBindingErrors(t *testing.T) {
 // nowhere else).
 func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
 	var got *datastores.ListTicketsFilter
-	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		got = f
-		return []*proto.Ticket{}, "", false, nil
+		return []*types.Ticket{}, "", false, nil
 	}}, &stubReferenceCache{})
 
 	query := strings.Join([]string{
@@ -412,9 +412,9 @@ func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
 // binder (rest/query.go bracketGroups); converged with #126.
 func TestNewStack_BracketKeyFoldsIntoRepeatedField(t *testing.T) {
 	var got *datastores.ListTicketsFilter
-	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		got = f
-		return []*proto.Ticket{}, "", false, nil
+		return []*types.Ticket{}, "", false, nil
 	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets?status_id[0]=5")
@@ -457,9 +457,9 @@ func TestNewStack_BracketKeyOnScalarIsTooManyValues400(t *testing.T) {
 // to "status_id".
 func TestNewStack_NonMatchingBracketKeysAreIgnored(t *testing.T) {
 	var got *datastores.ListTicketsFilter
-	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		got = f
-		return []*proto.Ticket{}, "", false, nil
+		return []*types.Ticket{}, "", false, nil
 	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets")
@@ -482,9 +482,9 @@ func TestNewStack_NonMatchingBracketKeysAreIgnored(t *testing.T) {
 // key) is the deterministic RULING, same tier as camel-wins.
 func TestNewStack_BracketKeySpellingsAndOrderingRuling(t *testing.T) {
 	var got *datastores.ListTicketsFilter
-	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		got = f
-		return []*proto.Ticket{}, "", false, nil
+		return []*types.Ticket{}, "", false, nil
 	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets?statusId[0]=5")
@@ -506,9 +506,9 @@ func TestNewStack_BracketKeySpellingsAndOrderingRuling(t *testing.T) {
 func TestNewStack_ListTicketMessagesIncludeHiddenReachesDatastore(t *testing.T) {
 	for _, want := range []bool{true, false} {
 		got, called := false, false
-		h := rest.New(&fakeDatastore{listTicketMessages: func(_ uint32, _ string, _ uint32, includeHidden bool) ([]*proto.Message, string, bool, error) {
+		h := rest.New(&fakeDatastore{listTicketMessages: func(_ uint32, _ string, _ uint32, includeHidden bool) ([]*types.Message, string, bool, error) {
 			got, called = includeHidden, true
-			return []*proto.Message{}, "", false, nil
+			return []*types.Message{}, "", false, nil
 		}}, &stubReferenceCache{})
 
 		path := "/api/v1/tickets/42/messages"
@@ -525,7 +525,7 @@ func TestNewStack_ListTicketMessagesIncludeHiddenReachesDatastore(t *testing.T) 
 // A by-ref datastore outage mirrors the by-id twin: same frozen "fetch
 // ticket: %v" Internal shape (both old handlers shared the string).
 func TestNewStack_GetTicketByRefDatastoreOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{getTicketByRef: func(string) (*proto.Ticket, error) {
+	h := rest.New(&fakeDatastore{getTicketByRef: func(string) (*types.Ticket, error) {
 		return nil, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -542,9 +542,9 @@ func TestNewStack_GetTicketByRefDatastoreOutageIsInternalJSON(t *testing.T) {
 func TestNewStack_FirstMessagesCountAndVisibilityFrozen(t *testing.T) {
 	for _, path := range []string{"/api/v1/tickets/42", "/api/v1/tickets/ref/MF1UI9HE"} {
 		gotN, gotHidden, called := 0, true, false
-		h := rest.New(&fakeDatastore{getTicketFirstMessages: func(_ uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error) {
+		h := rest.New(&fakeDatastore{getTicketFirstMessages: func(_ uint32, n int, includeHidden bool) ([]*types.Message, uint32, error) {
 			gotN, gotHidden, called = n, includeHidden, true
-			return []*proto.Message{}, 0, nil
+			return []*types.Message{}, 0, nil
 		}}, &stubReferenceCache{})
 
 		rr := ticketsGet(t, h, path)
@@ -558,7 +558,7 @@ func TestNewStack_FirstMessagesCountAndVisibilityFrozen(t *testing.T) {
 // An empty category tree must serialize as {"categories":[]} — allocation
 // discipline the goldens only witness populated.
 func TestNewStack_EmptyCategoriesIsEmptyArray(t *testing.T) {
-	h := rest.New(&fakeDatastore{listCategories: func() ([]*proto.Category, error) {
+	h := rest.New(&fakeDatastore{listCategories: func() ([]*types.Category, error) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 

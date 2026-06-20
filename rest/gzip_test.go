@@ -145,9 +145,9 @@ func TestGzip_FlushBeforeFirstWriteStripsStaleContentLength(t *testing.T) {
 // wire in one of the two shapes the WriteHeader variant's doc lays out, both
 // invisible to the handler (every Write returns nil).
 // Same shape as the WriteHeader variant below minus the explicit WriteHeader;
-// this is the wire-level pin that survives cutover (#135 deletes
-// servers/gateway and its recorder-based gzip round-trip test, until then the
-// only pin on this path).
+// this is the wire-level pin on this path (the old servers/gateway and its
+// recorder-based gzip round-trip test were removed at the #134 cutover, so this
+// is now the sole pin).
 func TestGzip_FirstWriteStripsStaleContentLength(t *testing.T) {
 	const payload = `{"roster":"live","unit":"7th Cavalry","status":"active"}`
 

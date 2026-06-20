@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,9 +32,9 @@ func positionsGet(t *testing.T, h http.Handler, path, key string) *httptest.Resp
 // strings verbatim from the old handlers, servers/grpc).
 func TestNewStack_PositionAndAwolOutagesAreInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{
-		findAllPositionGroups:  func() ([]*proto.PositionGroup, error) { return nil, io.ErrUnexpectedEOF },
-		findProfilesByPosition: func(string) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
-		findAwol:               func() ([]*proto.Awol, error) { return nil, io.ErrUnexpectedEOF },
+		findAllPositionGroups:  func() ([]*types.PositionGroup, error) { return nil, io.ErrUnexpectedEOF },
+		findProfilesByPosition: func(string) (*types.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
+		findAwol:               func() ([]*types.Awol, error) { return nil, io.ErrUnexpectedEOF },
 	}, &stubReferenceCache{})
 
 	cases := []struct {
@@ -59,7 +59,7 @@ func TestNewStack_PositionAndAwolOutagesAreInternalJSON(t *testing.T) {
 // allocation discipline (empty collections are [], never null) the goldens
 // can only witness on populated routes.
 func TestNewStack_EmptyPositionGroupsIsEmptyArray(t *testing.T) {
-	h := rest.New(&fakeDatastore{findAllPositionGroups: func() ([]*proto.PositionGroup, error) {
+	h := rest.New(&fakeDatastore{findAllPositionGroups: func() ([]*types.PositionGroup, error) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 
@@ -73,8 +73,8 @@ func TestNewStack_EmptyPositionGroupsIsEmptyArray(t *testing.T) {
 // emits {"profiles":{}} — the mapper allocates, so the frozen empty-result
 // form (#137) cannot regress to null through a lazy datastore.
 func TestNewStack_SearchNilProfilesMapIsEmptyObject(t *testing.T) {
-	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*proto.LiteRoster, error) {
-		return &proto.LiteRoster{}, nil // Profiles map nil, not allocated
+	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*types.LiteRoster, error) {
+		return &types.LiteRoster{}, nil // Profiles map nil, not allocated
 	}}, &stubReferenceCache{})
 
 	rr := positionsGet(t, h, "/api/v1/milpacs/position/search/Rifleman", "cav7_readkey")
@@ -87,7 +87,7 @@ func TestNewStack_SearchNilProfilesMapIsEmptyObject(t *testing.T) {
 // (datastores.Mysql always allocates): it must surface as the frozen
 // Internal shape, not a panic or a fabricated empty 200.
 func TestNewStack_SearchNilRosterWithNilErrorIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*proto.LiteRoster, error) {
+	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*types.LiteRoster, error) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 
@@ -97,18 +97,18 @@ func TestNewStack_SearchNilRosterWithNilErrorIsInternalJSON(t *testing.T) {
 	assert.JSONEq(t, `{"code":13,"message":"datastore returned no roster","details":[]}`, rr.Body.String())
 }
 
-// A sparse lite profile must come through the mapper with its nils PRESERVED:
+// A sparse lite profile must come through with its nils PRESERVED:
 // unset User/Rank/Primary stay null on the wire (never fabricated as zeroed
 // &types.User{}/&types.Rank{}) and empty Secondaries is [] — the
 // recording-seed shape (seedDoeLite, contract/fake_datastore_test.go) minus
-// User/Rank, so every nil-guard branch in liteRosterFromProto runs unset.
+// User/Rank, so every nil-guard branch in the lite-roster response runs unset.
 func TestNewStack_SearchSparseLiteProfilePreservesNils(t *testing.T) {
-	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*proto.LiteRoster, error) {
-		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{2: {
+	h := rest.New(&fakeDatastore{findProfilesByPosition: func(string) (*types.LiteRoster, error) {
+		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{2: {
 			RealName:        "John Doe",
 			UniformUrl:      "https://7cav.us/data/roster_uniforms/0/2.jpg",
-			Roster:          proto.RosterType_ROSTER_TYPE_COMBAT,
-			Secondaries:     []*proto.Position{},
+			Roster:          types.RosterTypeCombat,
+			Secondaries:     []*types.Position{},
 			JoinDate:        "2026-01-15",
 			ConsoleGamertag: "CavGamer77",
 		}}}, nil
@@ -146,9 +146,9 @@ func TestNewStack_SearchSparseLiteProfilePreservesNils(t *testing.T) {
 // decode.
 func TestNewStack_SearchQueryDecodesOncePreservingSlashes(t *testing.T) {
 	var got string
-	h := rest.New(&fakeDatastore{findProfilesByPosition: func(q string) (*proto.LiteRoster, error) {
+	h := rest.New(&fakeDatastore{findProfilesByPosition: func(q string) (*types.LiteRoster, error) {
 		got = q
-		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{}}, nil
+		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{}}, nil
 	}}, &stubReferenceCache{})
 
 	cases := []struct {

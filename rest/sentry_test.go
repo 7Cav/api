@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"github.com/7cav/api/types"
 	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/spf13/viper"
@@ -36,8 +36,8 @@ import (
 // "read" — the id (never the token) is what events must carry.
 type sentryFakeDatastore struct {
 	datastores.Datastore
-	findAllRanks     func() ([]*proto.RankExpanded, error)
-	findProfilesById func(...uint64) ([]*proto.Profile, error)
+	findAllRanks     func() ([]*types.RankExpanded, error)
+	findProfilesById func(...uint64) ([]*types.Profile, error)
 	validateApiKey   func(string) (*datastores.ApiKeyResult, error)
 }
 
@@ -51,11 +51,11 @@ func (f *sentryFakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyR
 	return nil, nil
 }
 
-func (f *sentryFakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
+func (f *sentryFakeDatastore) FindAllRanks() ([]*types.RankExpanded, error) {
 	return f.findAllRanks()
 }
 
-func (f *sentryFakeDatastore) FindProfilesById(ids ...uint64) ([]*proto.Profile, error) {
+func (f *sentryFakeDatastore) FindProfilesById(ids ...uint64) ([]*types.Profile, error) {
 	return f.findProfilesById(ids...)
 }
 
@@ -103,6 +103,15 @@ func (t *transportMock) Events() []*sentry.Event {
 	return append([]*sentry.Event(nil), t.events...)
 }
 
+// reset drops any captured events. enableSentry calls it after SetupSentry so
+// the boot-time startup-probe canary (#134: SetupSentry now drives the probe)
+// does not count toward a test's own event assertions.
+func (t *transportMock) reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = nil
+}
+
 // testRelease is the build-time version stand-in tests pass to SetupSentry.
 const testRelease = "v-test-132"
 
@@ -124,6 +133,7 @@ func enableSentry(t *testing.T) *transportMock {
 		viper.Set("SENTRY_DSN", "")
 	})
 	require.True(t, SetupSentry(testRelease), "SetupSentry must enable capture when SENTRY_DSN is set")
+	tr.reset() // discard the boot-time startup-probe canary so tests count only their own events
 	return tr
 }
 
@@ -190,7 +200,7 @@ func TestSentryMiddleware_MountsCommitWriterWhenEnabled(t *testing.T) {
 func TestSentry_PanicCompletesAs500AndReportsTaggedEvent(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t) // panic + 5xx logging stays server-side, not in test output
-	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		panic("ranks exploded")
 	}}, &sentryStubCache{})
 
@@ -228,7 +238,7 @@ func TestSentry_PanicCompletesAs500AndReportsTaggedEvent(t *testing.T) {
 func TestSentry_Handler500ThroughChokePointReportsEvent(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t)
-	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		return nil, errOutageSentry
 	}}, &sentryStubCache{})
 
@@ -319,10 +329,10 @@ func TestSentry_BearerMaterialAbsentFromEventPayloads(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t)
 
-	panicStack := New(&sentryFakeDatastore{validateApiKey: acceptAny, findAllRanks: func() ([]*proto.RankExpanded, error) {
+	panicStack := New(&sentryFakeDatastore{validateApiKey: acceptAny, findAllRanks: func() ([]*types.RankExpanded, error) {
 		panic("boom")
 	}}, &sentryStubCache{})
-	errorStack := New(&sentryFakeDatastore{validateApiKey: acceptAny, findAllRanks: func() ([]*proto.RankExpanded, error) {
+	errorStack := New(&sentryFakeDatastore{validateApiKey: acceptAny, findAllRanks: func() ([]*types.RankExpanded, error) {
 		return nil, errOutageSentry
 	}}, &sentryStubCache{})
 	outageStack := New(&sentryFakeDatastore{validateApiKey: func(string) (*datastores.ApiKeyResult, error) {
@@ -390,7 +400,7 @@ func TestSentry_NoDSNIsCompletePassThrough(t *testing.T) {
 	require.Nil(t, sentry.CurrentHub().Client(), "precondition: no client bound")
 	captureErrorLog(t)
 
-	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		panic("ranks exploded")
 	}}, &sentryStubCache{})
 
@@ -406,7 +416,7 @@ func TestSentry_NoDSNIsCompletePassThrough(t *testing.T) {
 		"without a DSN the panic must propagate unchanged — no recovery, no rewriting of crash semantics")
 	assert.Zero(t, rr.Body.Len(), "no recovery layer means nothing is written for the panicked request")
 
-	h500 := New(&sentryFakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h500 := New(&sentryFakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		return nil, errOutageSentry
 	}}, &sentryStubCache{})
 	rr = doRanks(h500)
@@ -457,7 +467,7 @@ func TestSentry_PanicAfterCommittedResponseReportsAndRepanics(t *testing.T) {
 func TestSentry_GzippedPanicReportsAndRepanics(t *testing.T) {
 	tr := enableSentry(t)
 	captureErrorLog(t)
-	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		panic("ranks exploded")
 	}}, &sentryStubCache{})
 
@@ -506,11 +516,11 @@ func TestSentry_ConcurrentRequestsKeepIsolatedTags(t *testing.T) {
 			}
 			return nil, nil
 		},
-		findAllRanks: func() ([]*proto.RankExpanded, error) {
+		findAllRanks: func() ([]*types.RankExpanded, error) {
 			gate()
 			return nil, errOutageSentry
 		},
-		findProfilesById: func(...uint64) ([]*proto.Profile, error) {
+		findProfilesById: func(...uint64) ([]*types.Profile, error) {
 			gate()
 			return nil, errOutageSentry
 		},

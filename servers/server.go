@@ -21,47 +21,46 @@ package servers
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/7cav/api/datastores"
-	milpacs "github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
 	"github.com/7cav/api/rest"
-	httpServices "github.com/7cav/api/servers/gateway"
-	grpcServices "github.com/7cav/api/servers/grpc"
 	"github.com/spf13/viper"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 // version is overridden at build time via -ldflags
 // "-X github.com/7cav/api/servers.version=<tag>" in the release workflow.
-// Local dev builds report "dev".
+// Local dev builds report "dev". It stamps the Sentry release and the served
+// OpenAPI spec's info.version.
 var version = "dev"
 
+// Public and internal listen addresses. The public listener (:11000) is the
+// one nginx fronts; the metrics listener (:9090) is internal-only (kept off
+// the published ports / firewalled at the compose+nginx layer, not in code).
+const (
+	publicAddr  = "0.0.0.0:11000"
+	metricsAddr = "0.0.0.0:9090"
+)
+
 type MicroServer struct {
-	addr           string
-	httpServer     *http.Server
-	grpcServer     *grpc.Server
+	publicServer   *http.Server
+	metricsServer  *http.Server
 	referenceCache *referencecache.Cache
 }
 
-// New initializes a new Backend struct.
-// addr is the gRPC dial target consumed by the HTTP gateway (from $PORT).
-// Listen ports for both gRPC (:10000) and HTTP (:11000) are hardcoded in Start();
-// addr must match the gRPC literal for the gateway-to-gRPC dial to succeed.
-func New(addr string) *MicroServer {
-
-	return &MicroServer{
-		addr: addr,
-	}
+// New initializes a new MicroServer. Since the single-listener cutover (#134)
+// it takes no address: the public and metrics listen ports are constants, and
+// the old gRPC dial target ($PORT) is gone with the gRPC server.
+func New() *MicroServer {
+	return &MicroServer{}
 }
 
 var (
@@ -108,110 +107,101 @@ func setupDatasource() *datastores.Mysql {
 }
 
 func (server *MicroServer) Start() {
-	// Adds gRPC internal logs. This is quite verbose, so adjust as desired!
-	grpcLogger := grpclog.NewLoggerV2(io.Discard, os.Stdout, os.Stdout)
-	grpclog.SetLoggerV2(grpcLogger)
-
 	Info.Println("Starting 7Cav API version:", version)
 
 	// Resolve and cache the trusted-proxy set (TRUSTED_PROXIES, ADR 0005) ONCE
-	// before any listener opens: the shared rest.AuthMiddleware (legacy gateway
-	// and new stack both delegate to it) reads this cache to resolve the client
-	// IP for its 401 log lines. A non-empty-but-malformed value is fatal here —
-	// a misconfigured trust set must not start silently trusting nothing.
-	// CROSS-ISSUE: #134 must preserve this call when it rebuilds the
-	// single-listener composition root (documentation requirement, ADR 0005).
+	// before any listener opens: rest.AuthMiddleware reads this cache to resolve
+	// the client IP for its 401 log lines. A non-empty-but-malformed value is
+	// fatal here — a misconfigured trust set must not start silently trusting
+	// nothing.
 	if err := rest.InitTrustedProxies(); err != nil {
 		Error.Fatalf("invalid TRUSTED_PROXIES: %v", err)
 	}
 
-	// Phase 0 observability (PRD #112): errors-only Sentry capture, gated on
-	// SENTRY_DSN. Disabled (local/dev) nothing is initialised — one Info line,
-	// no client, no signal handler, so shutdown behaves exactly as before.
-	// Enabled, this BLOCKS boot before any listener opens: the dial pre-check
-	// (≤3s on an unreachable host) plus the startup-probe flush window (≤5s)
-	// — a worst-case ~8s delay on a degraded network, by design, so a broken
-	// pipeline is visible before traffic flows.
-	if setupSentry() {
-		flushSentryOnShutdown()
+	// Observability (PRD #112): errors-only Sentry capture, gated on SENTRY_DSN.
+	// Disabled (local/dev) nothing is initialised — one Info line, no client, no
+	// signal handler, so shutdown behaves exactly as before. Enabled, this
+	// BLOCKS boot before any listener opens: the dial pre-check (≤3s on an
+	// unreachable host) plus the startup-probe flush window (≤5s) — a worst-case
+	// ~8s delay on a degraded network, by design, so a broken pipeline is
+	// visible before traffic flows. The shutdown flush handler is installed only
+	// when capture is enabled.
+	if rest.SetupSentry(version) {
+		rest.FlushSentryOnShutdown()
 	}
 
-	// plain-TCP listeners (no TLS — nginx terminates; see the creds note below)
-	grpcL, err := net.Listen("tcp", "0.0.0.0:10000")
+	// plain-TCP public listener (no TLS — nginx terminates it). A bind failure
+	// here is fatal: this listener IS the service.
+	publicL, err := net.Listen("tcp", publicAddr)
 	if err != nil {
-		Error.Fatalf("Failed to listen on 0.0.0.0:10000: %v", err)
-	}
-	httpL, err := net.Listen("tcp", "0.0.0.0:11000")
-	if err != nil {
-		Error.Fatalf("Failed to listen on 0.0.0.0:11000: %v", err)
+		Error.Fatalf("Failed to listen on %s: %v", publicAddr, err)
 	}
 
 	ds := setupDatasource()
+
+	// Warm the reference cache before serving: rest.New panics on a nil/cold
+	// cache, and the tickets routes resolve reference names through it.
 	server.referenceCache = referencecache.New(ds)
 	if err := server.referenceCache.Refresh(context.Background()); err != nil {
 		Error.Fatalf("initial reference cache load failed: %v", err)
 	}
 	go runReferenceCacheRefresh(context.Background(), server.referenceCache)
 
-	// relevant Grpc options
-	// note: commenting out the creds option, because internally (nginx <-> golang) traffic is not encrypted.
-	// 		 If this needed to change in the future, then we will need to refactor this method
-	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(apiUnaryInterceptors(ds)...),
-		//grpc.Creds(creds),
+	// Internal-only metrics listener — best-effort. Metrics are observability,
+	// not the service: a bind failure here must NOT take the public API down
+	// (unlike the old dual stack, where both listeners served traffic and a
+	// fatal bind was right for each). Log loudly and serve without metrics.
+	if metricsL, mErr := net.Listen("tcp", metricsAddr); mErr != nil {
+		Error.Printf("metrics listener bind failed on %s (%v) — continuing WITHOUT metrics; public API unaffected", metricsAddr, mErr)
+	} else {
+		Info.Println("Starting metrics listener on", metricsAddr)
+		go servMetrics(server, metricsL)
 	}
 
-	// launch goroutines for multiplexed listener
-	Info.Println("Starting HTTP listener")
-	go servHTTP(server, httpL, ds)
-	Info.Println("Starting GRPC listener")
-	servGRPC(server, grpcL, opts, ds)
+	Info.Println("Starting public listener on", publicAddr)
+	servPublic(server, publicL, ds)
 }
 
-// apiUnaryInterceptors is the gRPC unary interceptor chain, in the
-// outermost-first order consumed by grpc.ChainUnaryInterceptor: auth outer,
-// sentry inner. Sentry sits inside auth so it only sees authenticated
-// requests, with the API key already on ctx for key-id tagging. No SENTRY_DSN
-// → the inner interceptor is a pass-through. Sentry-inside-auth also means
-// auth-layer infrastructure failures (e.g. a datastore outage producing mass
-// Unauthenticated rejections) generate no Sentry events by design — accepted
-// for Phase 0, revisit in the Phase 3 observability slices (#130–#132).
-//
-// Package-level (not inlined in Start) so the chain order is a tested
-// contract — see TestAPIUnaryInterceptors_AuthOuterSentryInner_KeyIDReachesEvent
-// — mirroring buildAPIHandler on the HTTP side.
-func apiUnaryInterceptors(ds datastores.Datastore) []grpc.UnaryServerInterceptor {
-	return []grpc.UnaryServerInterceptor{
-		grpcServices.NewAuthInterceptor(ds),
-		grpcServices.NewSentryInterceptor(),
+// servPublic serves the single public listener: the REST API under /api and
+// the Swagger UI + OpenAPI specs everywhere else, at the same URLs the old
+// grpc-gateway used. rest.New is the API handler; rest.DocsHandler serves the
+// docs with the spec's info.version stamped from the build-time version.
+func servPublic(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
+	root := buildPublicRouter(rest.New(ds, server.referenceCache), rest.DocsHandler(version))
+	server.publicServer = &http.Server{Handler: root}
+	if err := server.publicServer.Serve(lis); err != nil {
+		Error.Fatalf("unable to start public HTTP server: %v", err)
 	}
 }
 
-func servGRPC(server *MicroServer, lis net.Listener, grpcOpts []grpc.ServerOption, ds datastores.Datastore) {
-	// Due to the grpc-gateway setup, the GRPC service is at bottom of the relevant API call.
-	// As such, it requires the DB connection. But the HTTP service doesn't
-	service := &grpcServices.MilpacsService{Datastore: ds}
-
-	// init gRPC servers instance
-	server.grpcServer = grpc.NewServer(grpcOpts...)
-	milpacs.RegisterMilpacServiceServer(server.grpcServer, service)
-
-	ticketsService := &grpcServices.TicketsService{
-		Datastore:      ds,
-		ReferenceCache: server.referenceCache,
-	}
-	milpacs.RegisterTicketsServiceServer(server.grpcServer, ticketsService)
-
-	if err := server.grpcServer.Serve(lis); err != nil {
-		Error.Fatalf("unable to start external gRPC servers: %v", err)
-	}
+// buildPublicRouter is the public listener's path split: /api* goes to the API
+// handler (rest.New), everything else to the docs handler (rest.DocsHandler).
+// Extracted from servPublic so the split is unit-testable without opening a
+// listener (see TestBuildPublicRouter_SplitsApiFromDocs). Note: only /api* is
+// the gated API surface — /metrics is NOT served here (it lives on the internal
+// listener), so a public /metrics request falls through to the docs file server
+// and 404s.
+func buildPublicRouter(apiHandler, docsHandler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api") {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+		docsHandler.ServeHTTP(w, r)
+	})
 }
 
-func servHTTP(server *MicroServer, lis net.Listener, ds datastores.Datastore) {
-	service := httpServices.Service{Address: server.addr, Datastore: ds}
-	server.httpServer = service.Server()
-	if err := server.httpServer.Serve(lis); err != nil {
-		Error.Fatalf("unable to start HTTP servers: %v", err)
+// servMetrics serves the internal Prometheus metrics endpoint on its own
+// listener. The handler is mounted at the listener root; the
+// compose/nginx non-exposure keeps it off the public network (deploy config,
+// not code).
+func servMetrics(server *MicroServer, lis net.Listener) {
+	server.metricsServer = &http.Server{Handler: rest.MetricsHandler()}
+	// Internal-only observability: a Serve error must NOT take the public API
+	// down. Log loudly and let the public listener keep serving. ErrServerClosed
+	// is the clean-shutdown signal, not an error to report.
+	if err := server.metricsServer.Serve(lis); err != nil && err != http.ErrServerClosed {
+		Error.Printf("metrics HTTP server stopped: %v — public API continues without metrics", err)
 	}
 }
 

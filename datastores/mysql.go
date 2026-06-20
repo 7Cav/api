@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/7cav/api/milpacs"
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 	"github.com/7cav/api/xenforo"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -21,14 +21,13 @@ const (
 	layoutISO = "2006-01-02"
 )
 
-func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
+func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*types.Profile, error) {
 
 	var profile milpacs.Profile
 
 	Info.Println("Searching for user: ", userIds[0])
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
-		Joins(xenforo.ConnectedAccountJoin).
 		First(&profile, userIds[0])
 
 	if result.Error != nil {
@@ -40,11 +39,11 @@ func (ds Mysql) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
 		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
-	return []*proto.Profile{profiles[profile.RelationId]}, nil
+	return []*types.Profile{profiles[profile.RelationId]}, nil
 
 }
 
-func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
+func (ds Mysql) FindProfilesByUsername(username string) ([]*types.Profile, error) {
 	var profile milpacs.Profile
 
 	Info.Println("Searching for user with username: ", username)
@@ -52,7 +51,6 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins("JOIN xf_user ON xf_user.user_id = xf_nf_rosters_user.user_id").
-		Joins(xenforo.ConnectedAccountJoin).
 		Where("xf_user.username = ?", username).
 		First(&profile)
 
@@ -65,18 +63,17 @@ func (ds Mysql) FindProfilesByUsername(username string) ([]*proto.Profile, error
 		return nil, fmt.Errorf("error generating profile: %w", err)
 	}
 
-	return []*proto.Profile{profiles[profile.RelationId]}, nil
+	return []*types.Profile{profiles[profile.RelationId]}, nil
 
 }
 
-func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, error) {
+func (ds Mysql) FindRosterByType(rosterType types.RosterType) (*types.Roster, error) {
 	var rosterProfiles []milpacs.Profile
 
-	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
+	Info.Println("Searching for roster: ", rosterType.String(), "id:", uint(rosterType))
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
-		Joins(xenforo.ConnectedAccountJoin).
-		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
+		Where(map[string]interface{}{"roster_id": uint(rosterType)}).
 		Find(&rosterProfiles)
 	if result.Error != nil {
 		return nil, fmt.Errorf("find roster %s: %w", rosterType, result.Error)
@@ -87,41 +84,19 @@ func (ds Mysql) FindRosterByType(rosterType proto.RosterType) (*proto.Roster, er
 		return nil, fmt.Errorf("error generating profiles: %w", err)
 	}
 
-	return &proto.Roster{Profiles: profiles}, nil
+	return &types.Roster{Profiles: profiles}, nil
 }
 
-func (ds Mysql) FindProfileByKeycloakID(keycloakId string) (*proto.Profile, error) {
-	var profile milpacs.Profile
-
-	Info.Println("Searching for milpac profiles with keycloak IDs of: ", keycloakId)
-
-	// gorm 1.26+ qualifies map-keyed WHERE columns with the current model's table,
-	// turning "xf_user_connected_account.provider" into a broken three-part qualifier.
-	// Use placeholder SQL so the joined-table columns stay unqualified.
-	result := ds.Db.Preload(clause.Associations).
-		Preload("AwardRecords.Award").
-		Joins(xenforo.ConnectedAccountJoin).
-		Where("xf_user_connected_account.provider = ? AND xf_user_connected_account.provider_key = ?", "keycloak", keycloakId).
-		First(&profile)
-
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	profiles, err := ds.processProfiles([]milpacs.Profile{profile})
-	if err != nil {
-		return nil, fmt.Errorf("error generating profile: %w", err)
-	}
-
-	return profiles[profile.RelationId], nil
-}
-
-func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
+func (ds Mysql) FindProfileByDiscordID(discordId string) (*types.Profile, error) {
 	var profile milpacs.Profile
 
 	Info.Printf("Searching for milpac profiles with discord IDs of: %s", discordId)
 
-	// See note in FindProfileByKeycloakID — gorm 1.26+ misqualifies dotted map keys.
+	// gorm 1.26+ qualifies map-keyed WHERE columns with the current model's
+	// table, turning "xf_user_connected_account.provider" into a broken
+	// three-part qualifier. Use placeholder SQL so the joined-table columns
+	// stay unqualified. The connected-account join is REQUIRED here (unlike the
+	// roster queries) because the WHERE filters its columns.
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
 		Joins(xenforo.ConnectedAccountJoin).
@@ -140,22 +115,22 @@ func (ds Mysql) FindProfileByDiscordID(discordId string) (*proto.Profile, error)
 	return profiles[profile.RelationId], nil
 }
 
-func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, error) {
-	milpac := &proto.Profile{
-		User: &proto.User{
+func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*types.Profile, error) {
+	milpac := &types.Profile{
+		User: &types.User{
 			UserId:   profile.XfUser.UserID,
 			Username: profile.XfUser.Username,
 		},
-		Rank: &proto.Rank{
+		Rank: &types.Rank{
 			RankId:       profile.RankID,
-			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
+			RankShort:    types.RankType(profile.RankID).RankShort(),
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
 		RealName:   profile.UnmarshalCustomFields().RealName,
 		UniformUrl: profile.UniformUrl(),
-		Roster:     proto.RosterType(profile.RosterId),
-		Primary: &proto.Position{
+		Roster:     types.RosterType(profile.RosterId),
+		Primary: &types.Position{
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
@@ -166,21 +141,10 @@ func (ds Mysql) generateProtoProfile(profile milpacs.Profile) (*proto.Profile, e
 		PromotionDate:   profile.UnmarshalCustomFields().PromoDate,
 		Mos:             profile.UnmarshalCustomFields().Mos,
 		ConsoleGamertag: profile.UnmarshalCustomFields().ConsoleGamertag,
-		KeycloakId:      extractKeycloakID(profile),
 		DiscordId:       extractDiscordID(profile),
 	}
 
 	return milpac, nil
-}
-
-func extractKeycloakID(profile milpacs.Profile) string {
-	for _, connection := range profile.ConnectedAccount {
-		if connection.Provider == "keycloak" {
-			return connection.ProviderKey
-		}
-	}
-
-	return ""
 }
 
 func extractDiscordID(profile milpacs.Profile) string {
@@ -193,8 +157,8 @@ func extractDiscordID(profile milpacs.Profile) string {
 	return ""
 }
 
-func (ds Mysql) collectSecondaryPositions(positionIds string) []*proto.Position {
-	var positions []*proto.Position
+func (ds Mysql) collectSecondaryPositions(positionIds string) []*types.Position {
+	var positions []*types.Position
 
 	if positionIds == "" {
 		return positions
@@ -203,7 +167,7 @@ func (ds Mysql) collectSecondaryPositions(positionIds string) []*proto.Position 
 	for _, id := range strings.Split(positionIds, ",") {
 		var position milpacs.Position
 		ds.Db.First(&position, id)
-		positions = append(positions, &proto.Position{
+		positions = append(positions, &types.Position{
 			PositionTitle: position.PositionTitle,
 			PositionId:    position.PositionId,
 		})
@@ -211,13 +175,13 @@ func (ds Mysql) collectSecondaryPositions(positionIds string) []*proto.Position 
 	return positions
 }
 
-func collectRecords(recordRows []milpacs.Record) []*proto.Record {
-	var records []*proto.Record
+func collectRecords(recordRows []milpacs.Record) []*types.Record {
+	var records []*types.Record
 
 	for _, recordRow := range recordRows {
-		record := &proto.Record{
+		record := &types.Record{
 			RecordDetails: recordRow.Details,
-			RecordType:    proto.RecordType(recordRow.RecordTypeId),
+			RecordType:    types.RecordType(recordRow.RecordTypeId),
 			RecordDate:    stringToTime(strconv.Itoa(int(recordRow.RecordDate))).Format(layoutISO),
 			RecordUid:     recordRow.RecordID,
 		}
@@ -227,11 +191,11 @@ func collectRecords(recordRows []milpacs.Record) []*proto.Record {
 	return records
 }
 
-func collectAwards(awardRows []milpacs.AwardRecord) []*proto.Award {
-	var awards []*proto.Award
+func collectAwards(awardRows []milpacs.AwardRecord) []*types.Award {
+	var awards []*types.Award
 
 	for _, awardRow := range awardRows {
-		award := &proto.Award{
+		award := &types.Award{
 			AwardName:     awardRow.Award.Title,
 			AwardDetails:  awardRow.Details,
 			AwardDate:     stringToTime(strconv.Itoa(int(awardRow.AwardDate))).Format(layoutISO),
@@ -253,14 +217,13 @@ func stringToTime(s string) time.Time {
 	return time.Unix(sec, 0)
 }
 
-func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRoster, error) {
+func (ds Mysql) FindLiteRosterByType(rosterType types.RosterType) (*types.LiteRoster, error) {
 	var rosterProfiles []milpacs.Profile
 
-	Info.Println("Searching for lite roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
+	Info.Println("Searching for lite roster: ", rosterType.String(), "id:", uint(rosterType))
 	result := ds.Db.Preload(clause.Associations).
 		Omit("Records", "AwardRecords").
-		Joins(xenforo.ConnectedAccountJoin).
-		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
+		Where(map[string]interface{}{"roster_id": uint(rosterType)}).
 		Find(&rosterProfiles)
 	if result.Error != nil {
 		return nil, fmt.Errorf("find lite roster %s: %w", rosterType, result.Error)
@@ -271,25 +234,25 @@ func (ds Mysql) FindLiteRosterByType(rosterType proto.RosterType) (*proto.LiteRo
 		return nil, err
 	}
 
-	return &proto.LiteRoster{Profiles: profiles}, nil
+	return &types.LiteRoster{Profiles: profiles}, nil
 }
 
-func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LiteProfile, error) {
-	milpac := &proto.LiteProfile{
-		User: &proto.User{
+func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*types.LiteProfile, error) {
+	milpac := &types.LiteProfile{
+		User: &types.User{
 			UserId:   profile.XfUser.UserID,
 			Username: profile.XfUser.Username,
 		},
-		Rank: &proto.Rank{
+		Rank: &types.Rank{
 			RankId:       profile.RankID,
-			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
+			RankShort:    types.RankType(profile.RankID).RankShort(),
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
 		RealName:   profile.UnmarshalCustomFields().RealName,
 		UniformUrl: profile.UniformUrl(),
-		Roster:     proto.RosterType(profile.RosterId),
-		Primary: &proto.Position{
+		Roster:     types.RosterType(profile.RosterId),
+		Primary: &types.Position{
 			PositionTitle: profile.Primary.PositionTitle,
 			PositionId:    profile.Primary.PositionId,
 		},
@@ -298,7 +261,6 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 		PromotionDate:   profile.UnmarshalCustomFields().PromoDate,
 		Mos:             profile.UnmarshalCustomFields().Mos,
 		ConsoleGamertag: profile.UnmarshalCustomFields().ConsoleGamertag,
-		KeycloakId:      extractKeycloakID(profile),
 		DiscordId:       extractDiscordID(profile),
 		AwardDate:       getLatestAwardDate(profile),
 		RecordDate:      getLatestServiceRecordDate(profile),
@@ -308,7 +270,7 @@ func (ds Mysql) generateLiteProtoProfile(profile milpacs.Profile) (*proto.LitePr
 	return milpac, nil
 }
 
-func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error) {
+func (ds Mysql) FindProfilesByPosition(positionQuery string) (*types.LiteRoster, error) {
 	var profiles []milpacs.Profile
 
 	Info.Printf("Searching for profiles with position matching: %s", positionQuery)
@@ -319,7 +281,6 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster,
 
 	result := ds.Db.Preload(clause.Associations).
 		Omit("Records", "AwardRecords").
-		Joins(xenforo.ConnectedAccountJoin).
 		Joins("LEFT JOIN xf_nf_rosters_position pos ON pos.position_id = xf_nf_rosters_user.position_id OR FIND_IN_SET(pos.position_id, xf_nf_rosters_user.secondary_position_ids)").
 		Where("pos.position_title LIKE ? AND (pos.position_id = xf_nf_rosters_user.position_id OR pos.possible_secondary = ?)",
 			likeQuery, true).
@@ -334,24 +295,23 @@ func (ds Mysql) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster,
 		return nil, err
 	}
 
-	return &proto.LiteRoster{Profiles: profileMap}, nil
+	return &types.LiteRoster{Profiles: profileMap}, nil
 }
 
-func (ds Mysql) FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.S1UniformsRoster, error) {
+func (ds Mysql) FindS1UniformsRosterByType(rosterType types.RosterType) (*types.S1UniformsRoster, error) {
 	var rosterProfiles []milpacs.Profile
 
-	Info.Println("Searching for S1 Uniforms roster: ", rosterType.String(), "id:", uint(rosterType.Number()))
+	Info.Println("Searching for S1 Uniforms roster: ", rosterType.String(), "id:", uint(rosterType))
 	result := ds.Db.Preload(clause.Associations).
 		Preload("Primary.Group").
 		Preload("AwardRecords.Award").
-		Joins(xenforo.ConnectedAccountJoin).
-		Where(map[string]interface{}{"roster_id": uint(rosterType.Number())}).
+		Where(map[string]interface{}{"roster_id": uint(rosterType)}).
 		Find(&rosterProfiles)
 	if result.Error != nil {
 		return nil, fmt.Errorf("find s1 uniforms roster %s: %w", rosterType, result.Error)
 	}
 
-	var profiles = make(map[uint64]*proto.S1UniformsProfile, len(rosterProfiles))
+	var profiles = make(map[uint64]*types.S1UniformsProfile, len(rosterProfiles))
 	for _, profile := range rosterProfiles {
 		milpac, err := ds.generateS1UniformsProtoProfile(profile)
 
@@ -361,19 +321,19 @@ func (ds Mysql) FindS1UniformsRosterByType(rosterType proto.RosterType) (*proto.
 		profiles[profile.RelationId] = milpac
 	}
 
-	protoRoster := &proto.S1UniformsRoster{Profiles: profiles}
+	roster := &types.S1UniformsRoster{Profiles: profiles}
 
-	return protoRoster, nil
+	return roster, nil
 }
 
-func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*proto.S1UniformsProfile, error) {
-	milpac := &proto.S1UniformsProfile{
-		User: &proto.User{
+func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*types.S1UniformsProfile, error) {
+	milpac := &types.S1UniformsProfile{
+		User: &types.User{
 			UserId:   profile.XfUser.UserID,
 			Username: profile.XfUser.Username,
 		},
-		Rank: &proto.S1UniformsRank{
-			RankShort:    strings.TrimPrefix(proto.RankType(profile.RankID).String(), "RANK_TYPE_"),
+		Rank: &types.S1UniformsRank{
+			RankShort:    types.RankType(profile.RankID).RankShort(),
 			RankFull:     profile.Rank.Title,
 			RankImageUrl: profile.Rank.ImageURL(),
 		},
@@ -381,7 +341,7 @@ func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*proto.
 		UniformUrl:               profile.UniformUrl(),
 		UniformDate:              getUniformDate(profile),
 		UniformUpdateTriggerDate: getUniformUpdateTriggerDate(profile),
-		Roster:                   proto.RosterType(profile.RosterId),
+		Roster:                   types.RosterType(profile.RosterId),
 		PrimaryPositionTitle:     profile.Primary.PositionTitle,
 		Secondaries:              ds.collectS1UniformsSecondaryPositions(profile.SecondaryPositionIds),
 		JoinDate:                 profile.UnmarshalCustomFields().JoinDate,
@@ -392,8 +352,8 @@ func (ds Mysql) generateS1UniformsProtoProfile(profile milpacs.Profile) (*proto.
 	return milpac, nil
 }
 
-func (ds Mysql) collectS1UniformsSecondaryPositions(positionIds string) []*proto.S1UniformsPosition {
-	var positions []*proto.S1UniformsPosition
+func (ds Mysql) collectS1UniformsSecondaryPositions(positionIds string) []*types.S1UniformsPosition {
+	var positions []*types.S1UniformsPosition
 
 	if positionIds == "" {
 		return positions
@@ -402,7 +362,7 @@ func (ds Mysql) collectS1UniformsSecondaryPositions(positionIds string) []*proto
 	for _, id := range strings.Split(positionIds, ",") {
 		var position milpacs.Position
 		ds.Db.First(&position, id)
-		positions = append(positions, &proto.S1UniformsPosition{
+		positions = append(positions, &types.S1UniformsPosition{
 			PositionTitle: position.PositionTitle,
 		})
 	}
@@ -417,12 +377,12 @@ func getUniformDate(profile milpacs.Profile) string {
 }
 
 func getUniformUpdateTriggerDate(profile milpacs.Profile) string {
-	relevantRecordTypes := map[proto.RecordType]bool{
-		proto.RecordType_RECORD_TYPE_PROMOTION:   true,
-		proto.RecordType_RECORD_TYPE_ASSIGNMENT:  true,
-		proto.RecordType_RECORD_TYPE_ELOA:        true,
-		proto.RecordType_RECORD_TYPE_NAME_CHANGE: true,
-		proto.RecordType_RECORD_TYPE_GRADUATION:  true,
+	relevantRecordTypes := map[types.RecordType]bool{
+		types.RecordTypePromotion:  true,
+		types.RecordTypeAssignment: true,
+		types.RecordTypeEloa:       true,
+		types.RecordTypeNameChange: true,
+		types.RecordTypeGraduation: true,
 	}
 
 	var latestTimestamp int64
@@ -434,7 +394,7 @@ func getUniformUpdateTriggerDate(profile milpacs.Profile) string {
 	}
 
 	for _, record := range profile.Records {
-		if relevantRecordTypes[proto.RecordType(record.RecordTypeId)] && int64(record.RecordDate) > latestTimestamp {
+		if relevantRecordTypes[types.RecordType(record.RecordTypeId)] && int64(record.RecordDate) > latestTimestamp {
 			latestTimestamp = int64(record.RecordDate)
 		}
 	}
@@ -466,7 +426,7 @@ func getPositionGroup(profile milpacs.Profile) string {
 	return primaryGroup
 }
 
-func (ds Mysql) FindAllRanks() ([]*proto.RankExpanded, error) {
+func (ds Mysql) FindAllRanks() ([]*types.RankExpanded, error) {
 	Info.Println("Searching for all ranks")
 	var ranks []milpacs.Rank
 
@@ -475,21 +435,21 @@ func (ds Mysql) FindAllRanks() ([]*proto.RankExpanded, error) {
 		return nil, fmt.Errorf("error fetching ranks: %w", result.Error)
 	}
 
-	protoRanks := make([]*proto.RankExpanded, len(ranks))
+	expandedRanks := make([]*types.RankExpanded, len(ranks))
 	for i, rank := range ranks {
-		protoRanks[i] = &proto.RankExpanded{
+		expandedRanks[i] = &types.RankExpanded{
 			RankId:           rank.RankId,
-			RankShort:        strings.TrimPrefix(proto.RankType(rank.RankId).String(), "RANK_TYPE_"),
+			RankShort:        types.RankType(rank.RankId).RankShort(),
 			RankFull:         rank.Title,
 			RankImageUrl:     rank.ImageURL(),
 			RankDisplayOrder: uint32(rank.DisplayOrder),
 		}
 	}
 
-	return protoRanks, nil
+	return expandedRanks, nil
 }
 
-func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
+func (ds Mysql) FindAllPositionGroups() ([]*types.PositionGroup, error) {
 	Info.Println("Searching for all position groups")
 	var groups []milpacs.PositionGroups
 
@@ -498,7 +458,7 @@ func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
 		return nil, fmt.Errorf("error fetching position groups: %w", result.Error)
 	}
 
-	protoGroups := make([]*proto.PositionGroup, len(groups))
+	positionGroups := make([]*types.PositionGroup, len(groups))
 
 	for i, group := range groups {
 		var positions []milpacs.Position
@@ -512,9 +472,9 @@ func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
 				group.PositionGroupId, posResult.Error)
 		}
 
-		protoPositions := make([]*proto.PositionExpanded, len(positions))
+		expandedPositions := make([]*types.PositionExpanded, len(positions))
 		for j, pos := range positions {
-			protoPositions[j] = &proto.PositionExpanded{
+			expandedPositions[j] = &types.PositionExpanded{
 				PositionId:                pos.PositionId,
 				PositionTitle:             pos.PositionTitle,
 				PositionDisplayOrder:      uint32(pos.DisplayOrder),
@@ -522,15 +482,15 @@ func (ds Mysql) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
 			}
 		}
 
-		protoGroups[i] = &proto.PositionGroup{
+		positionGroups[i] = &types.PositionGroup{
 			GroupId:           group.PositionGroupId,
 			GroupTitle:        group.Title,
 			GroupDisplayOrder: uint32(group.DisplayOrder),
-			Positions:         protoPositions,
+			Positions:         expandedPositions,
 		}
 	}
 
-	return protoGroups, nil
+	return positionGroups, nil
 }
 
 func getLatestServiceRecordDate(profile milpacs.Profile) string {
@@ -620,41 +580,41 @@ func getUserIDs(profiles []milpacs.Profile) []uint64 {
 }
 
 // ohgodwhy
-func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*proto.LiteProfile, error) {
+func (ds Mysql) processLiteProfiles(profiles []milpacs.Profile) (map[uint64]*types.LiteProfile, error) {
 	forumPostDates := ds.getLatestForumPostDates(profiles)
 
-	var profileMap = make(map[uint64]*proto.LiteProfile, len(profiles))
+	var profileMap = make(map[uint64]*types.LiteProfile, len(profiles))
 	for _, profile := range profiles {
-		protoProfile, err := ds.generateLiteProtoProfile(profile)
+		liteProfile, err := ds.generateLiteProtoProfile(profile)
 		if err != nil {
 			return nil, fmt.Errorf("error generating lite profile: %w", err)
 		}
 
-		protoProfile.LastForumPostDate = forumPostDates[profile.UserID]
-		profileMap[profile.RelationId] = protoProfile
+		liteProfile.LastForumPostDate = forumPostDates[profile.UserID]
+		profileMap[profile.RelationId] = liteProfile
 	}
 
 	return profileMap, nil
 }
 
-func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*proto.Profile, error) {
+func (ds Mysql) processProfiles(profiles []milpacs.Profile) (map[uint64]*types.Profile, error) {
 	forumPostDates := ds.getLatestForumPostDates(profiles)
 
-	var profileMap = make(map[uint64]*proto.Profile, len(profiles))
+	var profileMap = make(map[uint64]*types.Profile, len(profiles))
 	for _, profile := range profiles {
-		protoProfile, err := ds.generateProtoProfile(profile)
+		fullProfile, err := ds.generateProtoProfile(profile)
 		if err != nil {
 			return nil, fmt.Errorf("error generating profile: %w", err)
 		}
 
-		protoProfile.LastForumPostDate = forumPostDates[profile.UserID]
-		profileMap[profile.RelationId] = protoProfile
+		fullProfile.LastForumPostDate = forumPostDates[profile.UserID]
+		profileMap[profile.RelationId] = fullProfile
 	}
 
 	return profileMap, nil
 }
 
-func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
+func (ds Mysql) FindAwol() ([]*types.Awol, error) {
 	Info.Println("Searching for AWOL troopers")
 	var awols []struct {
 		GroupName  string `gorm:"column:group_name"`
@@ -694,9 +654,9 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 		return nil, fmt.Errorf("error finding AWOL users: %w", result.Error)
 	}
 
-	protoAwols := make([]*proto.Awol, len(awols))
+	awolList := make([]*types.Awol, len(awols))
 	for i, awol := range awols {
-		protoAwols[i] = &proto.Awol{
+		awolList[i] = &types.Awol{
 			GroupName: awol.GroupName,
 			RankName:  awol.RankName,
 			Username:  awol.Username,
@@ -708,7 +668,7 @@ func (ds Mysql) FindAwol() ([]*proto.Awol, error) {
 		}
 	}
 
-	return protoAwols, nil
+	return awolList, nil
 }
 
 func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
@@ -744,14 +704,13 @@ func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
 	}, nil
 }
 
-func (ds Mysql) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
+func (ds Mysql) FindProfileByGamertag(gamertag string) (*types.Profile, error) {
 	var profile milpacs.Profile
 
 	Info.Println("Searching for user with gamertag: ", gamertag)
 
 	result := ds.Db.Preload(clause.Associations).
 		Preload("AwardRecords.Award").
-		Joins(xenforo.ConnectedAccountJoin).
 		Joins(milpacs.FieldValueJoin).
 		Where("xf_nf_rosters_field_value.field_id = ? AND xf_nf_rosters_field_value.field_value LIKE ?", "consoleGamertag", gamertag).
 		First(&profile)

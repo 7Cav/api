@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
+	"github.com/7cav/api/types"
 	"github.com/7cav/api/xenforo"
 	"github.com/spf13/viper"
 )
@@ -127,7 +127,7 @@ func (ds *Mysql) loadPhraseMap(ctx context.Context, fam phraseFamily) (map[uint3
 	return out, nil
 }
 
-func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 	perPage := f.PerPage
 	if perPage == 0 || perPage > 100 {
 		if perPage == 0 {
@@ -196,7 +196,7 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 		rows = rows[:perPage]
 	}
 
-	out := make([]*proto.Ticket, 0, len(rows))
+	out := make([]*types.Ticket, 0, len(rows))
 	for i := range rows {
 		out = append(out, generateTicketProto(&rows[i], rc, ds.forumBaseURL()))
 	}
@@ -209,15 +209,25 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 	return out, nextCursor, hasMore, nil
 }
 
-// generateTicketProto maps a xenforo.Ticket to proto.Ticket, resolving
+// generateTicketProto maps a xenforo.Ticket to types.Ticket, resolving
 // reference-cached names and assembling the custom_fields map.
-func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase string) *proto.Ticket {
-	out := &proto.Ticket{
+//
+// Allocation discipline (frozen wire contract, golden-pinned by
+// contract/goldens/tickets): the three collection fields always serialize as
+// []/{} when empty, never null. participants and categoryAncestorIds are the
+// plain-slice fields on types.Ticket (no nil-safe List wrapper), so they are
+// allocated to a non-nil empty here; customFields is an allocated map.
+func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase string) *types.Ticket {
+	ancestors := rc.CategoryAncestors(t.TicketCategoryID)
+	if ancestors == nil {
+		ancestors = []uint32{}
+	}
+	out := &types.Ticket{
 		TicketId:            t.TicketID,
 		TicketRef:           t.TicketRef,
 		Title:               t.Title,
 		CategoryId:          t.TicketCategoryID,
-		CategoryAncestorIds: rc.CategoryAncestors(t.TicketCategoryID),
+		CategoryAncestorIds: ancestors,
 		TicketState:         t.TicketState,
 		StatusId:            t.StatusID,
 		StatusName:          rc.StatusName(t.StatusID),
@@ -231,6 +241,7 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		StarterUsername:     t.StarterUsername,
 		AssignedUserId:      t.AssignedUserID,
 		AssignedUsername:    t.AssignedUsername,
+		Participants:        make([]*types.TicketParticipant, 0, len(t.Participants)),
 		StartDate:           t.StartDate,
 		LastMessageDate:     t.LastMessageDate,
 		LastMessageUserId:   t.LastMessageUserID,
@@ -247,7 +258,7 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		out.CustomFields[fv.FieldID] = fv.FieldValue
 	}
 	for _, p := range t.Participants {
-		out.Participants = append(out.Participants, &proto.TicketParticipant{
+		out.Participants = append(out.Participants, &types.TicketParticipant{
 			UserId: p.UserID, LastReadDate: p.LastReadDate,
 		})
 	}
@@ -323,7 +334,7 @@ func decodeMessageCursor(c string) (uint32, error) {
 	return uint32(pos), nil
 }
 
-func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*proto.Ticket, error) {
+func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*types.Ticket, error) {
 	var row xenforo.Ticket
 	tx := ds.Db.WithContext(ctx).
 		Preload("Participants").
@@ -340,7 +351,7 @@ func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketI
 	return generateTicketProto(&row, rc, strings.TrimRight(base, "/")), nil
 }
 
-func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error) {
+func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, uint32, error) {
 	var total int64
 	q := ds.Db.WithContext(ctx).Model(&xenforo.TicketMessage{}).Where("ticket_id = ?", ticketID)
 	if !includeHidden {
@@ -359,14 +370,14 @@ func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n 
 	if tx.Error != nil {
 		return nil, 0, tx.Error
 	}
-	out := make([]*proto.Message, 0, len(rows))
+	out := make([]*types.Message, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageToProto(&rows[i]))
 	}
 	return out, uint32(total), nil
 }
 
-func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error) {
+func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*types.Message, string, bool, error) {
 	if perPage == 0 || perPage > 100 {
 		if perPage == 0 {
 			perPage = 50
@@ -391,7 +402,7 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterC
 	if hasMore {
 		rows = rows[:perPage]
 	}
-	out := make([]*proto.Message, 0, len(rows))
+	out := make([]*types.Message, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageToProto(&rows[i]))
 	}
@@ -402,11 +413,11 @@ func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterC
 	return out, next, hasMore, nil
 }
 
-func (ds *Mysql) ListCategories(ctx context.Context, rc TicketReferenceCache) ([]*proto.Category, error) {
+func (ds *Mysql) ListCategories(ctx context.Context, rc TicketReferenceCache) ([]*types.Category, error) {
 	tree := rc.CategoryTree()
-	out := make([]*proto.Category, 0, len(tree))
+	out := make([]*types.Category, 0, len(tree))
 	for _, c := range tree {
-		out = append(out, &proto.Category{
+		out = append(out, &types.Category{
 			CategoryId:       c.ID,
 			Title:            c.Title,
 			Description:      c.Description,
@@ -419,8 +430,8 @@ func (ds *Mysql) ListCategories(ctx context.Context, rc TicketReferenceCache) ([
 	return out, nil
 }
 
-func messageToProto(m *xenforo.TicketMessage) *proto.Message {
-	return &proto.Message{
+func messageToProto(m *xenforo.TicketMessage) *types.Message {
+	return &types.Message{
 		MessageId:    m.MessageID,
 		TicketId:     m.TicketID,
 		UserId:       m.UserID,
@@ -435,7 +446,7 @@ func messageToProto(m *xenforo.TicketMessage) *proto.Message {
 	}
 }
 
-func (ds *Mysql) GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBase string) (*proto.Ticket, error) {
+func (ds *Mysql) GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBase string) (*types.Ticket, error) {
 	var row xenforo.Ticket
 	tx := ds.Db.WithContext(ctx).
 		Preload("Participants").
