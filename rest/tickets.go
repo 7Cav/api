@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/types"
 	"gorm.io/gorm"
 )
@@ -56,9 +55,9 @@ func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) ht
 			writeError(w, r, codeInternal, "list tickets: %v", err)
 			return
 		}
-		out := make([]*types.Ticket, 0, len(tickets))
-		for _, t := range tickets {
-			out = append(out, ticketFromProto(t))
+		out := tickets
+		if out == nil {
+			out = []*types.Ticket{}
 		}
 		writeJSON(w, r, types.ListTicketsResponse{
 			Tickets:    out,
@@ -118,21 +117,24 @@ func getTicketByRef(ds datastores.Datastore, rc datastores.TicketReferenceCache)
 // ticket.totalMessageCount but is computed independently (visible-message
 // COUNT vs replyCount+1 — they diverge on hidden messages; see
 // types.GetTicketResponse).
-func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, ticket *proto.Ticket) {
+func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, ticket *types.Ticket) {
 	if ticket == nil {
-		// A (nil, nil) datastore return is a bug, but the nil-safe proto
-		// getters would dress it up as a zeroed-garbage 200 — fail loudly.
+		// A (nil, nil) datastore return is a bug — fail loudly rather than
+		// serve a zeroed-garbage 200.
 		writeError(w, r, codeInternal, "fetch ticket: nil ticket")
 		return
 	}
-	msgs, total, err := ds.GetTicketFirstMessages(r.Context(), ticket.GetTicketId(), firstMessagesCount, false)
+	msgs, total, err := ds.GetTicketFirstMessages(r.Context(), ticket.TicketId, firstMessagesCount, false)
 	if err != nil {
 		writeError(w, r, codeInternal, "fetch ticket messages: %v", err)
 		return
 	}
+	if msgs == nil {
+		msgs = []*types.Message{}
+	}
 	writeJSON(w, r, types.GetTicketResponse{
-		Ticket:            ticketFromProto(ticket),
-		FirstMessages:     messagesFromProto(msgs),
+		Ticket:            ticket,
+		FirstMessages:     msgs,
 		TotalMessageCount: total,
 	})
 }
@@ -222,8 +224,11 @@ func listTicketMessages(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "list ticket messages: %v", err)
 			return
 		}
+		if msgs == nil {
+			msgs = []*types.Message{}
+		}
 		writeJSON(w, r, types.ListTicketMessagesResponse{
-			Messages:   messagesFromProto(msgs),
+			Messages:   msgs,
 			NextCursor: next,
 			HasMore:    more,
 		})
@@ -240,100 +245,9 @@ func listCategories(ds datastores.Datastore, rc datastores.TicketReferenceCache)
 			writeError(w, r, codeInternal, "list ticket categories: %v", err)
 			return
 		}
-		writeJSON(w, r, types.ListCategoriesResponse{Categories: categoriesFromProto(cats)})
+		if cats == nil {
+			cats = []*types.Category{}
+		}
+		writeJSON(w, r, types.ListCategoriesResponse{Categories: cats})
 	})
-}
-
-// ticketFromProto maps one datastore ticket to the wire type (see
-// ranksFromProto for the mapping-layer rationale). Allocation discipline:
-// participants/ancestors/customFields are always allocated — []/{} on the
-// wire, never null.
-func ticketFromProto(t *proto.Ticket) *types.Ticket {
-	participants := make([]*types.TicketParticipant, 0, len(t.GetParticipants()))
-	for _, p := range t.GetParticipants() {
-		participants = append(participants, &types.TicketParticipant{
-			UserId:       p.GetUserId(),
-			LastReadDate: p.GetLastReadDate(),
-		})
-	}
-	ancestors := t.GetCategoryAncestorIds()
-	if ancestors == nil {
-		ancestors = []uint32{}
-	}
-	customFields := t.GetCustomFields()
-	if customFields == nil {
-		customFields = map[string]string{}
-	}
-	return &types.Ticket{
-		TicketId:            t.GetTicketId(),
-		TicketRef:           t.GetTicketRef(),
-		Title:               t.GetTitle(),
-		CategoryId:          t.GetCategoryId(),
-		CategoryTitle:       t.GetCategoryTitle(),
-		CategoryAncestorIds: ancestors,
-		TicketState:         t.GetTicketState(),
-		StatusId:            t.GetStatusId(),
-		StatusName:          t.GetStatusName(),
-		PriorityId:          t.GetPriorityId(),
-		PriorityName:        t.GetPriorityName(),
-		PrefixId:            t.GetPrefixId(),
-		PrefixName:          t.GetPrefixName(),
-		DiscussionState:     t.GetDiscussionState(),
-		TicketLocked:        t.GetTicketLocked(),
-		StarterUserId:       t.GetStarterUserId(),
-		StarterUsername:     t.GetStarterUsername(),
-		AssignedUserId:      t.GetAssignedUserId(),
-		AssignedUsername:    t.GetAssignedUsername(),
-		Participants:        participants,
-		StartDate:           t.GetStartDate(),
-		LastMessageDate:     t.GetLastMessageDate(),
-		LastMessageUserId:   t.GetLastMessageUserId(),
-		LastMessageUsername: t.GetLastMessageUsername(),
-		LastModifiedDate:    t.GetLastModifiedDate(),
-		ReplyCount:          t.GetReplyCount(),
-		TotalMessageCount:   t.GetTotalMessageCount(),
-		CustomFields:        customFields,
-		ForumUrl:            t.GetForumUrl(),
-	}
-}
-
-// messagesFromProto maps datastore messages to the wire types (allocation
-// discipline: [] on the wire, never null).
-func messagesFromProto(in []*proto.Message) []*types.Message {
-	out := make([]*types.Message, 0, len(in))
-	for _, m := range in {
-		out = append(out, &types.Message{
-			MessageId:    m.GetMessageId(),
-			TicketId:     m.GetTicketId(),
-			UserId:       m.GetUserId(),
-			Username:     m.GetUsername(),
-			MessageDate:  m.GetMessageDate(),
-			Message:      m.GetMessage(),
-			MessageState: m.GetMessageState(),
-			Position:     m.GetPosition(),
-			AttachCount:  m.GetAttachCount(),
-			LastEditDate: m.GetLastEditDate(),
-			EditCount:    m.GetEditCount(),
-		})
-	}
-	return out
-}
-
-// categoriesFromProto maps the datastore's proto-typed rows to the wire
-// types (see ranksFromProto for the mapping-layer rationale and the
-// allocation discipline).
-func categoriesFromProto(in []*proto.Category) []*types.Category {
-	out := make([]*types.Category, 0, len(in))
-	for _, c := range in {
-		out = append(out, &types.Category{
-			CategoryId:       c.GetCategoryId(),
-			Title:            c.GetTitle(),
-			Description:      c.GetDescription(),
-			ParentCategoryId: c.GetParentCategoryId(),
-			Depth:            c.GetDepth(),
-			DisplayOrder:     c.GetDisplayOrder(),
-			TicketCount:      c.GetTicketCount(),
-		})
-	}
-	return out
 }

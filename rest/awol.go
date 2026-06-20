@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/types"
 )
 
@@ -19,27 +18,6 @@ func getAwol(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "error fetching AWOL list: %v", err)
 			return
 		}
-		writeJSON(w, r, types.AwolResponse{Awols: awolsFromProto(awols)})
+		writeJSON(w, r, types.AwolResponse{Awols: awols})
 	})
-}
-
-// awolsFromProto maps the datastore's proto-typed rows to the wire types.
-// The mapping layer disappears at cutover (#134); until then each handler
-// owns its map — and the allocation discipline: empty collections are
-// allocated ([] on the wire), never nil.
-func awolsFromProto(in []*proto.Awol) []*types.Awol {
-	out := make([]*types.Awol, 0, len(in))
-	for _, a := range in {
-		out = append(out, &types.Awol{
-			GroupName: a.GetGroupName(),
-			RankName:  a.GetRankName(),
-			Username:  a.GetUsername(),
-			UserId:    a.GetUserId(),
-			HumanDate: a.GetHumanDate(),
-			Timestamp: a.GetTimestamp(),
-			PostId:    a.GetPostId(),
-			MilpacId:  a.GetMilpacId(),
-		})
-	}
-	return out
 }
