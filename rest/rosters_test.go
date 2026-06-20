@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/7cav/api/contract"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,8 +164,8 @@ func TestNewStack_RosterRoutes_MalformedQuerySyntaxIgnored(t *testing.T) {
 // cases for these two, so these pin them. The enum NAME interpolates via %s.
 func TestNewStack_LiteAndS1OutagesAreInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{
-		findLiteRosterByType:       func(proto.RosterType) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
-		findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
+		findLiteRosterByType:       func(types.RosterType) (*types.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
+		findS1UniformsRosterByType: func(types.RosterType) (*types.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
 	}, &stubReferenceCache{})
 
 	cases := []struct {
@@ -189,9 +189,9 @@ func TestNewStack_LiteAndS1OutagesAreInternalJSON(t *testing.T) {
 // or a fabricated empty 200.
 func TestNewStack_NilRosterWithNilErrorIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{
-		findRosterByType:           func(proto.RosterType) (*proto.Roster, error) { return nil, nil },
-		findLiteRosterByType:       func(proto.RosterType) (*proto.LiteRoster, error) { return nil, nil },
-		findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, nil },
+		findRosterByType:           func(types.RosterType) (*types.Roster, error) { return nil, nil },
+		findLiteRosterByType:       func(types.RosterType) (*types.LiteRoster, error) { return nil, nil },
+		findS1UniformsRosterByType: func(types.RosterType) (*types.S1UniformsRoster, error) { return nil, nil },
 	}, &stubReferenceCache{})
 
 	for _, path := range rosterRoutePaths {
@@ -214,13 +214,13 @@ func TestNewStack_NilProfilesMapServesEmptyObject(t *testing.T) {
 		fake *fakeDatastore
 	}{
 		{"/api/v1/roster/ROSTER_TYPE_COMBAT", &fakeDatastore{
-			findRosterByType: func(proto.RosterType) (*proto.Roster, error) { return &proto.Roster{}, nil },
+			findRosterByType: func(types.RosterType) (*types.Roster, error) { return &types.Roster{}, nil },
 		}},
 		{"/api/v1/roster/ROSTER_TYPE_COMBAT/lite", &fakeDatastore{
-			findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return &proto.LiteRoster{}, nil },
+			findLiteRosterByType: func(types.RosterType) (*types.LiteRoster, error) { return &types.LiteRoster{}, nil },
 		}},
 		{"/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT", &fakeDatastore{
-			findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return &proto.S1UniformsRoster{}, nil },
+			findS1UniformsRosterByType: func(types.RosterType) (*types.S1UniformsRoster, error) { return &types.S1UniformsRoster{}, nil },
 		}},
 	}
 	for _, tc := range cases {
@@ -259,8 +259,8 @@ func TestNewStack_LargeRosterComparesCleanAtFullSize(t *testing.T) {
 	const members = 4000
 
 	h := rest.New(&fakeDatastore{
-		findRosterByType: func(proto.RosterType) (*proto.Roster, error) {
-			profiles := make(map[uint64]*proto.Profile, members)
+		findRosterByType: func(types.RosterType) (*types.Roster, error) {
+			profiles := make(map[uint64]*types.Profile, members)
 			for i := uint64(1); i <= members; i++ {
 				if i%2 == 1 {
 					profiles[i] = seedJarvis()
@@ -268,7 +268,7 @@ func TestNewStack_LargeRosterComparesCleanAtFullSize(t *testing.T) {
 					profiles[i] = seedDoe()
 				}
 			}
-			return &proto.Roster{Profiles: profiles}, nil
+			return &types.Roster{Profiles: profiles}, nil
 		},
 	}, &stubReferenceCache{})
 

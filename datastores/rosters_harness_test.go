@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 )
 
 // dateTime mirrors the lite/uniform timestamp convention: unix rendered
@@ -20,7 +20,7 @@ func dateTime(unix int64) string {
 func TestFindRosterByType_CombatRosterKeyedByRelationId(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	roster, err := ds.FindRosterByType(proto.RosterType_ROSTER_TYPE_COMBAT)
+	roster, err := ds.FindRosterByType(types.RosterTypeCombat)
 	if err != nil {
 		t.Fatalf("FindRosterByType(COMBAT): %v", err)
 	}
@@ -46,7 +46,7 @@ func TestFindRosterByType_CombatRosterKeyedByRelationId(t *testing.T) {
 	}
 
 	// Roster membership separates the shapes: reserve and past members.
-	reserve, err := ds.FindRosterByType(proto.RosterType_ROSTER_TYPE_RESERVE)
+	reserve, err := ds.FindRosterByType(types.RosterTypeReserve)
 	if err != nil {
 		t.Fatalf("FindRosterByType(RESERVE): %v", err)
 	}
@@ -54,7 +54,7 @@ func TestFindRosterByType_CombatRosterKeyedByRelationId(t *testing.T) {
 		t.Errorf("reserve roster: want exactly relations 320 and 340, got %v", profileKeys(reserve.Profiles))
 	}
 
-	past, err := ds.FindRosterByType(proto.RosterType_ROSTER_TYPE_PAST_MEMBERS)
+	past, err := ds.FindRosterByType(types.RosterTypePastMembers)
 	if err != nil {
 		t.Fatalf("FindRosterByType(PAST_MEMBERS): %v", err)
 	}
@@ -72,7 +72,7 @@ func TestFindRosterByType_CombatRosterKeyedByRelationId(t *testing.T) {
 func TestFindRosterByType_EmptyRosterIsNotAnError(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	roster, err := ds.FindRosterByType(proto.RosterType_ROSTER_TYPE_ELOA)
+	roster, err := ds.FindRosterByType(types.RosterTypeEloa)
 	if err != nil {
 		t.Fatalf("FindRosterByType(ELOA): %v", err)
 	}
@@ -87,7 +87,7 @@ func TestFindRosterByType_EmptyRosterIsNotAnError(t *testing.T) {
 func TestFindLiteRosterByType_LiteShapeWithActivityDates(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	roster, err := ds.FindLiteRosterByType(proto.RosterType_ROSTER_TYPE_COMBAT)
+	roster, err := ds.FindLiteRosterByType(types.RosterTypeCombat)
 	if err != nil {
 		t.Fatalf("FindLiteRosterByType(COMBAT): %v", err)
 	}
@@ -124,7 +124,7 @@ func TestFindLiteRosterByType_LiteShapeWithActivityDates(t *testing.T) {
 func TestFindLiteRosterByType_NeverPostedMemberHasEmptyLastPostDate(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	roster, err := ds.FindLiteRosterByType(proto.RosterType_ROSTER_TYPE_PAST_MEMBERS)
+	roster, err := ds.FindLiteRosterByType(types.RosterTypePastMembers)
 	if err != nil {
 		t.Fatalf("FindLiteRosterByType(PAST_MEMBERS): %v", err)
 	}
@@ -143,7 +143,7 @@ func TestFindLiteRosterByType_NeverPostedMemberHasEmptyLastPostDate(t *testing.T
 func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	roster, err := ds.FindS1UniformsRosterByType(proto.RosterType_ROSTER_TYPE_COMBAT)
+	roster, err := ds.FindS1UniformsRosterByType(types.RosterTypeCombat)
 	if err != nil {
 		t.Fatalf("FindS1UniformsRosterByType(COMBAT): %v", err)
 	}
@@ -194,7 +194,7 @@ func TestFindS1UniformsRosterByType_UniformsShape(t *testing.T) {
 	}
 
 	// Reserve roster: the ELOA position group maps to ELOA.
-	reserve, err := ds.FindS1UniformsRosterByType(proto.RosterType_ROSTER_TYPE_RESERVE)
+	reserve, err := ds.FindS1UniformsRosterByType(types.RosterTypeReserve)
 	if err != nil {
 		t.Fatalf("FindS1UniformsRosterByType(RESERVE): %v", err)
 	}
@@ -293,7 +293,7 @@ func TestFindAwol_FlagsStalePostersOnActiveRosters(t *testing.T) {
 
 	// Keyed by forum USER id (Awol.UserId) — relation ids live in
 	// Awol.MilpacId and must not be used as exclusion keys here.
-	byUser := map[uint64]*proto.Awol{}
+	byUser := map[uint64]*types.Awol{}
 	for _, a := range awols {
 		byUser[a.UserId] = a
 	}

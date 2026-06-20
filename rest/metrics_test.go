@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
@@ -278,7 +278,7 @@ func TestMetrics_ExoticMethodClampsToOther(t *testing.T) {
 // unchanged so the sentry recovery layer outside this one (#132) — and
 // net/http when sentry is disabled, as here — sees identical semantics.
 func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
-	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		panic("datastore exploded")
 	}}, &stubReferenceCache{})
 	labels := map[string]string{
@@ -308,7 +308,7 @@ func TestMetrics_PanickingHandlerMetersAs500AndPanicPropagates(t *testing.T) {
 // surfacing through the writeError choke point) meters under the route it
 // failed on, with the caller's key id — per-key error attribution.
 func TestMetrics_HandlerError500MetersUnderRouteAndKey(t *testing.T) {
-	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		return nil, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 	labels := map[string]string{

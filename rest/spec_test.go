@@ -28,8 +28,8 @@ import (
 
 	"github.com/7cav/api/contract"
 	"github.com/7cav/api/internal/spectest"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	"github.com/pb33f/libopenapi"
 	"github.com/pb33f/libopenapi-validator/paths"
 	"github.com/pb33f/libopenapi-validator/responses"
@@ -340,14 +340,14 @@ func TestNewStack_SpecValidation(t *testing.T) {
 			status: http.StatusInternalServerError,
 			path:   "/api/v1/roster/ROSTER_TYPE_COMBAT/lite",
 			ds: &fakeDatastore{
-				findLiteRosterByType: func(proto.RosterType) (*proto.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
+				findLiteRosterByType: func(types.RosterType) (*types.LiteRoster, error) { return nil, io.ErrUnexpectedEOF },
 			},
 		},
 		"s1_uniforms_500_outage": {
 			status: http.StatusInternalServerError,
 			path:   "/api/v1/s1/uniforms/ROSTER_TYPE_COMBAT",
 			ds: &fakeDatastore{
-				findS1UniformsRosterByType: func(proto.RosterType) (*proto.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
+				findS1UniformsRosterByType: func(types.RosterType) (*types.S1UniformsRoster, error) { return nil, io.ErrUnexpectedEOF },
 			},
 		},
 	}

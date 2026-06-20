@@ -11,9 +11,9 @@ import (
 
 	"github.com/7cav/api/contract"
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
 	"github.com/7cav/api/referencecache"
 	"github.com/7cav/api/rest"
+	"github.com/7cav/api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -37,32 +37,32 @@ func init() {
 // a loud failure if a test reaches further than the routes it mounts.
 type fakeDatastore struct {
 	datastores.Datastore
-	findAllRanks           func() ([]*proto.RankExpanded, error)
+	findAllRanks           func() ([]*types.RankExpanded, error)
 	validateApiKey         func(rawKey string) (*datastores.ApiKeyResult, error)
-	findProfilesById       func(userIds ...uint64) ([]*proto.Profile, error)
-	findProfilesByUsername func(username string) ([]*proto.Profile, error)
-	findProfileByDiscordID func(discordId string) (*proto.Profile, error)
-	findProfileByGamertag  func(gamertag string) (*proto.Profile, error)
+	findProfilesById       func(userIds ...uint64) ([]*types.Profile, error)
+	findProfilesByUsername func(username string) ([]*types.Profile, error)
+	findProfileByDiscordID func(discordId string) (*types.Profile, error)
+	findProfileByGamertag  func(gamertag string) (*types.Profile, error)
 
 	// Positions/AWOL overrides (#128; seeded defaults live in
 	// fake_positions_test.go); a test sets one to inject an outage.
-	findAllPositionGroups  func() ([]*proto.PositionGroup, error)
-	findProfilesByPosition func(positionQuery string) (*proto.LiteRoster, error)
-	findAwol               func() ([]*proto.Awol, error)
+	findAllPositionGroups  func() ([]*types.PositionGroup, error)
+	findProfilesByPosition func(positionQuery string) (*types.LiteRoster, error)
+	findAwol               func() ([]*types.Awol, error)
 
 	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
 	// test sets one to inject an outage or observe the bound filter.
-	listTickets            func(*datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error)
-	getTicket              func(ticketID uint32) (*proto.Ticket, error)
-	getTicketByRef         func(ref string) (*proto.Ticket, error)
-	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*proto.Message, uint32, error)
-	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*proto.Message, string, bool, error)
-	listCategories         func() ([]*proto.Category, error)
+	listTickets            func(*datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error)
+	getTicket              func(ticketID uint32) (*types.Ticket, error)
+	getTicketByRef         func(ref string) (*types.Ticket, error)
+	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*types.Message, uint32, error)
+	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*types.Message, string, bool, error)
+	listCategories         func() ([]*types.Category, error)
 
 	// Roster overrides (seeded defaults live in fake_rosters_test.go).
-	findRosterByType           func(proto.RosterType) (*proto.Roster, error)
-	findLiteRosterByType       func(proto.RosterType) (*proto.LiteRoster, error)
-	findS1UniformsRosterByType func(proto.RosterType) (*proto.S1UniformsRoster, error)
+	findRosterByType           func(types.RosterType) (*types.Roster, error)
+	findLiteRosterByType       func(types.RosterType) (*types.LiteRoster, error)
+	findS1UniformsRosterByType func(types.RosterType) (*types.S1UniformsRoster, error)
 
 	// lastRC records the TicketReferenceCache the handlers handed the most
 	// recent rc-consuming datastore call — the identity pin asserts it IS the
@@ -108,11 +108,11 @@ func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult,
 	}
 }
 
-func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
+func (f *fakeDatastore) FindAllRanks() ([]*types.RankExpanded, error) {
 	if f.findAllRanks != nil {
 		return f.findAllRanks()
 	}
-	return []*proto.RankExpanded{
+	return []*types.RankExpanded{
 		{RankShort: "MG", RankFull: "Major General", RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618", RankId: 4, RankDisplayOrder: 4},
 		{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22, RankDisplayOrder: 22},
 	}, nil
@@ -124,13 +124,11 @@ func (f *fakeDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
 var errOutage = errors.New("simulated datastore outage")
 
 // seedJarvis mirrors the recording seed's rich profile: every collection
-// populated, relation 1 ↔ user 3. KeycloakId is deliberately set — the
-// corpus transform stripped it from the goldens, so the mapper dropping it
-// is observable in the replay.
-func seedJarvis() *proto.Profile {
-	return &proto.Profile{
-		User: &proto.User{UserId: 3, Username: "Jarvis.A"},
-		Rank: &proto.Rank{
+// populated, relation 1 ↔ user 3.
+func seedJarvis() *types.Profile {
+	return &types.Profile{
+		User: &types.User{UserId: 3, Username: "Jarvis.A"},
+		Rank: &types.Rank{
 			RankShort:    "MG",
 			RankFull:     "Major General",
 			RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618",
@@ -138,26 +136,26 @@ func seedJarvis() *proto.Profile {
 		},
 		RealName:   "Adam Jarvis",
 		UniformUrl: "https://7cav.us/data/roster_uniforms/0/1.jpg",
-		Roster:     proto.RosterType_ROSTER_TYPE_COMBAT,
-		Primary:    &proto.Position{PositionTitle: "Regimental Technical Aide", PositionId: 773},
-		Secondaries: []*proto.Position{
+		Roster:     types.RosterTypeCombat,
+		Primary:    &types.Position{PositionTitle: "Regimental Technical Aide", PositionId: 773},
+		Secondaries: []*types.Position{
 			{PositionTitle: "S6 Web Developer", PositionId: 812},
 		},
-		Records: []*proto.Record{
+		Records: []*types.Record{
 			{
 				RecordDetails: "Promoted to Major General (O-8)",
-				RecordType:    proto.RecordType_RECORD_TYPE_PROMOTION,
+				RecordType:    types.RecordTypePromotion,
 				RecordDate:    "2020-10-17",
 				RecordUid:     46,
 			},
 			{
 				RecordDetails: "Completed 18th Combat Mission (Operation Pride of Charlie, Fall 2020)",
-				RecordType:    proto.RecordType_RECORD_TYPE_OPERATION,
+				RecordType:    types.RecordTypeOperation,
 				RecordDate:    "2020-09-27",
 				RecordUid:     13863,
 			},
 		},
-		Awards: []*proto.Award{
+		Awards: []*types.Award{
 			{
 				AwardDetails:  "For technical excellence & dedication <est. 2014>",
 				AwardName:     "Commendation Medal",
@@ -168,7 +166,6 @@ func seedJarvis() *proto.Profile {
 		},
 		JoinDate:          "2014-02-08",
 		PromotionDate:     "2020-10-17",
-		KeycloakId:        "3f8e2a10-dead-beef-cafe-0123456789ab",
 		DiscordId:         "112233445566778899",
 		LastForumPostDate: "2026-05-30",
 		Mos:               "11B",
@@ -179,17 +176,17 @@ func seedJarvis() *proto.Profile {
 // seedDoe mirrors the recording seed's sparse profile: unset nested messages
 // nil (null on the wire), collections empty ([]), strings "". Relation 2 ↔
 // user 8.
-func seedDoe() *proto.Profile {
-	return &proto.Profile{
-		User:            &proto.User{UserId: 8, Username: "John.Doe"},
-		Rank:            &proto.Rank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22},
+func seedDoe() *types.Profile {
+	return &types.Profile{
+		User:            &types.User{UserId: 8, Username: "John.Doe"},
+		Rank:            &types.Rank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22},
 		RealName:        "John Doe",
 		UniformUrl:      "https://7cav.us/data/roster_uniforms/0/2.jpg",
-		Roster:          proto.RosterType_ROSTER_TYPE_COMBAT,
+		Roster:          types.RosterTypeCombat,
 		Primary:         nil, // → "primary": null
-		Secondaries:     []*proto.Position{},
-		Records:         []*proto.Record{},
-		Awards:          []*proto.Award{},
+		Secondaries:     []*types.Position{},
+		Records:         []*types.Record{},
+		Awards:          []*types.Award{},
 		JoinDate:        "2026-01-15",
 		ConsoleGamertag: "CavGamer77",
 	}
@@ -198,15 +195,15 @@ func seedDoe() *proto.Profile {
 // FindProfilesById keys on the MILPAC RELATION ID, mirroring the recording
 // seed (and datastores.Mysql: gorm First keys on the milpacs.Profile primary
 // key = relation_id). 777 is the injected-outage id for the 500 golden.
-func (f *fakeDatastore) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
+func (f *fakeDatastore) FindProfilesById(userIds ...uint64) ([]*types.Profile, error) {
 	if f.findProfilesById != nil {
 		return f.findProfilesById(userIds...)
 	}
 	switch userIds[0] {
 	case 1:
-		return []*proto.Profile{seedJarvis()}, nil
+		return []*types.Profile{seedJarvis()}, nil
 	case 2:
-		return []*proto.Profile{seedDoe()}, nil
+		return []*types.Profile{seedDoe()}, nil
 	case 777:
 		return nil, errOutage
 	default:
@@ -214,21 +211,21 @@ func (f *fakeDatastore) FindProfilesById(userIds ...uint64) ([]*proto.Profile, e
 	}
 }
 
-func (f *fakeDatastore) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
+func (f *fakeDatastore) FindProfilesByUsername(username string) ([]*types.Profile, error) {
 	if f.findProfilesByUsername != nil {
 		return f.findProfilesByUsername(username)
 	}
 	switch username {
 	case "Jarvis.A":
-		return []*proto.Profile{seedJarvis()}, nil
+		return []*types.Profile{seedJarvis()}, nil
 	case "John.Doe":
-		return []*proto.Profile{seedDoe()}, nil
+		return []*types.Profile{seedDoe()}, nil
 	default:
 		return nil, gorm.ErrRecordNotFound
 	}
 }
 
-func (f *fakeDatastore) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
+func (f *fakeDatastore) FindProfileByDiscordID(discordId string) (*types.Profile, error) {
 	if f.findProfileByDiscordID != nil {
 		return f.findProfileByDiscordID(discordId)
 	}
@@ -238,7 +235,7 @@ func (f *fakeDatastore) FindProfileByDiscordID(discordId string) (*proto.Profile
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeDatastore) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
+func (f *fakeDatastore) FindProfileByGamertag(gamertag string) (*types.Profile, error) {
 	if f.findProfileByGamertag != nil {
 		return f.findProfileByGamertag(gamertag)
 	}
@@ -485,7 +482,7 @@ func TestNewStack_401IsNeverGzipped(t *testing.T) {
 // The datastore failing must surface as the frozen Internal error shape
 // through the choke point (message text mirrors the old handler verbatim).
 func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		return nil, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
@@ -504,11 +501,11 @@ func TestNewStack_RanksDatastoreOutageIsInternalJSON(t *testing.T) {
 // variant is golden-pinned via profile_by_id_internal_error; the corpus has
 // no outage cases for the other three, so these pin them).
 func TestNewStack_ProfileLookupOutagesAreInternalJSON(t *testing.T) {
-	outage := func() ([]*proto.Profile, error) { return nil, io.ErrUnexpectedEOF }
+	outage := func() ([]*types.Profile, error) { return nil, io.ErrUnexpectedEOF }
 	h := rest.New(&fakeDatastore{
-		findProfilesByUsername: func(string) ([]*proto.Profile, error) { return outage() },
-		findProfileByDiscordID: func(string) (*proto.Profile, error) { return nil, io.ErrUnexpectedEOF },
-		findProfileByGamertag:  func(string) (*proto.Profile, error) { return nil, io.ErrUnexpectedEOF },
+		findProfilesByUsername: func(string) ([]*types.Profile, error) { return outage() },
+		findProfileByDiscordID: func(string) (*types.Profile, error) { return nil, io.ErrUnexpectedEOF },
+		findProfileByGamertag:  func(string) (*types.Profile, error) { return nil, io.ErrUnexpectedEOF },
 	}, &stubReferenceCache{})
 
 	cases := []struct {
@@ -539,8 +536,8 @@ func TestNewStack_ProfileLookupOutagesAreInternalJSON(t *testing.T) {
 // fabricated sparse 200.
 func TestNewStack_EmptyProfileSliceWithNilErrorIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{
-		findProfilesById:       func(...uint64) ([]*proto.Profile, error) { return []*proto.Profile{}, nil },
-		findProfilesByUsername: func(string) ([]*proto.Profile, error) { return nil, nil },
+		findProfilesById:       func(...uint64) ([]*types.Profile, error) { return []*types.Profile{}, nil },
+		findProfilesByUsername: func(string) ([]*types.Profile, error) { return nil, nil },
 	}, &stubReferenceCache{})
 
 	for _, path := range []string{
@@ -561,10 +558,10 @@ func TestNewStack_EmptyProfileSliceWithNilErrorIsInternalJSON(t *testing.T) {
 
 func TestNewStack_NilProfileWithNilErrorIsInternalJSON(t *testing.T) {
 	h := rest.New(&fakeDatastore{
-		findProfileByDiscordID: func(string) (*proto.Profile, error) { return nil, nil },
-		findProfileByGamertag:  func(string) (*proto.Profile, error) { return nil, nil },
+		findProfileByDiscordID: func(string) (*types.Profile, error) { return nil, nil },
+		findProfileByGamertag:  func(string) (*types.Profile, error) { return nil, nil },
 		// A non-empty slice carrying a nil element hits the same guard.
-		findProfilesById: func(...uint64) ([]*proto.Profile, error) { return []*proto.Profile{nil}, nil },
+		findProfilesById: func(...uint64) ([]*types.Profile, error) { return []*types.Profile{nil}, nil },
 	}, &stubReferenceCache{})
 
 	for _, path := range []string{
@@ -1252,7 +1249,7 @@ func TestNewStack_ReferenceCacheReachesDatastoreByIdentity(t *testing.T) {
 // discipline (empty collections are [], never null) the goldens can only
 // witness on populated routes.
 func TestNewStack_EmptyRanksIsEmptyArray(t *testing.T) {
-	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*proto.RankExpanded, error) {
+	h := rest.New(&fakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {
 		return nil, nil
 	}}, &stubReferenceCache{})
 

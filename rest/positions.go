@@ -69,6 +69,10 @@ func searchByPosition(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
 		}
+		if roster.Profiles == nil {
+			// Frozen empty-result form: {"profiles":{}}, never null (#137).
+			roster.Profiles = map[uint64]*types.LiteProfile{}
+		}
 		writeJSON(w, r, roster)
 	})
 }

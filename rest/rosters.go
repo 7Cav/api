@@ -71,6 +71,12 @@ func getRoster(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
 		}
+		if roster.Profiles == nil {
+			// Frozen empty-result form: {"profiles":{}}, never null (#137). The
+			// real datastore always allocates; this guards a nil map slipping
+			// through (the old stack's EmitUnpopulated marshaler emitted {}).
+			roster.Profiles = map[uint64]*types.Profile{}
+		}
 		writeJSON(w, r, roster)
 	})
 }
@@ -93,6 +99,9 @@ func getLiteRoster(ds datastores.Datastore) http.Handler {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
 		}
+		if roster.Profiles == nil {
+			roster.Profiles = map[uint64]*types.LiteProfile{}
+		}
 		writeJSON(w, r, roster)
 	})
 }
@@ -114,6 +123,9 @@ func getS1UniformsRoster(ds datastores.Datastore) http.Handler {
 		if roster == nil {
 			writeError(w, r, codeInternal, "datastore returned no roster")
 			return
+		}
+		if roster.Profiles == nil {
+			roster.Profiles = map[uint64]*types.S1UniformsProfile{}
 		}
 		writeJSON(w, r, roster)
 	})

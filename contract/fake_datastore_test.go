@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/7cav/api/datastores"
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 	"gorm.io/gorm"
 )
 
@@ -33,9 +33,6 @@ var errOutage = errors.New("simulated datastore outage")
 //   - Position search returns an empty (non-nil) LiteRoster for any query
 //     that isn't an exact seeded title — mirroring the frozen #137 behavior
 //     where plausible queries yield {"profiles":{}}.
-//
-// The keycloak lookup panics: the route is deliberately not recorded (#116)
-// and the battery must never reach it.
 type recordingDatastore struct{}
 
 // --- API keys ----------------------------------------------------------
@@ -65,10 +62,10 @@ func scopeSet(scopes ...string) map[string]struct{} {
 
 // seedJarvis is the rich profile: every collection populated, relation id 1
 // diverging from user id 3 (matches the live-capture divergence for Jarvis.A).
-func seedJarvis() *proto.Profile {
-	return &proto.Profile{
-		User: &proto.User{UserId: 3, Username: "Jarvis.A"},
-		Rank: &proto.Rank{
+func seedJarvis() *types.Profile {
+	return &types.Profile{
+		User: &types.User{UserId: 3, Username: "Jarvis.A"},
+		Rank: &types.Rank{
 			RankShort:    "MG",
 			RankFull:     "Major General",
 			RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618",
@@ -76,26 +73,26 @@ func seedJarvis() *proto.Profile {
 		},
 		RealName:   "Adam Jarvis",
 		UniformUrl: "https://7cav.us/data/roster_uniforms/0/1.jpg",
-		Roster:     proto.RosterType_ROSTER_TYPE_COMBAT,
-		Primary:    &proto.Position{PositionTitle: "Regimental Technical Aide", PositionId: 773},
-		Secondaries: []*proto.Position{
+		Roster:     types.RosterTypeCombat,
+		Primary:    &types.Position{PositionTitle: "Regimental Technical Aide", PositionId: 773},
+		Secondaries: []*types.Position{
 			{PositionTitle: "S6 Web Developer", PositionId: 812},
 		},
-		Records: []*proto.Record{
+		Records: []*types.Record{
 			{
 				RecordDetails: "Promoted to Major General (O-8)",
-				RecordType:    proto.RecordType_RECORD_TYPE_PROMOTION,
+				RecordType:    types.RecordTypePromotion,
 				RecordDate:    "2020-10-17",
 				RecordUid:     46,
 			},
 			{
 				RecordDetails: "Completed 18th Combat Mission (Operation Pride of Charlie, Fall 2020)",
-				RecordType:    proto.RecordType_RECORD_TYPE_OPERATION,
+				RecordType:    types.RecordTypeOperation,
 				RecordDate:    "2020-09-27",
 				RecordUid:     13863,
 			},
 		},
-		Awards: []*proto.Award{
+		Awards: []*types.Award{
 			{
 				AwardDetails:  "For technical excellence & dedication <est. 2014>",
 				AwardName:     "Commendation Medal",
@@ -106,7 +103,6 @@ func seedJarvis() *proto.Profile {
 		},
 		JoinDate:          "2014-02-08",
 		PromotionDate:     "2020-10-17",
-		KeycloakId:        "3f8e2a10-dead-beef-cafe-0123456789ab",
 		DiscordId:         "112233445566778899",
 		LastForumPostDate: "2026-05-30",
 		Mos:               "11B",
@@ -117,25 +113,25 @@ func seedJarvis() *proto.Profile {
 // seedDoe is the sparse profile: unset nested messages stay nil (emitted as
 // null), collections stay empty (emitted as []), strings stay "" — the
 // emit-everything goldens hang off this profile. Relation 2 ↔ user 8.
-func seedDoe() *proto.Profile {
-	return &proto.Profile{
-		User:            &proto.User{UserId: 8, Username: "John.Doe"},
-		Rank:            &proto.Rank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22},
+func seedDoe() *types.Profile {
+	return &types.Profile{
+		User:            &types.User{UserId: 8, Username: "John.Doe"},
+		Rank:            &types.Rank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22},
 		RealName:        "John Doe",
 		UniformUrl:      "https://7cav.us/data/roster_uniforms/0/2.jpg",
-		Roster:          proto.RosterType_ROSTER_TYPE_COMBAT,
+		Roster:          types.RosterTypeCombat,
 		Primary:         nil, // → "primary": null
-		Secondaries:     []*proto.Position{},
-		Records:         []*proto.Record{},
-		Awards:          []*proto.Award{},
+		Secondaries:     []*types.Position{},
+		Records:         []*types.Record{},
+		Awards:          []*types.Award{},
 		JoinDate:        "2026-01-15",
 		ConsoleGamertag: "CavGamer77",
 	}
 }
 
-func seedJarvisLite() *proto.LiteProfile {
+func seedJarvisLite() *types.LiteProfile {
 	j := seedJarvis()
-	return &proto.LiteProfile{
+	return &types.LiteProfile{
 		User:              j.User,
 		Rank:              j.Rank,
 		RealName:          j.RealName,
@@ -145,7 +141,6 @@ func seedJarvisLite() *proto.LiteProfile {
 		Secondaries:       j.Secondaries,
 		JoinDate:          j.JoinDate,
 		PromotionDate:     j.PromotionDate,
-		KeycloakId:        j.KeycloakId,
 		DiscordId:         j.DiscordId,
 		AwardDate:         "2021-03-01",
 		RecordDate:        "2020-10-17",
@@ -154,28 +149,28 @@ func seedJarvisLite() *proto.LiteProfile {
 	}
 }
 
-func seedDoeLite() *proto.LiteProfile {
+func seedDoeLite() *types.LiteProfile {
 	d := seedDoe()
-	return &proto.LiteProfile{
+	return &types.LiteProfile{
 		User:            d.User,
 		Rank:            d.Rank,
 		RealName:        d.RealName,
 		UniformUrl:      d.UniformUrl,
 		Roster:          d.Roster,
-		Secondaries:     []*proto.Position{},
+		Secondaries:     []*types.Position{},
 		JoinDate:        d.JoinDate,
 		ConsoleGamertag: d.ConsoleGamertag,
 	}
 }
 
-func (recordingDatastore) FindProfilesById(userIds ...uint64) ([]*proto.Profile, error) {
+func (recordingDatastore) FindProfilesById(userIds ...uint64) ([]*types.Profile, error) {
 	// Path value is the milpac relation key (see type comment). 777 is the
 	// injected-outage id for the 500 golden.
 	switch userIds[0] {
 	case 1:
-		return []*proto.Profile{seedJarvis()}, nil
+		return []*types.Profile{seedJarvis()}, nil
 	case 2:
-		return []*proto.Profile{seedDoe()}, nil
+		return []*types.Profile{seedDoe()}, nil
 	case 777:
 		return nil, errOutage
 	default:
@@ -183,114 +178,110 @@ func (recordingDatastore) FindProfilesById(userIds ...uint64) ([]*proto.Profile,
 	}
 }
 
-func (recordingDatastore) FindProfilesByUsername(username string) ([]*proto.Profile, error) {
+func (recordingDatastore) FindProfilesByUsername(username string) ([]*types.Profile, error) {
 	switch username {
 	case "Jarvis.A":
-		return []*proto.Profile{seedJarvis()}, nil
+		return []*types.Profile{seedJarvis()}, nil
 	case "John.Doe":
-		return []*proto.Profile{seedDoe()}, nil
+		return []*types.Profile{seedDoe()}, nil
 	default:
 		return nil, gorm.ErrRecordNotFound
 	}
 }
 
-func (recordingDatastore) FindProfileByDiscordID(discordId string) (*proto.Profile, error) {
+func (recordingDatastore) FindProfileByDiscordID(discordId string) (*types.Profile, error) {
 	if discordId == "112233445566778899" {
 		return seedJarvis(), nil
 	}
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (recordingDatastore) FindProfileByGamertag(gamertag string) (*proto.Profile, error) {
+func (recordingDatastore) FindProfileByGamertag(gamertag string) (*types.Profile, error) {
 	if gamertag == "CavGamer77" {
 		return seedDoe(), nil
 	}
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (recordingDatastore) FindProfileByKeycloakID(string) (*proto.Profile, error) {
-	panic("contract: keycloak route is deliberately not recorded (#116)")
-}
-
 // --- Rosters ------------------------------------------------------------
 
-func (recordingDatastore) FindRosterByType(t proto.RosterType) (*proto.Roster, error) {
+func (recordingDatastore) FindRosterByType(t types.RosterType) (*types.Roster, error) {
 	switch t {
-	case proto.RosterType_ROSTER_TYPE_COMBAT:
-		return &proto.Roster{Profiles: map[uint64]*proto.Profile{1: seedJarvis(), 2: seedDoe()}}, nil
-	case proto.RosterType_ROSTER_TYPE_ARLINGTON:
+	case types.RosterTypeCombat:
+		return &types.Roster{Profiles: map[uint64]*types.Profile{1: seedJarvis(), 2: seedDoe()}}, nil
+	case types.RosterTypeArlington:
 		return nil, errOutage
 	default:
 		// Empty-but-present roster: {"profiles":{}}.
-		return &proto.Roster{Profiles: map[uint64]*proto.Profile{}}, nil
+		return &types.Roster{Profiles: map[uint64]*types.Profile{}}, nil
 	}
 }
 
-func (recordingDatastore) FindLiteRosterByType(t proto.RosterType) (*proto.LiteRoster, error) {
+func (recordingDatastore) FindLiteRosterByType(t types.RosterType) (*types.LiteRoster, error) {
 	switch t {
-	case proto.RosterType_ROSTER_TYPE_COMBAT:
-		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{1: seedJarvisLite(), 2: seedDoeLite()}}, nil
+	case types.RosterTypeCombat:
+		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{1: seedJarvisLite(), 2: seedDoeLite()}}, nil
 	default:
-		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{}}, nil
+		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{}}, nil
 	}
 }
 
-func (recordingDatastore) FindS1UniformsRosterByType(t proto.RosterType) (*proto.S1UniformsRoster, error) {
-	if t != proto.RosterType_ROSTER_TYPE_COMBAT {
-		return &proto.S1UniformsRoster{Profiles: map[uint64]*proto.S1UniformsProfile{}}, nil
+func (recordingDatastore) FindS1UniformsRosterByType(t types.RosterType) (*types.S1UniformsRoster, error) {
+	if t != types.RosterTypeCombat {
+		return &types.S1UniformsRoster{Profiles: map[uint64]*types.S1UniformsProfile{}}, nil
 	}
-	return &proto.S1UniformsRoster{Profiles: map[uint64]*proto.S1UniformsProfile{
+	return &types.S1UniformsRoster{Profiles: map[uint64]*types.S1UniformsProfile{
 		1: {
-			User:                     &proto.User{UserId: 3, Username: "Jarvis.A"},
-			Rank:                     &proto.S1UniformsRank{RankShort: "MG", RankFull: "Major General", RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618"},
+			User:                     &types.User{UserId: 3, Username: "Jarvis.A"},
+			Rank:                     &types.S1UniformsRank{RankShort: "MG", RankFull: "Major General", RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618"},
 			RealName:                 "Adam Jarvis",
 			UniformUrl:               "https://7cav.us/data/roster_uniforms/0/1.jpg",
 			UniformDate:              "2025-11-02",
 			UniformUpdateTriggerDate: "2025-12-01",
-			Roster:                   proto.RosterType_ROSTER_TYPE_COMBAT,
+			Roster:                   types.RosterTypeCombat,
 			PrimaryPositionTitle:     "Regimental Technical Aide",
-			Secondaries:              []*proto.S1UniformsPosition{{PositionTitle: "S6 Web Developer"}},
+			Secondaries:              []*types.S1UniformsPosition{{PositionTitle: "S6 Web Developer"}},
 			JoinDate:                 "2014-02-08",
 			PromotionDate:            "2020-10-17",
 			AreaOfResponsibility:     "S6",
 		},
 		2: {
-			User:                 &proto.User{UserId: 8, Username: "John.Doe"},
-			Rank:                 &proto.S1UniformsRank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg"},
+			User:                 &types.User{UserId: 8, Username: "John.Doe"},
+			Rank:                 &types.S1UniformsRank{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg"},
 			RealName:             "John Doe",
 			UniformUrl:           "https://7cav.us/data/roster_uniforms/0/2.jpg",
-			Roster:               proto.RosterType_ROSTER_TYPE_COMBAT,
+			Roster:               types.RosterTypeCombat,
 			PrimaryPositionTitle: "Rifleman",
-			Secondaries:          []*proto.S1UniformsPosition{},
+			Secondaries:          []*types.S1UniformsPosition{},
 			JoinDate:             "2026-01-15",
 		},
 	}}, nil
 }
 
-func (recordingDatastore) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error) {
+func (recordingDatastore) FindProfilesByPosition(positionQuery string) (*types.LiteRoster, error) {
 	if positionQuery == "Regimental Technical Aide" {
-		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{1: seedJarvisLite()}}, nil
+		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{1: seedJarvisLite()}}, nil
 	}
 	// Frozen #137 behavior: plausible queries come back empty, not 404.
-	return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{}}, nil
+	return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{}}, nil
 }
 
 // --- Reference lists ------------------------------------------------------
 
-func (recordingDatastore) FindAllRanks() ([]*proto.RankExpanded, error) {
-	return []*proto.RankExpanded{
+func (recordingDatastore) FindAllRanks() ([]*types.RankExpanded, error) {
+	return []*types.RankExpanded{
 		{RankShort: "MG", RankFull: "Major General", RankImageUrl: "https://7cav.us/data/roster_ranks/0/4.jpg?1741364618", RankId: 4, RankDisplayOrder: 4},
 		{RankShort: "PVT", RankFull: "Private", RankImageUrl: "https://7cav.us/data/roster_ranks/0/22.jpg", RankId: 22, RankDisplayOrder: 22},
 	}, nil
 }
 
-func (recordingDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
-	return []*proto.PositionGroup{
+func (recordingDatastore) FindAllPositionGroups() ([]*types.PositionGroup, error) {
+	return []*types.PositionGroup{
 		{
 			GroupId:           9,
 			GroupTitle:        "Regimental HQ",
 			GroupDisplayOrder: 1,
-			Positions: []*proto.PositionExpanded{
+			Positions: []*types.PositionExpanded{
 				{PositionTitle: "Regimental Technical Aide", PositionId: 773, PositionDisplayOrder: 3, PositionPossibleSecondary: false},
 				{PositionTitle: "S6 Web Developer", PositionId: 812, PositionDisplayOrder: 7, PositionPossibleSecondary: true},
 			},
@@ -298,8 +289,8 @@ func (recordingDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error
 	}, nil
 }
 
-func (recordingDatastore) FindAwol() ([]*proto.Awol, error) {
-	return []*proto.Awol{
+func (recordingDatastore) FindAwol() ([]*types.Awol, error) {
+	return []*types.Awol{
 		{
 			GroupName: "Alpha Company",
 			RankName:  "Private",
@@ -317,8 +308,8 @@ func (recordingDatastore) FindAwol() ([]*proto.Awol, error) {
 
 // seedTickets returns the ticket world sorted by last_modified_date DESC,
 // ticket_id DESC — the order the real datastore queries in.
-func seedTickets() []*proto.Ticket {
-	return []*proto.Ticket{
+func seedTickets() []*types.Ticket {
+	return []*types.Ticket{
 		{
 			TicketId:            44,
 			TicketRef:           "ZZTOP44Q",
@@ -339,7 +330,7 @@ func seedTickets() []*proto.Ticket {
 			StarterUsername:     "John.Doe",
 			AssignedUserId:      3,
 			AssignedUsername:    "Jarvis.A",
-			Participants: []*proto.TicketParticipant{
+			Participants: []*types.TicketParticipant{
 				{UserId: 8, LastReadDate: 1748690000},
 				{UserId: 3, LastReadDate: 1748695000},
 			},
@@ -368,7 +359,7 @@ func seedTickets() []*proto.Ticket {
 			DiscussionState:     "visible",
 			StarterUserId:       3,
 			StarterUsername:     "Jarvis.A",
-			Participants:        []*proto.TicketParticipant{},
+			Participants:        []*types.TicketParticipant{},
 			StartDate:           1748500000,
 			LastMessageDate:     1748590000,
 			LastMessageUserId:   3,
@@ -396,7 +387,7 @@ func seedTickets() []*proto.Ticket {
 			DiscussionState:     "visible",
 			StarterUserId:       8,
 			StarterUsername:     "John.Doe",
-			Participants:        []*proto.TicketParticipant{{UserId: 8, LastReadDate: 1748450000}},
+			Participants:        []*types.TicketParticipant{{UserId: 8, LastReadDate: 1748450000}},
 			StartDate:           1748400000,
 			LastMessageDate:     1748480000,
 			LastMessageUserId:   8,
@@ -411,8 +402,8 @@ func seedTickets() []*proto.Ticket {
 }
 
 // seedMessages42 is the message thread for ticket 42, position ascending.
-func seedMessages42() []*proto.Message {
-	return []*proto.Message{
+func seedMessages42() []*types.Message {
+	return []*types.Message{
 		{
 			MessageId:    9001,
 			TicketId:     42,
@@ -494,7 +485,7 @@ func decodeMessageCursor(c string) (uint32, error) {
 	return uint32(pos), nil
 }
 
-func (recordingDatastore) ListTickets(_ context.Context, _ datastores.TicketReferenceCache, f *datastores.ListTicketsFilter) ([]*proto.Ticket, string, bool, error) {
+func (recordingDatastore) ListTickets(_ context.Context, _ datastores.TicketReferenceCache, f *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 	perPage := f.PerPage
 	if perPage == 0 {
 		perPage = 50
@@ -512,7 +503,7 @@ func (recordingDatastore) ListTickets(_ context.Context, _ datastores.TicketRefe
 		}
 	}
 
-	var rows []*proto.Ticket
+	var rows []*types.Ticket
 	for _, t := range seedTickets() {
 		if hasCursor && !(t.LastModifiedDate < afterTs || (t.LastModifiedDate == afterTs && t.TicketId < afterId)) {
 			continue
@@ -533,12 +524,12 @@ func (recordingDatastore) ListTickets(_ context.Context, _ datastores.TicketRefe
 		next = encodeTicketCursor(last.LastModifiedDate, last.TicketId)
 	}
 	if rows == nil {
-		rows = []*proto.Ticket{}
+		rows = []*types.Ticket{}
 	}
 	return rows, next, hasMore, nil
 }
 
-func matchTicket(t *proto.Ticket, f *datastores.ListTicketsFilter) bool {
+func matchTicket(t *types.Ticket, f *datastores.ListTicketsFilter) bool {
 	if len(f.CategoryIDs) > 0 {
 		match := containsU32(f.CategoryIDs, t.CategoryId)
 		if !match && !f.ExcludeSubcategories {
@@ -592,7 +583,7 @@ func containsStr(haystack []string, needle string) bool {
 	return false
 }
 
-func (recordingDatastore) GetTicket(_ context.Context, _ datastores.TicketReferenceCache, ticketID uint32, _ string) (*proto.Ticket, error) {
+func (recordingDatastore) GetTicket(_ context.Context, _ datastores.TicketReferenceCache, ticketID uint32, _ string) (*types.Ticket, error) {
 	for _, t := range seedTickets() {
 		if t.TicketId == ticketID {
 			return t, nil
@@ -601,7 +592,7 @@ func (recordingDatastore) GetTicket(_ context.Context, _ datastores.TicketRefere
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (recordingDatastore) GetTicketByRef(_ context.Context, _ datastores.TicketReferenceCache, ref string, _ string) (*proto.Ticket, error) {
+func (recordingDatastore) GetTicketByRef(_ context.Context, _ datastores.TicketReferenceCache, ref string, _ string) (*types.Ticket, error) {
 	for _, t := range seedTickets() {
 		if t.TicketRef == ref {
 			return t, nil
@@ -610,9 +601,9 @@ func (recordingDatastore) GetTicketByRef(_ context.Context, _ datastores.TicketR
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (recordingDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, _ bool) ([]*proto.Message, uint32, error) {
+func (recordingDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, _ bool) ([]*types.Message, uint32, error) {
 	if ticketID != 42 {
-		return []*proto.Message{}, 0, nil
+		return []*types.Message{}, 0, nil
 	}
 	msgs := seedMessages42()
 	total := uint32(len(msgs))
@@ -622,7 +613,7 @@ func (recordingDatastore) GetTicketFirstMessages(_ context.Context, ticketID uin
 	return msgs, total, nil
 }
 
-func (recordingDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, _ bool) ([]*proto.Message, string, bool, error) {
+func (recordingDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, _ bool) ([]*types.Message, string, bool, error) {
 	from, err := decodeMessageCursor(afterCursor)
 	if err != nil {
 		return nil, "", false, err
@@ -632,7 +623,7 @@ func (recordingDatastore) ListTicketMessages(_ context.Context, ticketID uint32,
 	} else if perPage > 100 {
 		perPage = 100
 	}
-	var rows []*proto.Message
+	var rows []*types.Message
 	if ticketID == 42 {
 		for _, m := range seedMessages42() {
 			if m.Position >= from {
@@ -649,13 +640,13 @@ func (recordingDatastore) ListTicketMessages(_ context.Context, ticketID uint32,
 		next = encodeMessageCursor(rows[len(rows)-1].Position + 1)
 	}
 	if rows == nil {
-		rows = []*proto.Message{}
+		rows = []*types.Message{}
 	}
 	return rows, next, hasMore, nil
 }
 
-func (recordingDatastore) ListCategories(_ context.Context, _ datastores.TicketReferenceCache) ([]*proto.Category, error) {
-	return []*proto.Category{
+func (recordingDatastore) ListCategories(_ context.Context, _ datastores.TicketReferenceCache) ([]*types.Category, error) {
+	return []*types.Category{
 		{CategoryId: 1, Title: "Recruiting", Description: "Enlistment & recruiting questions", ParentCategoryId: 0, Depth: 0, DisplayOrder: 10, TicketCount: 120},
 		{CategoryId: 5, Title: "S1 Personnel", Description: "", ParentCategoryId: 1, Depth: 1, DisplayOrder: 20, TicketCount: 34},
 		{CategoryId: 7, Title: "S6 Technical Support", Description: "Teamspeak, forum & game-server help", ParentCategoryId: 0, Depth: 0, DisplayOrder: 30, TicketCount: 78},

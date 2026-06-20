@@ -9,19 +9,19 @@ package rest_test
 // one AWOL row).
 
 import (
-	"github.com/7cav/api/proto"
+	"github.com/7cav/api/types"
 )
 
-func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error) {
+func (f *fakeDatastore) FindAllPositionGroups() ([]*types.PositionGroup, error) {
 	if f.findAllPositionGroups != nil {
 		return f.findAllPositionGroups()
 	}
-	return []*proto.PositionGroup{
+	return []*types.PositionGroup{
 		{
 			GroupId:           9,
 			GroupTitle:        "Regimental HQ",
 			GroupDisplayOrder: 1,
-			Positions: []*proto.PositionExpanded{
+			Positions: []*types.PositionExpanded{
 				{PositionTitle: "Regimental Technical Aide", PositionId: 773, PositionDisplayOrder: 3, PositionPossibleSecondary: false},
 				{PositionTitle: "S6 Web Developer", PositionId: 812, PositionDisplayOrder: 7, PositionPossibleSecondary: true},
 			},
@@ -29,22 +29,22 @@ func (f *fakeDatastore) FindAllPositionGroups() ([]*proto.PositionGroup, error) 
 	}, nil
 }
 
-func (f *fakeDatastore) FindProfilesByPosition(positionQuery string) (*proto.LiteRoster, error) {
+func (f *fakeDatastore) FindProfilesByPosition(positionQuery string) (*types.LiteRoster, error) {
 	if f.findProfilesByPosition != nil {
 		return f.findProfilesByPosition(positionQuery)
 	}
 	if positionQuery == "Regimental Technical Aide" {
-		return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{1: seedJarvisLite()}}, nil
+		return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{1: seedJarvisLite()}}, nil
 	}
 	// Frozen #137 behavior: plausible queries come back empty, not 404.
-	return &proto.LiteRoster{Profiles: map[uint64]*proto.LiteProfile{}}, nil
+	return &types.LiteRoster{Profiles: map[uint64]*types.LiteProfile{}}, nil
 }
 
-func (f *fakeDatastore) FindAwol() ([]*proto.Awol, error) {
+func (f *fakeDatastore) FindAwol() ([]*types.Awol, error) {
 	if f.findAwol != nil {
 		return f.findAwol()
 	}
-	return []*proto.Awol{
+	return []*types.Awol{
 		{
 			GroupName: "Alpha Company",
 			RankName:  "Private",
