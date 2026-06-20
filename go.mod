@@ -6,7 +6,7 @@ require (
 	github.com/getsentry/sentry-go v0.46.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/pb33f/libopenapi v0.37.3
-	github.com/pb33f/libopenapi-validator v0.13.8
+	github.com/pb33f/libopenapi-validator v0.13.9
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.68.1
