@@ -58,6 +58,22 @@ A `Rank` is a pay-grade entry from the upstream rank catalog. A
 `PositionExpanded` are the variants that include relational fields the
 plain message omits.
 
+## Forum group
+
+A "forum group" is an entry in the XenForo permission-group directory
+(`xf_user_group`): a named membership group such as a rank, a staff
+position, or a member-status flag. These are the IDs the forum's
+`UserGroupsScope` add-on hands a client from the forum's own `/api/me`.
+
+A forum group is not a `PositionGroup`. A `PositionGroup` is a roster
+construct from the NF Rosters add-on used to browse the org chart. A
+forum group is the forum's own membership unit, a wider set that also
+covers ranks and non-roster groups.
+
+The group directory resolves a forum-group ID to its display name. The
+ID is the stable key; the name is display data that can change at any
+time, so consumers key their logic on IDs and treat names as labels.
+
 ## Record and Award
 
 A `Record` is an entry on a member's service history (joins, promotions,
