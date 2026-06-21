@@ -254,9 +254,16 @@ Defaults (baked in `servers/pool.go`), justified against prod
 
 All three are overridable through the existing `DB_*` env / viper
 `AutomaticEnv()` convention: `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`
-(integers), `DB_CONN_MAX_LIFETIME` (Go duration, e.g. `30m`). An unset,
-zero, negative, or unparseable override falls back to the default — the
-pure mapper `servers.poolConfig` does the fallback/clamping and is
-unit-tested without opening a DB (`servers/pool_test.go`). A
+(integers), `DB_CONN_MAX_LIFETIME` (Go duration, e.g. `30m`). An unset
+override falls back to the default **silently**; an invalid
+(non-numeric / unparseable), out-of-range (zero, negative), or clamped
+(idle > open) override is **rejected with a logged `WARNING` and the
+default / clamp is used** — so an operator never believes a bad
+override is live (mirrors `runReferenceCacheRefresh`'s bad-duration
+warning). The pure mapper `servers.poolConfig(rawOpen, rawIdle,
+rawLifetime string)` does the parse / fallback / clamping and returns
+both the resolved config and the warning lines; it is unit-tested
+without opening a DB or touching viper (`servers/pool_test.go`), and
+`setupDatasource()` logs each returned warning via `Warn.Println`. A
 `max_connections` change is out of scope for the API; that's a
 server-side knob.

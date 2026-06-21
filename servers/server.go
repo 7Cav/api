@@ -116,11 +116,17 @@ func setupDatasource() *datastores.Mysql {
 		Error.Println("issue obtaining underlying sql.DB for connection-pool setup", err)
 		os.Exit(1)
 	}
-	pool := poolConfig(
-		viper.GetInt("db_max_open_conns"),
-		viper.GetInt("db_max_idle_conns"),
+	pool, poolWarnings := poolConfig(
+		viper.GetString("db_max_open_conns"),
+		viper.GetString("db_max_idle_conns"),
 		viper.GetString("db_conn_max_lifetime"),
 	)
+	// A rejected/clamped override must not be silent — an operator who set a
+	// typo'd or out-of-range value would otherwise believe it is live while the
+	// pool quietly runs the safe default. Mirrors runReferenceCacheRefresh.
+	for _, w := range poolWarnings {
+		Warn.Println(w)
+	}
 	sqlDB.SetMaxOpenConns(pool.MaxOpen)
 	sqlDB.SetMaxIdleConns(pool.MaxIdle)
 	sqlDB.SetConnMaxLifetime(pool.MaxLifetime)

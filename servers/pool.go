@@ -18,7 +18,11 @@
 
 package servers
 
-import "time"
+import (
+	"fmt"
+	"strconv"
+	"time"
+)
 
 // Connection-pool defaults (#204). The API and the XenForo forum share one
 // MariaDB. With GORM defaults the underlying database/sql pool is UNBOUNDED
@@ -40,7 +44,10 @@ import "time"
 // ConnMaxLifetime is finite so conns recycle, but well under MySQL wait_timeout.
 //
 // All three are overridable via the DB_* env convention (viper AutomaticEnv):
-// DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, DB_CONN_MAX_LIFETIME. See poolConfig.
+// DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, DB_CONN_MAX_LIFETIME. An invalid,
+// out-of-range, or clamped override is REJECTED with a logged warning (the
+// safe default / clamp is used instead) — never silently dropped. See
+// poolConfig; the call site logs the returned warnings via Warn.Printf.
 const (
 	defaultMaxOpenConns    = 25
 	defaultMaxIdleConns    = 25
@@ -55,43 +62,78 @@ type dbPoolConfig struct {
 	MaxLifetime time.Duration
 }
 
-// poolConfig maps raw env values to the connection-pool settings, applying the
-// conservative #204 defaults whenever an override is unset or invalid. It is a
-// PURE function (no viper, no DB, no os.Exit) so it is unit-testable directly:
-// setupDatasource reads the env via viper and passes the raw values in.
+// poolConfig maps the RAW env strings to the connection-pool settings, applying
+// the conservative #204 defaults whenever an override is unset or invalid. It is
+// a PURE function (no viper, no DB, no os.Exit) so it is unit-testable directly:
+// setupDatasource reads the env via viper (GetString) and passes the raw values
+// in, then logs each returned warning.
+//
+// It returns the resolved config and a slice of human-readable warnings, one per
+// REJECTED or CLAMPED override. The empty string ("") means "unset" and is a
+// clean default — it produces NO warning. An invalid (non-numeric / unparseable),
+// out-of-range (non-positive), or clamped (idle > open) override falls back to
+// the safe default / clamp WITH a warning, so an operator never believes a bad
+// override is live. Parsing the raw string here (rather than taking pre-parsed
+// ints) is what lets the resolver distinguish unset from invalid — viper.GetInt
+// would collapse "banana" and "" to the same 0. The warning text mirrors
+// runReferenceCacheRefresh's "invalid X %q, using default" style.
 //
 // Fallback / clamping rules (each defends a way a bad override could reopen the
 // #204 hole or cool the pool):
-//   - maxOpen <= 0 (unset, zero, or negative) -> defaultMaxOpenConns. A
-//     non-positive value would mean "unbounded" to database/sql, the exact bug.
-//   - maxIdle <= 0 (unset, zero, or negative) -> defaultMaxIdleConns, keeping
-//     the pool warm. maxIdle is then clamped DOWN to MaxOpen, since more idle
-//     than open is meaningless (database/sql would silently clamp anyway).
-//   - lifetime: parsed as a Go duration; empty OR unparseable -> the default,
-//     never disabling recycling silently.
-func poolConfig(maxOpen, maxIdle int, lifetime string) dbPoolConfig {
+//   - maxOpen: empty -> defaultMaxOpenConns silently; non-numeric or <= 0 ->
+//     defaultMaxOpenConns + warning. A non-positive value would mean "unbounded"
+//     to database/sql, the exact bug.
+//   - maxIdle: empty -> defaultMaxIdleConns silently; non-numeric or <= 0 ->
+//     defaultMaxIdleConns + warning, keeping the pool warm. maxIdle is then
+//     clamped DOWN to MaxOpen (with a warning) since more idle than open is
+//     meaningless (database/sql would silently clamp anyway).
+//   - lifetime: empty -> default silently; non-numeric or non-positive ->
+//     default + warning, never disabling recycling silently.
+func poolConfig(rawOpen, rawIdle, rawLifetime string) (dbPoolConfig, []string) {
+	var warns []string
+
 	cfg := dbPoolConfig{
-		MaxOpen:     maxOpen,
-		MaxIdle:     maxIdle,
+		MaxOpen:     defaultMaxOpenConns,
+		MaxIdle:     defaultMaxIdleConns,
 		MaxLifetime: defaultConnMaxLifetime,
 	}
 
-	if cfg.MaxOpen <= 0 {
-		cfg.MaxOpen = defaultMaxOpenConns
-	}
-	if cfg.MaxIdle <= 0 {
-		cfg.MaxIdle = defaultMaxIdleConns
-	}
-	// Idle can never usefully exceed open.
+	cfg.MaxOpen = resolveInt("DB_MAX_OPEN_CONNS", rawOpen, defaultMaxOpenConns, &warns)
+	cfg.MaxIdle = resolveInt("DB_MAX_IDLE_CONNS", rawIdle, defaultMaxIdleConns, &warns)
+
+	// Idle can never usefully exceed open. Clamp explicitly (and announce it)
+	// rather than letting database/sql silently reduce it.
 	if cfg.MaxIdle > cfg.MaxOpen {
+		warns = append(warns, fmt.Sprintf(
+			"DB_MAX_IDLE_CONNS %q exceeds DB_MAX_OPEN_CONNS (%d), clamping idle to %d",
+			rawIdle, cfg.MaxOpen, cfg.MaxOpen))
 		cfg.MaxIdle = cfg.MaxOpen
 	}
 
-	if lifetime != "" {
-		if d, err := time.ParseDuration(lifetime); err == nil && d > 0 {
+	if rawLifetime != "" {
+		if d, err := time.ParseDuration(rawLifetime); err != nil || d <= 0 {
+			warns = append(warns, fmt.Sprintf(
+				"invalid DB_CONN_MAX_LIFETIME %q, using default %s", rawLifetime, defaultConnMaxLifetime))
+		} else {
 			cfg.MaxLifetime = d
 		}
 	}
 
-	return cfg
+	return cfg, warns
+}
+
+// resolveInt parses a raw DB_* integer override. An empty string is a clean
+// unset -> def with no warning. A non-numeric or non-positive value is rejected
+// -> def WITH a warning appended (a non-positive bound means "unbounded" to
+// database/sql, the #204 hole).
+func resolveInt(envVar, raw string, def int, warns *[]string) int {
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		*warns = append(*warns, fmt.Sprintf("invalid %s %q, using default %d", envVar, raw, def))
+		return def
+	}
+	return v
 }
