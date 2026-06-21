@@ -229,3 +229,41 @@ re-applied with the same one command after any forum add-on upgrade
 that rebuilds the tables (idempotent: `ADD INDEX IF NOT EXISTS`). The
 long-term home for re-application is the ApiKeyManager add-on's schema
 step (per PRD #112) — documented intent only, not implemented.
+
+## Connection pool (#204)
+
+The API and the XenForo forum share one MariaDB, so the API's pool is
+sized to leave the forum room. GORM leaves the underlying
+`database/sql` pool **unbounded** by default (`MaxOpenConns == 0`),
+which let a single-key burst open one MySQL conn per in-flight request
+and climb toward the server's global `max_connections` — on 2026-06-18
+a 67-call burst drove 8 `Error 1040 (Too many connections)`, a
+shared-fate failure with the forum. `setupDatasource()` now bounds the
+pool via `conn.DB()` → `SetMaxOpenConns` / `SetMaxIdleConns` /
+`SetConnMaxLifetime`.
+
+Defaults (baked in `servers/pool.go`), justified against prod
+(`max_connections = 300`, forum `pm.max_children = 30`, all-time peak
+68 conns):
+
+| Setting | Default | Why |
+|---|---|---|
+| `MaxOpenConns` | `25` | Bounded + finite. Worst case 25 (API) + 30 (forum) + ~8 (exporters) ≈ 63, well under 300. Clears the 66-call burst in ~90 ms. |
+| `MaxIdleConns` | `25` | Equal to max-open keeps the pool **warm**, so a burst queues against ready conns instead of paying connection-setup cost mid-storm (the root of the #204 latency climb). Clamped down to `MaxOpenConns` if set higher. |
+| `ConnMaxLifetime` | `30m` | Finite so conns recycle, well under MySQL `wait_timeout`. |
+
+All three are overridable through the existing `DB_*` env / viper
+`AutomaticEnv()` convention: `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`
+(integers), `DB_CONN_MAX_LIFETIME` (Go duration, e.g. `30m`). An unset
+override falls back to the default **silently**; an invalid
+(non-numeric / unparseable), out-of-range (zero, negative), or clamped
+(idle > open) override is **rejected with a logged `WARNING` and the
+default / clamp is used** — so an operator never believes a bad
+override is live (mirrors `runReferenceCacheRefresh`'s bad-duration
+warning). The pure mapper `servers.poolConfig(rawOpen, rawIdle,
+rawLifetime string)` does the parse / fallback / clamping and returns
+both the resolved config and the warning lines; it is unit-tested
+without opening a DB or touching viper (`servers/pool_test.go`), and
+`setupDatasource()` logs each returned warning via `Warn.Println`. A
+`max_connections` change is out of scope for the API; that's a
+server-side knob.
