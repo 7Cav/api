@@ -1,38 +1,18 @@
-# The hand-owned OpenAPI 3.1 reference spec for the 7Cav public HTTP API
-# (PRD #112, issue #121; supersedes the generated Swagger 2.0 assets).
+# OpenAPI 3.1 reference for the 7Cav public HTTP API: read-only JSON over
+# HTTPS, with a bearer API key required on every endpoint.
 #
-# This document is executable: contract/spec_test.go replays every committed
-# golden in contract/goldens/ against it and asserts two-way route coverage
-# (every operation has a golden, with at least one 2xx; every golden route
-# has an operation). Behavior drift the corpus witnesses fails CI naming the
-# operation and field. Structural tests additionally pin the emit-everything
-# strictness (all properties required, additionalProperties: false), explicit
-# corpus-witnessed status codes, and the wire conventions below — drift
-# outside those nets fails CI only when a golden contradicts it (e.g. a
-# renamed property); a pure loosening, such as a widened field type, passes
-# the corpus silently.
-#
-# Seeded by mechanically converting the generated milpacs/tickets Swagger 2.0
-# files, then corrected to OBSERVED behavior (the golden corpus is the
-# truth): real gRPC-status error bodies, the plain-text two-tier 401s, the
-# name-or-number enum path forms, uint64-as-string vs uint32-as-number — and
-# the deprecated identity-provider lookup surface removed (it dies at
-# cutover; see contract/README.md on the single corpus transform).
-#
-# Wire conventions (verified by the golden corpus, adopted as house style):
-#   - JSON field names are lowerCamelCase.
-#   - Emit-everything: every field is always present; unset nested messages
-#     are null, empty collections are []/{}; unset strings are "".
-#   - 64-bit integers serialize as JSON strings; 32-bit ones as numbers.
-#   - Enums serialize as their NAME strings; the zero value is *_UNSPECIFIED.
+# JSON conventions used throughout the responses below:
+#   - Field names are lowerCamelCase.
+#   - Every field is always present. An unset object is null, an unset string
+#     is "", and an empty collection is [] or {}.
+#   - 64-bit integers are sent as decimal strings; 32-bit integers as numbers.
+#   - Enum fields are sent as their name; the unset value is *_UNSPECIFIED.
 openapi: 3.1.0
 info:
   title: 7Cav API
-  # Not rendered. Unknown query parameters are ignored on every operation rather
-  # than rejected: a request with an undeclared parameter is accepted, not a 400.
-  # Frozen grpc-gateway behavior (PRD #112), golden-pinned by
-  # roster/unknown_query_param_ignored and tickets/list_unknown_param_ignored, so
-  # property-based tooling that flags it is seeing expected behavior, not a defect.
+  # Unknown query parameters are ignored on every operation rather than
+  # rejected: a request with an undeclared parameter is accepted, not a 400.
+  # Tooling that flags this is seeing intended behavior, not a defect.
   description: >-
     Read-only access to 7Cav.us roster and forum data. All endpoints require a
     bearer API key.
@@ -55,7 +35,7 @@ tags:
   - name: milpacs
     description: Milpac profiles, rosters, ranks, positions and AWOL tracking.
   - name: tickets
-    description: Read-only forum tickets (nixfifty addon).
+    description: Read-only forum support tickets.
   - name: forum
     description: Forum reference data (permission-group directory).
 
@@ -69,7 +49,7 @@ paths:
       summary: Get given user milpac Profile
       description: >-
         Get milpac Profile data for a specific user. The path value is the
-        milpac RELATION key, not the forum user id.
+        milpac relation id, not the forum user id.
       tags: [milpacs]
       parameters:
         - name: userId
@@ -329,13 +309,12 @@ paths:
     get:
       operationId: MilpacService_SearchByPosition
       summary: Search for profiles by position title
-      # Empty-result semantics ruled expected at #137: the matcher was
-      # verified correct against the mirror; {} is data-truthful when the
-      # phrase occurs in no current position title.
-      # The live route is a multi-segment glob, so slashes inside the query and a
-      # bare trailing slash also reach the handler. That is a form an OpenAPI path
-      # template cannot express; this document records the canonical single-segment
-      # form.
+      # An empty profiles map is a valid result: {} means no current position
+      # title contains the query.
+      # The live route accepts multi-segment queries, so slashes inside the
+      # query and a bare trailing slash also reach the handler. That is a form
+      # an OpenAPI path template cannot express; this document records the
+      # canonical single-segment form.
       description: >-
         Search for profiles by position title substring (SQL LIKE '%query%',
         case-insensitive, unanchored, against primary and secondary-capable
@@ -464,11 +443,11 @@ paths:
       operationId: ForumService_GetForumGroups
       summary: Get the forum group directory
       description: >-
-        Get the whole forum permission-group directory (xf_user_group) as
-        {groupId, groupName} pairs, ordered by groupId ascending and
-        unfiltered. groupId is the stable key; groupName is display data that
-        can change. Distinct from the NF Rosters position groups at
-        /api/v1/milpacs/position/groups. See ADR 0007.
+        The full forum permission-group directory as {groupId, groupName}
+        pairs, ordered by groupId ascending and unfiltered. groupId is the
+        stable key; groupName is display text that can change. These are the
+        forum's permission groups, which are distinct from the unit position
+        groups returned by /api/v1/milpacs/position/groups.
       tags: [forum]
       responses:
         "200":
@@ -759,7 +738,7 @@ paths:
       operationId: TicketsService_ListCategories
       summary: List ticket categories
       description: >-
-        Returns the full nixfifty category tree. Reference data for the
+        Returns the full ticket category tree. Reference data for the
         categoryId filter on ListTickets.
       tags: [tickets]
       responses:
@@ -784,8 +763,8 @@ paths:
 
 components:
   securitySchemes:
-    # The #91 fix, inexpressible in Swagger 2.0: http/bearer makes the docs UI
-    # auto-prepend "Bearer " so users paste only the raw cav7_… key.
+    # http/bearer makes the docs UI auto-prepend "Bearer " so users paste only
+    # the raw cav7_… key.
     bearer:
       type: http
       scheme: bearer
@@ -798,10 +777,10 @@ components:
         401; valid keys lacking the operation's scope receive a JSON 403.
 
   parameters:
-    # Roster enum path parameter: the gateway accepts the enum NAME or its
-    # NUMBER (observed: ROSTER_TYPE_COMBAT and 1 return the same payload);
-    # anything else is a 400. The zero value parses but the handler rejects
-    # it with 'cannot request null roster type'.
+    # Roster enum path parameter: the endpoint accepts the enum NAME or its
+    # NUMBER (e.g. ROSTER_TYPE_COMBAT and 1 return the same payload); anything
+    # else is a 400. The zero value parses but the handler rejects it with
+    # 'cannot request null roster type'.
     RosterPath:
       name: roster
       in: path
@@ -818,9 +797,8 @@ components:
             description: Numeric form of the RosterType enum.
 
   responses:
-    # The plain-text 401 tier (frozen by #106): scheme errors name the
-    # expected header form, unknown keys get the generic line. No
-    # WWW-Authenticate challenge is sent.
+    # The plain-text 401 tier: scheme errors name the expected header form,
+    # unknown keys get the generic line. No WWW-Authenticate challenge is sent.
     Unauthorized:
       description: >-
         Missing or invalid bearer credentials. Plain text, two tiers:
@@ -838,13 +816,11 @@ components:
         text/plain:
           schema:
             type: string
-    # Every non-401 error: the gRPC-status JSON shape with the frozen
-    # code→HTTP mapping (3→400, 5→404, 7→403, 13→500). Handler-specific
-    # message strings are frozen behavior, including leaked parse-error text.
-    # Operations declare an explicit entry per corpus-witnessed error status
-    # (enforced by the replay loop — default resolution does not count);
-    # `default` documents that any unwitnessed error status carries this
-    # same shape.
+    # Every non-401 error uses the JSON error shape below, with the code→HTTP
+    # mapping 3→400, 5→404, 7→403, 13→500. Message strings are
+    # handler-specific. Operations list an explicit entry per error status
+    # they can return; `default` covers any other error status, which carries
+    # this same shape.
     Error:
       description: >-
         JSON error body. `code` is a numeric status code (3 InvalidArgument →
@@ -868,7 +844,9 @@ components:
       properties:
         code:
           type: integer
-          description: Numeric gRPC status code.
+          description: >-
+            Numeric status code (3 invalid argument, 5 not found, 7 permission
+            denied, 13 internal).
         message:
           type: string
         details:
@@ -1060,9 +1038,9 @@ components:
       required: [awardDetails, awardName, awardDate, awardImageUrl, awardUid]
       additionalProperties: false
 
-    # Emit-everything null unions: protojson EmitUnpopulated renders unset
-    # message-typed fields as null, so the profile shapes reference these
-    # nullable forms rather than repeating the oneOf inline.
+    # Nullable forms for object-typed fields: an unset object is sent as null,
+    # so the profile shapes reference these instead of repeating the null
+    # union inline.
     NullableUser:
       oneOf:
         - $ref: '#/components/schemas/User'
@@ -1083,9 +1061,9 @@ components:
         - $ref: '#/components/schemas/S1UniformsRank'
         - type: 'null'
 
-    # Emit-everything: every key below is always present. Unset nested
-    # messages are null (protojson EmitUnpopulated), hence the null unions on
-    # message-typed fields; unset strings are ""; empty collections are [].
+    # Every key below is always present. Unset objects are null (hence the
+    # null unions on object-typed fields); unset strings are ""; empty
+    # collections are [].
     Profile:
       type: object
       properties:
@@ -1196,16 +1174,15 @@ components:
         - consoleGamertag
       additionalProperties: false
 
-    # Map shapes: profiles is an explicit map — additionalProperties is the
-    # value schema. The key format (decimal relation-id strings) is documented
-    # in the description only: propertyNames is outside the walked dialect
-    # (see TestSpec_DocumentStaysInWalkedDialect in contract/spec_test.go).
+    # profiles is a map: additionalProperties is the value schema. The key
+    # format (decimal relation-id strings) is given in the property
+    # description, since a key-pattern schema is not used here.
     Roster:
       type: object
       properties:
         profiles:
           type: object
-          description: Profiles keyed by milpac relation id (uint64 keys as strings).
+          description: Profiles keyed by milpac relation id (64-bit ids as decimal strings).
           additionalProperties:
             $ref: '#/components/schemas/Profile'
       required: [profiles]
@@ -1216,7 +1193,7 @@ components:
       properties:
         profiles:
           type: object
-          description: Lite profiles keyed by milpac relation id (uint64 keys as strings).
+          description: Lite profiles keyed by milpac relation id (64-bit ids as decimal strings).
           additionalProperties:
             $ref: '#/components/schemas/LiteProfile'
       required: [profiles]
@@ -1291,7 +1268,7 @@ components:
       properties:
         profiles:
           type: object
-          description: S1 uniforms profiles keyed by milpac relation id (uint64 keys as strings).
+          description: S1 uniforms profiles keyed by milpac relation id (64-bit ids as decimal strings).
           additionalProperties:
             $ref: '#/components/schemas/S1UniformsProfile'
       required: [profiles]
@@ -1330,7 +1307,7 @@ components:
       additionalProperties: false
 
     # --- tickets -----------------------------------------------------------
-    # All tickets integers are proto uint32: JSON numbers on the wire (the
+    # All tickets integers are 32-bit: JSON numbers on the wire (the
     # 64-bit-as-string convention applies only to 64-bit fields).
     Ticket:
       type: object
