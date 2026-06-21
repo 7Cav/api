@@ -28,9 +28,14 @@
 openapi: 3.1.0
 info:
   title: 7Cav API
+  # Not rendered. Unknown query parameters are ignored on every operation rather
+  # than rejected: a request with an undeclared parameter is accepted, not a 400.
+  # Frozen grpc-gateway behavior (PRD #112), golden-pinned by
+  # roster/unknown_query_param_ignored and tickets/list_unknown_param_ignored, so
+  # property-based tooling that flags it is seeing expected behavior, not a defect.
   description: >-
-    Read-only access to 7Cav.us milpacs (military personnel records) and forum
-    tickets. All endpoints require a bearer API key.
+    Read-only access to 7Cav.us roster and forum data. All endpoints require a
+    bearer API key.
 
 
     ## Get your API key
@@ -40,15 +45,6 @@ info:
     manager](https://7cav.us/account/api-key) (members only). Enter it in the
     reference's authentication controls to try any endpoint. The docs send it as
     `Authorization: Bearer <key>`, so enter only the raw `cav7_…` key.
-
-
-    Request leniency (frozen behavior, PRD #112): unknown query parameters are
-    ignored on every operation rather than rejected — a request carrying a
-    parameter this document does not declare is accepted, not a 400. This is
-    intentional and golden-pinned (e.g. roster/unknown_query_param_ignored,
-    tickets/list_unknown_param_ignored). Property-based tooling that flags such
-    a request as "accepted a schema-violating request" is observing expected
-    behavior; it is not a defect.
   version: dev
 externalDocs:
   description: 7Cav API Repository
@@ -82,7 +78,7 @@ paths:
           schema:
             type: string
             pattern: '^[0-9]+$'
-            description: 64-bit id in its decimal-string wire form.
+            description: 64-bit id as a decimal string.
         - name: username
           in: query
           required: false
@@ -94,8 +90,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -141,8 +137,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -176,8 +172,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -211,8 +207,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -242,8 +238,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -277,8 +273,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -310,8 +306,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -336,18 +332,18 @@ paths:
       # Empty-result semantics ruled expected at #137: the matcher was
       # verified correct against the mirror; {} is data-truthful when the
       # phrase occurs in no current position title.
+      # The live route is a multi-segment glob, so slashes inside the query and a
+      # bare trailing slash also reach the handler. That is a form an OpenAPI path
+      # template cannot express; this document records the canonical single-segment
+      # form.
       description: >-
         Search for profiles by position title substring (SQL LIKE '%query%',
         case-insensitive, unanchored, against primary and secondary-capable
         position titles); returns lite profiles. An empty profiles map means
-        no current position title contains the query — terms must follow the
-        unit's own billet vocabulary (line leadership is "Section Leader" /
-        "Platoon Leader"; there is no "Squad Leader" billet, so that query
-        returns {}). The live route is a multi-segment glob
-        ({position_query=**}, proto/milpacs.proto): slashes inside the query
-        and the bare trailing-slash form also reach the handler — forms an
-        OpenAPI path template cannot express; this document records the
-        canonical single-segment form.
+        no current position title contains the query. Terms follow the unit's
+        own billet vocabulary (line leadership is "Section Leader" / "Platoon
+        Leader"; there is no "Squad Leader" billet, so that query returns an
+        empty map).
       tags: [milpacs]
       parameters:
         - name: positionQuery
@@ -363,8 +359,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -392,8 +388,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -421,8 +417,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -448,8 +444,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -480,8 +476,8 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
@@ -603,7 +599,7 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: always served live — responses are
+                Freshness signal: always served live. Responses are
                 stale immediately; do not cache.
               schema:
                 type: string
@@ -644,7 +640,7 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: always served live — responses are
+                Freshness signal: always served live. Responses are
                 stale immediately; do not cache.
               schema:
                 type: string
@@ -682,7 +678,7 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: always served live — responses are
+                Freshness signal: always served live. Responses are
                 stale immediately; do not cache.
               schema:
                 type: string
@@ -742,7 +738,7 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: always served live — responses are
+                Freshness signal: always served live. Responses are
                 stale immediately; do not cache.
               schema:
                 type: string
@@ -772,7 +768,7 @@ paths:
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: always served live — responses are
+                Freshness signal: always served live. Responses are
                 stale immediately; do not cache.
               schema:
                 type: string
@@ -851,9 +847,9 @@ components:
     # same shape.
     Error:
       description: >-
-        gRPC-status JSON error body. code is the numeric gRPC code (3
-        InvalidArgument→400, 5 NotFound→404, 7 PermissionDenied→403,
-        13 Internal→500); message strings are frozen verbatim.
+        JSON error body. `code` is a numeric status code (3 InvalidArgument →
+        400, 5 NotFound → 404, 7 PermissionDenied → 403, 13 Internal → 500).
+        `message` is a human-readable description of the failure.
       content:
         application/json:
           schema:
@@ -864,10 +860,10 @@ components:
     Uint64String:
       type: string
       pattern: '^[0-9]+$'
-      description: 64-bit integer in its decimal-string wire form (protojson).
+      description: 64-bit integer serialized as a decimal string.
 
     Status:
-      description: The gRPC-status error body, frozen by the golden corpus.
+      description: The JSON error body returned when a request fails.
       type: object
       properties:
         code:
@@ -884,10 +880,10 @@ components:
 
     Any:
       description: >-
-        protobuf Any as protojson renders it. Never observed populated —
-        every recorded details array is empty; shape per protojson ('@type'
-        alongside arbitrary additional fields determined by it, so this
-        schema stays open).
+        Additional structured error details. In practice this is always empty;
+        no recorded response has populated it. The schema stays open because an
+        entry, if present, carries an '@type' field plus type-specific fields
+        determined by it.
       type: object
       properties:
         '@type':
