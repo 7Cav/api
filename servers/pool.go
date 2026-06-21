@@ -47,7 +47,7 @@ import (
 // DB_MAX_OPEN_CONNS, DB_MAX_IDLE_CONNS, DB_CONN_MAX_LIFETIME. An invalid,
 // out-of-range, or clamped override is REJECTED with a logged warning (the
 // safe default / clamp is used instead) — never silently dropped. See
-// poolConfig; the call site logs the returned warnings via Warn.Printf.
+// poolConfig; the call site logs the returned warnings via Warn.Println.
 const (
 	defaultMaxOpenConns    = 25
 	defaultMaxIdleConns    = 25
