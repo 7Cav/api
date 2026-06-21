@@ -51,6 +51,8 @@ tags:
     description: Milpac profiles, rosters, ranks, positions and AWOL tracking.
   - name: tickets
     description: Read-only forum tickets (nixfifty addon).
+  - name: forum
+    description: Forum reference data (permission-group directory).
 
 security:
   - bearer: []
@@ -447,6 +449,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AwolResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/forum/groups:
+    get:
+      operationId: ForumService_GetForumGroups
+      summary: Get the forum group directory
+      description: >-
+        Get the whole forum permission-group directory (xf_user_group) as
+        {groupId, groupName} pairs, ordered by groupId ascending and
+        unfiltered. groupId is the stable key; groupName is display data that
+        can change. Distinct from the NF Rosters position groups at
+        /api/v1/milpacs/position/groups. See ADR 0007.
+      tags: [forum]
+      responses:
+        "200":
+          description: Forum group directory.
+          headers:
+            Cache-Control:
+              description: >-
+                Freshness signal: data may be up to 10 minutes stale —
+                consumers may treat a response as fresh for 10 minutes
+                between polls.
+              schema:
+                type: string
+                const: max-age=600
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ForumGroup'
         "401":
           $ref: '#/components/responses/Unauthorized'
         default:
@@ -922,6 +958,17 @@ components:
           items:
             $ref: '#/components/schemas/RankExpanded'
       required: [ranks]
+      additionalProperties: false
+
+    ForumGroup:
+      type: object
+      properties:
+        groupId:
+          type: integer
+          minimum: 0
+        groupName:
+          type: string
+      required: [groupId, groupName]
       additionalProperties: false
 
     Position:

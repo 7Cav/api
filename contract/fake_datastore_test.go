@@ -304,6 +304,20 @@ func (recordingDatastore) FindAwol() ([]*types.Awol, error) {
 	}, nil
 }
 
+// FindForumGroups is the forum-group directory seed (xf_user_group): three
+// {groupId, groupName} pairs, groupId ascending (ADR 0007). groupId is a
+// 32-bit id so it serializes as a JSON number, distinguishing it from the
+// 64-bit milpac ids the corpus records as decimal strings. The rest-package
+// fake (rest/fake_positions_test.go) mirrors this set so the new-stack replay
+// agrees with the recorded golden.
+func (recordingDatastore) FindForumGroups() ([]*types.ForumGroup, error) {
+	return []*types.ForumGroup{
+		{GroupId: 2, GroupName: "Registered"},
+		{GroupId: 3, GroupName: "Administrative"},
+		{GroupId: 10, GroupName: "Rank - Major General"},
+	}, nil
+}
+
 // --- Tickets --------------------------------------------------------------
 
 // seedTickets returns the ticket world sorted by last_modified_date DESC,

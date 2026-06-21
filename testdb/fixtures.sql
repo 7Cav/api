@@ -27,6 +27,18 @@ VALUES
   (400, 'TicketGuy.G', 'g@example.test', 1, 0, 'UTC', 2, '', 1, 'k400'),
   (401, 'Helpdesk.H',  'h@example.test', 1, 0, 'UTC', 2, '', 1, 'k401');
 
+-- Forum permission-group directory (issue #203). Rows are intentionally
+-- inserted out of user_group_id order so the harness test proves
+-- FindForumGroups sorts by groupId ascending rather than relying on insert
+-- order. The four built-in groups plus one rank-shaped group mirror the
+-- production shape (rank/staff groups dominate the real ~300-row table).
+INSERT INTO xf_user_group (user_group_id, title) VALUES
+  (10, 'Rank - Major General'),
+  (1,  'Unregistered / Unconfirmed'),
+  (3,  'Administrative'),
+  (2,  'Registered'),
+  (4,  'Moderating');
+
 -- ---------------------------------------------------------------------
 -- Milpacs (NF Rosters)
 -- ---------------------------------------------------------------------
