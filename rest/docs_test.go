@@ -56,19 +56,59 @@ func TestDocsHandler_ServesOpenAPI31(t *testing.T) {
 		"the docs surface must serve the hand-owned OpenAPI 3.1 document")
 }
 
-// The Swagger UI shell and its static assets serve verbatim from the embedded
+// The Scalar shell and its static assets serve verbatim from the embedded
 // filesystem at the same URLs the old gateway used (everything outside /api),
-// and the shell loads the 3.1 spec.
-func TestDocsHandler_ServesSwaggerUIShell(t *testing.T) {
+// and the shell wires Scalar to the hand-owned 3.1 spec.
+func TestDocsHandler_ServesScalarShell(t *testing.T) {
 	h := rest.DocsHandler("dev")
 
 	rr := docsGet(t, h, "/")
 	require.Equal(t, http.StatusOK, rr.Code)
 	body := rr.Body.String()
-	assert.True(t, strings.Contains(body, "swagger") || strings.Contains(body, "Swagger"),
-		"the index must be the Swagger UI shell")
+	assert.Contains(t, body, "createApiReference",
+		"the index must be the Scalar shell (mounts via Scalar.createApiReference)")
+	assert.Contains(t, body, "scalar.standalone.js",
+		"the shell must load the vendored Scalar bundle, not a CDN")
 	assert.Contains(t, body, "openapi.yaml",
-		"the UI shell must load the hand-owned 3.1 spec")
+		"the shell must load the hand-owned 3.1 spec")
+	assert.Contains(t, body, "theme.css",
+		"the shell must link the 7Cav theme")
+}
+
+// The shipped shell disables Scalar's hosted "Ask AI" assistant: the
+// agent-disabled flag is present and is not flipped back on. The assistant is
+// the only part of Scalar that would phone home, so this is the durable guard
+// for "nothing on the docs page leaves 7Cav infrastructure".
+func TestDocsHandler_DocsShellDisablesHostedAgent(t *testing.T) {
+	h := rest.DocsHandler("dev")
+
+	rr := docsGet(t, h, "/")
+	require.Equal(t, http.StatusOK, rr.Code)
+	body := rr.Body.String()
+
+	stripped := strings.Join(strings.Fields(body), "")
+	assert.Contains(t, stripped, "agent:{disabled:true}",
+		"the shell must disable the hosted assistant (agent: { disabled: true })")
+	// A re-vendor re-enables the assistant by flipping the flag or dropping the
+	// block; the assert above already fails if the block is dropped, so guard the
+	// flip explicitly too, keying off the real config rather than invented tokens.
+	assert.NotContains(t, stripped, "agent:{disabled:false}",
+		"the hosted assistant must stay disabled, not be re-enabled")
+}
+
+// The vendored Scalar standalone bundle is actually embedded and served with a
+// JavaScript content type. The shell loads it by this relative path.
+func TestDocsHandler_ServesScalarBundle(t *testing.T) {
+	h := rest.DocsHandler("dev")
+
+	rr := docsGet(t, h, "/scalar.standalone.js")
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	ct := rr.Header().Get("Content-Type")
+	assert.True(t, strings.Contains(ct, "javascript") || strings.Contains(ct, "ecmascript"),
+		"the vendored bundle must serve as JavaScript, got %q", ct)
+	assert.Contains(t, rr.Body.String(), "createApiReference",
+		"the served bundle must be the Scalar standalone build")
 }
 
 // The retired Swagger 2.0 generated files are gone — requesting them 404s
@@ -80,6 +120,25 @@ func TestDocsHandler_RetiredSwagger2FilesAreGone(t *testing.T) {
 			rr := docsGet(t, h, p)
 			assert.Equal(t, http.StatusNotFound, rr.Code,
 				"the retired generated Swagger 2.0 file must no longer be served")
+		})
+	}
+}
+
+// The replaced Swagger UI bundle and its assets are gone: requesting them 404s
+// rather than serving a stale renderer alongside Scalar. Pins the deletions so a
+// future re-vendor can't quietly reintroduce a second, conflicting docs UI.
+func TestDocsHandler_RemovedSwaggerUIAssetsAreGone(t *testing.T) {
+	h := rest.DocsHandler("dev")
+	for _, p := range []string{
+		"/swagger-ui-bundle.js",
+		"/swagger-ui.css",
+		"/oauth2-redirect.html",
+		"/favicon-32x32.png",
+	} {
+		t.Run(p, func(t *testing.T) {
+			rr := docsGet(t, h, p)
+			assert.Equal(t, http.StatusNotFound, rr.Code,
+				"the replaced Swagger UI asset must no longer be served")
 		})
 	}
 }

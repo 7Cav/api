@@ -191,7 +191,7 @@ func (server *MicroServer) Start() {
 }
 
 // servPublic serves the single public listener: the REST API under /api and
-// the Swagger UI + OpenAPI specs everywhere else, at the same URLs the old
+// the Scalar docs UI + OpenAPI spec everywhere else, at the same URLs the old
 // grpc-gateway used. rest.New is the API handler; rest.DocsHandler serves the
 // docs with the spec's info.version stamped from the build-time version.
 func servPublic(server *MicroServer, lis net.Listener, ds datastores.Datastore) {

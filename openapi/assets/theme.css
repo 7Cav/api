@@ -1,0 +1,29 @@
+/* 7Cav docs theme: dark charcoal with the cavalry-gold accent, mapped onto
+   Scalar's CSS variables. The palette is lifted from 7cav.us's compiled
+   XenForo CSS so the docs read as part of the community site. */
+:root,
+.dark-mode {
+  --scalar-color-accent: #ebc729;
+  --scalar-background-accent: rgba(235, 199, 41, 0.12);
+
+  --scalar-color-1: rgba(255, 255, 255, 0.92);
+  --scalar-color-2: rgba(255, 255, 255, 0.62);
+  --scalar-color-3: rgba(255, 255, 255, 0.40);
+
+  --scalar-background-1: #171717;
+  --scalar-background-2: #1f1f1f;
+  --scalar-background-3: #2b2b2b;
+  --scalar-border-color: rgba(255, 255, 255, 0.10);
+
+  --scalar-button-1: #ebc729;
+  --scalar-button-1-color: #171717;
+  --scalar-button-1-hover: #fdca47;
+
+  --scalar-sidebar-background-1: #131313;
+  --scalar-sidebar-color-1: rgba(255, 255, 255, 0.92);
+  --scalar-sidebar-color-2: rgba(255, 255, 255, 0.55);
+  --scalar-sidebar-border-color: rgba(255, 255, 255, 0.08);
+  --scalar-sidebar-item-hover-background: rgba(255, 255, 255, 0.05);
+  --scalar-sidebar-item-active-background: rgba(235, 199, 41, 0.12);
+  --scalar-sidebar-color-active: #ebc729;
+}

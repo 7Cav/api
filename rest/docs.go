@@ -1,12 +1,19 @@
 package rest
 
 // Docs UI + OpenAPI spec serving for the single-listener stack (#134). The old
-// grpc-gateway served the embedded Swagger UI for every path outside /api; the
+// grpc-gateway served the embedded docs UI for every path outside /api; the
 // cutover folds that role into this package so one public listener serves both
 // the API (rest.New) and the docs.
 //
+// The docs UI is Scalar (vendored standalone build, embedded under assets/),
+// which renders the hand-owned OpenAPI 3.1 spec natively (#215; the prior
+// Swagger UI bundle predated 3.1 and rejected the document). The shell
+// (assets/index.html) mounts Scalar against the served spec with the hosted
+// "Ask AI" assistant disabled, so nothing on the docs page leaves 7Cav
+// infrastructure.
+//
 // Phase 4 (#135) retired the generated Swagger 2.0 *.swagger.json files. The
-// reference document is now the hand-owned OpenAPI 3.1 spec (openapi.Spec, from
+// reference document is the hand-owned OpenAPI 3.1 spec (openapi.Spec, from
 // openapi/openapi.yaml), validated against the golden corpus by
 // contract/spec_test.go and served here at /openapi.yaml. The #117 ruling
 // confirmed no consumer codegens from the served spec, so the 3.1 document
@@ -22,13 +29,12 @@ package rest
 import (
 	"bytes"
 	"io/fs"
-	"mime"
 	"net/http"
 
 	"github.com/7cav/api/openapi"
 )
 
-// specURLPath is where the OpenAPI 3.1 document is served. The Swagger UI shell
+// specURLPath is where the OpenAPI 3.1 document is served. The docs shell
 // (assets/index.html) loads it by this relative path.
 const specURLPath = "/openapi.yaml"
 
@@ -37,19 +43,15 @@ const specURLPath = "/openapi.yaml"
 // build-time version when serving the spec.
 const specVersionSentinel = "version: dev"
 
-// DocsHandler serves the embedded Swagger UI and the OpenAPI 3.1 spec at the
-// same URLs the old gateway used (everything outside /api). The spec has its
-// info.version stamped from version; all other assets are served verbatim from
-// the embedded filesystem.
+// DocsHandler serves the embedded Scalar docs UI and the OpenAPI 3.1 spec at
+// the same URLs the old gateway used (everything outside /api). The spec has
+// its info.version stamped from version; all other assets (the Scalar shell,
+// its vendored bundle, and the theme) are served verbatim from the embedded
+// filesystem.
 //
 // version is the build-time var (servers.version via -ldflags, "dev" locally),
 // threaded in by the composition root.
 func DocsHandler(version string) http.Handler {
-	// Match the old gateway: register the .svg MIME type so the favicons and
-	// any inline SVG assets serve with the right content type.
-	if err := mime.AddExtensionType(".svg", "image/svg+xml"); err != nil {
-		Error.Println("failed to add MIME extension type for .svg: ", err)
-	}
 	sub, err := fs.Sub(openapi.Files, "assets")
 	if err != nil {
 		// Unreachable: the embed always contains assets/. Loud if it ever isn't.
