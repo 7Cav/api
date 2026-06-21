@@ -1,0 +1,25 @@
+{
+  "auth": "read",
+  "body": [
+    {
+      "groupId": 2,
+      "groupName": "Registered"
+    },
+    {
+      "groupId": 3,
+      "groupName": "Administrative"
+    },
+    {
+      "groupId": 10,
+      "groupName": "Rank - Major General"
+    }
+  ],
+  "case": "forum/groups",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Forum permission-group directory (xf_user_group); bare array of {groupId, groupName}, 32-bit groupId as a JSON number, ordered by groupId asc (ADR 0007).",
+  "path": "/api/v1/forum/groups",
+  "status": 200
+}

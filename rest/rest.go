@@ -164,6 +164,12 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	handle(mux, "GET /api/v1/roster/{roster}/lite", "read", maxAgeRosterFamily, getLiteRoster(ds))
 	handle(mux, "GET /api/v1/s1/uniforms/{roster}", "read", maxAgeRosterFamily, getS1UniformsRoster(ds))
 
+	// --- forum (scope: read, max-age 600) ----------------------------------
+	// The forum permission-group directory (xf_user_group), distinct from the
+	// NF Rosters position groups at /api/v1/milpacs/position/groups (ADR 0007).
+	// Same read scope and read-family freshness bound as the milpac surface.
+	handle(mux, "GET /api/v1/forum/groups", "read", maxAgeRosterFamily, getForumGroups(ds))
+
 	// --- tickets (scope: read:tickets, max-age 0 — never cached, live) -----
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
 	// golden-pinned by tickets/categories).

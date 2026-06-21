@@ -4,7 +4,7 @@ package contract
 // route × happy/edge/error/auth cases, both enum path forms, repeated-filter
 // and dual-spelling query combinations on tickets.
 //
-// 16 surviving public routes (the keycloak lookup route
+// 17 public routes (the keycloak lookup route
 // /api/v1/milpac/keycloak/{keycloak_id} is deliberately NOT recorded — it
 // dies at cutover, so there is no golden to hold it to):
 //
@@ -24,6 +24,7 @@ package contract
 //  14. GET /api/v1/tickets/ref/{ticket_ref}
 //  15. GET /api/v1/tickets/{ticket_id}/messages
 //  16. GET /api/v1/tickets/categories
+//  17. GET /api/v1/forum/groups
 //
 // Path literals reference the recording seed (see fake_datastore_test.go and
 // contract/README.md): relation 1 ↔ user 3 (Jarvis.A), relation 2 ↔ user 8
@@ -101,6 +102,10 @@ func Cases() []Case {
 			Notes: "Nested groups → positions, including false booleans emitted."},
 		{Name: "milpacs/awol", Method: "GET", Path: "/api/v1/milpacs/awol", Auth: AuthRead,
 			Notes: "AWOL list; uint64 timestamp/postId/milpacId emitted as strings."},
+
+		// --- Forum group directory ---------------------------------------
+		{Name: "forum/groups", Method: "GET", Path: "/api/v1/forum/groups", Auth: AuthRead,
+			Notes: "Forum permission-group directory (xf_user_group); bare array of {groupId, groupName}, 32-bit groupId as a JSON number, ordered by groupId asc (ADR 0007)."},
 
 		// --- Roster: both enum path forms, empty, errors -------------------
 		{Name: "roster/combat_by_name", Method: "GET", Path: "/api/v1/roster/ROSTER_TYPE_COMBAT", Auth: AuthRead,

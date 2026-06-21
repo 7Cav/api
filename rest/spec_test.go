@@ -53,6 +53,8 @@ var specRoutes = map[string]string{
 	// Reference lists (#128): position groups and the AWOL list.
 	"/api/v1/milpacs/position/groups": "/api/v1/milpacs/position/groups",
 	"/api/v1/milpacs/awol":            "/api/v1/milpacs/awol",
+	// Forum group directory (#203): xf_user_group, bare array.
+	"/api/v1/forum/groups": "/api/v1/forum/groups",
 	// Position search (#128): happy (%20-encoded title), empty result
 	// (frozen #137 behavior), multi-segment (the ** glob form an OpenAPI
 	// template cannot express — classified to the canonical template so the

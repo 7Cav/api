@@ -49,6 +49,7 @@ type fakeDatastore struct {
 	findAllPositionGroups  func() ([]*types.PositionGroup, error)
 	findProfilesByPosition func(positionQuery string) (*types.LiteRoster, error)
 	findAwol               func() ([]*types.Awol, error)
+	findForumGroups        func() ([]*types.ForumGroup, error)
 
 	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
 	// test sets one to inject an outage or observe the bound filter.
@@ -261,6 +262,7 @@ var implementedCases = []string{
 	"milpacs/ranks",
 	"milpacs/position_groups",
 	"milpacs/awol",
+	"forum/groups",
 	"position/search_happy",
 	"position/search_empty_result",
 	"position/search_multi_segment",
