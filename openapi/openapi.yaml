@@ -33,6 +33,15 @@ info:
     tickets. All endpoints require a bearer API key.
 
 
+    ## Get your API key
+
+
+    Generate a key from the [7Cav API key
+    manager](https://7cav.us/account/api-key) (members only). Enter it in the
+    reference's authentication controls to try any endpoint. The docs send it as
+    `Authorization: Bearer <key>`, so enter only the raw `cav7_…` key.
+
+
     Request leniency (frozen behavior, PRD #112): unknown query parameters are
     ignored on every operation rather than rejected — a request carrying a
     parameter this document does not declare is accepted, not a 400. This is
@@ -779,13 +788,15 @@ paths:
 
 components:
   securitySchemes:
-    # The #91 fix, inexpressible in Swagger 2.0: http/bearer makes Swagger UI
+    # The #91 fix, inexpressible in Swagger 2.0: http/bearer makes the docs UI
     # auto-prepend "Bearer " so users paste only the raw cav7_… key.
     bearer:
       type: http
       scheme: bearer
       description: >-
         7Cav API key (cav7_…), sent as `Authorization: Bearer <key>`.
+        Members generate a key from the API key manager at
+        https://7cav.us/account/api-key.
         Requests without the Bearer scheme receive a plain-text 401 naming
         the expected header form; unknown keys receive a generic plain-text
         401; valid keys lacking the operation's scope receive a JSON 403.
