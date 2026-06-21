@@ -741,8 +741,8 @@ func TestSpec_MutationCanary(t *testing.T) {
           headers:
             Cache-Control:
               description: >-
-                Freshness signal: data may be up to 10 minutes stale —
-                consumers may treat a response as fresh for 10 minutes
+                Freshness signal: data may be up to 10 minutes stale.
+                Consumers may treat a response as fresh for 10 minutes
                 between polls.
               schema:
                 type: string
