@@ -944,15 +944,25 @@ func TestSpec_Every200DeclaresCacheControl(t *testing.T) {
 // signal: GzipMiddleware runs inside auth but outside the mux, so it stamps Vary
 // on EVERY response a handler produces — all 2xx AND the JSON error tier (the
 // shared Error response, covering 400/403/404/500 and the default fall-through).
-// The only response that carries no Vary is the 401 tier, because AuthMiddleware
-// short-circuits before the gzip layer ever runs. So the rule follows that
-// "reaches the gzip layer vs the 401 short-circuit" seam, NOT 2xx-vs-non-2xx:
+// The responses that carry no Vary are the pre-gzip auth short-circuit tier:
+// AuthMiddleware returns before the gzip layer ever runs on two wire statuses —
+// the 401 (bad/unknown key) AND the 503 (the DB-outage branch in rest/auth.go,
+// codeUnavailable). Both short-circuit upstream of GzipMiddleware, so neither
+// carries Vary. So the rule follows that "reaches the gzip layer vs the auth
+// short-circuit" seam, NOT 2xx-vs-non-2xx:
 //
-//   - every operation 2xx response, every non-401 operation error response
-//     (the shared Error shape, reached through gzip), the operation default
-//     fall-through, and the shared Error component MUST declare Vary;
-//   - the shared Unauthorized component and any literal 401 response MUST NOT —
-//     the pre-routing auth tier never reaches GzipMiddleware.
+//   - every operation 2xx response, every operation error response that a
+//     handler produces (the shared Error shape, reached through gzip), the
+//     operation default fall-through, and the shared Error component MUST
+//     declare Vary;
+//   - the shared Unauthorized component and any literal 401 or 503 response MUST
+//     NOT — the pre-routing auth tier never reaches GzipMiddleware.
+//
+// 503 is emitted only by that auth outage path today (codeUnavailable has a
+// single producer), so keying an explicit 503 to no-Vary is sound. It is
+// currently folded into the operation `default` (no `"503"` is declared), which
+// resolves to the Vary-carrying Error shape; this test keeps a faithful future
+// `"503"` declaration (no Vary, mirroring the 401) from tripping the guard.
 //
 // Without this net a new endpoint can document Cache-Control (which the spec
 // test above enforces) but forget Vary, and the spec silently drifts from the
@@ -973,7 +983,7 @@ func TestSpec_VaryAccompaniesEveryGzippedResponse(t *testing.T) {
 		}
 		if !wantVary {
 			assert.Nil(t, hdr,
-				"%s: declares Vary but never reaches the gzip layer — the 401 auth tier short-circuits before GzipMiddleware, so it carries no Vary on the wire", where)
+				"%s: declares Vary but never reaches the gzip layer — the auth tier (401 and the outage-path 503) short-circuits before GzipMiddleware, so it carries no Vary on the wire", where)
 			return
 		}
 		require.NotNil(t, hdr,
@@ -1016,12 +1026,20 @@ func TestSpec_VaryAccompaniesEveryGzippedResponse(t *testing.T) {
 			}
 			for rp := orderedmap.First(op.Responses.Codes); rp != nil; rp = rp.Next() {
 				code := rp.Key()
-				// Everything a handler produces is gzipped; only the 401 tier
-				// short-circuits before the gzip layer runs.
-				checkResponse(opPath+".responses."+code, code != "401", rp.Value())
+				// Everything a handler produces is gzipped; the auth tier short-
+				// circuits before the gzip layer runs, and it has two wire
+				// statuses — the 401 (bad/unknown key) and the 503 (the DB-outage
+				// branch in rest/auth.go, codeUnavailable). Both return before
+				// next.ServeHTTP, so neither carries Vary; an explicitly declared
+				// 401 or 503 is therefore expected to have none.
+				checkResponse(opPath+".responses."+code, code != "401" && code != "503", rp.Value())
 			}
-			// The default fall-through resolves to the shared Error shape, which
-			// is handler-produced and therefore reached through gzip.
+			// `default` carries Vary because the handler errors that resolve to it
+			// do (400/403/404/500, the shared Error shape, all reached through
+			// gzip). The lone exception folded into `default` is the auth-path 503,
+			// which OpenAPI's single `default` cannot express separately; that
+			// outage status is pinned NOT to reach gzip elsewhere (the explicit
+			// "503"/"401" arm above, and rest/vary_test.go live).
 			checkResponse(opPath+".responses.default", true, op.Responses.Default)
 		}
 	}
