@@ -739,6 +739,14 @@ func TestSpec_MutationCanary(t *testing.T) {
 	const ranks200Block = `        "200":
           description: Rank reference list.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
