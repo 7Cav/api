@@ -937,6 +937,120 @@ func TestSpec_Every200DeclaresCacheControl(t *testing.T) {
 	assert.GreaterOrEqual(t, two00s, 16, "expected a 2xx declaration per public operation, saw %d", two00s)
 }
 
+// TestSpec_VaryAccompaniesEveryGzippedResponse pins the Vary: Accept-Encoding
+// declaration (#229, #230) at the spec layer, both directions, the same way
+// TestSpec_Every200DeclaresCacheControl pins Cache-Control. The discriminator
+// is different, though, because Vary has a broader footprint than the freshness
+// signal: GzipMiddleware runs inside auth but outside the mux, so it stamps Vary
+// on EVERY response a handler produces — all 2xx AND the JSON error tier (the
+// shared Error response, covering 400/403/404/500 and the default fall-through).
+// The responses that carry no Vary are the pre-gzip auth short-circuit tier:
+// AuthMiddleware returns before the gzip layer ever runs on two wire statuses —
+// the 401 (bad/unknown key) AND the 503 (the DB-outage branch in rest/auth.go,
+// codeUnavailable). Both short-circuit upstream of GzipMiddleware, so neither
+// carries Vary. So the rule follows that "reaches the gzip layer vs the auth
+// short-circuit" seam, NOT 2xx-vs-non-2xx:
+//
+//   - every operation 2xx response, every operation error response that a
+//     handler produces (the shared Error shape, reached through gzip), the
+//     operation default fall-through, and the shared Error component MUST
+//     declare Vary;
+//   - the shared Unauthorized component and any literal 401 or 503 response MUST
+//     NOT — the pre-routing auth tier never reaches GzipMiddleware.
+//
+// 503 is emitted only by that auth outage path today (codeUnavailable has a
+// single producer), so keying an explicit 503 to no-Vary is sound. It is
+// currently folded into the operation `default` (no `"503"` is declared), which
+// resolves to the Vary-carrying Error shape; this test keeps a faithful future
+// `"503"` declaration (no Vary, mirroring the 401) from tripping the guard.
+//
+// Without this net a new endpoint can document Cache-Control (which the spec
+// test above enforces) but forget Vary, and the spec silently drifts from the
+// wire again — the exact #228 class of bug. The VALUES the stack actually sends
+// are pinned live in rest/vary_test.go; this is the structural guard keeping the
+// docs honest.
+func TestSpec_VaryAccompaniesEveryGzippedResponse(t *testing.T) {
+	_, model := loadSpec(t)
+
+	varyDeclared := 0
+	checkResponse := func(where string, wantVary bool, r *v3.Response) {
+		if r == nil {
+			return
+		}
+		var hdr *v3.Header
+		if r.Headers != nil {
+			hdr = r.Headers.GetOrZero("Vary")
+		}
+		if !wantVary {
+			assert.Nil(t, hdr,
+				"%s: declares Vary but never reaches the gzip layer — the auth tier (401 and the outage-path 503) short-circuits before GzipMiddleware, so it carries no Vary on the wire", where)
+			return
+		}
+		require.NotNil(t, hdr,
+			"%s: response reaches the gzip layer but declares no Vary header — GzipMiddleware stamps Vary: Accept-Encoding on every handler-produced response (#229), so the spec must say so", where)
+		// Deliberately NOT required, for the same reason the Cache-Control test
+		// documents: the validator enforces required response headers, and the
+		// frozen golden corpus (recorded from the old stack, allowlist-filtered,
+		// carrying no Vary) replays against this document, so required: true
+		// breaks TestSpec_GoldenReplay permanently. The always-sent guarantee is
+		// pinned live instead (rest/vary_test.go).
+		assert.False(t, hdr.Required,
+			"%s: Vary must stay optional — required: true fails the frozen-corpus replay (goldens record no Vary)", where)
+		require.NotNil(t, hdr.Schema, "%s: Vary header declares no schema", where)
+		s := hdr.Schema.Schema()
+		require.NotNil(t, s, "%s: Vary header schema does not build", where)
+		assert.Equal(t, []string{"string"}, s.Type, "%s: Vary schema must be a string", where)
+		require.NotNil(t, s.Const,
+			"%s: Vary schema must pin its exact value with const — the declaration IS the recorded cache-keying header", where)
+		assert.Equal(t, "Accept-Encoding", s.Const.Value,
+			"%s: Vary const must be Accept-Encoding", where)
+		varyDeclared++
+	}
+
+	if model.Components != nil {
+		for pair := orderedmap.First(model.Components.Responses); pair != nil; pair = pair.Next() {
+			// Shared error tier: Error is handler-produced (flows through gzip)
+			// and carries Vary; Unauthorized is the pre-gzip 401 short-circuit
+			// and does not.
+			name := pair.Key()
+			checkResponse("components.responses."+name, name != "Unauthorized", pair.Value())
+		}
+	}
+
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		route := pair.Key()
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			opPath := strings.ToUpper(method) + " " + route
+			if op.Responses == nil {
+				continue // absence of responses is the replay loop's failure to report
+			}
+			for rp := orderedmap.First(op.Responses.Codes); rp != nil; rp = rp.Next() {
+				code := rp.Key()
+				// Everything a handler produces is gzipped; the auth tier short-
+				// circuits before the gzip layer runs, and it has two wire
+				// statuses — the 401 (bad/unknown key) and the 503 (the DB-outage
+				// branch in rest/auth.go, codeUnavailable). Both return before
+				// next.ServeHTTP, so neither carries Vary; an explicitly declared
+				// 401 or 503 is therefore expected to have none.
+				checkResponse(opPath+".responses."+code, code != "401" && code != "503", rp.Value())
+			}
+			// `default` carries Vary because the handler errors that resolve to it
+			// do (400/403/404/500, the shared Error shape, all reached through
+			// gzip). The lone exception folded into `default` is the auth-path 503,
+			// which OpenAPI's single `default` cannot express separately; that
+			// outage status is pinned NOT to reach gzip elsewhere (the explicit
+			// "503"/"401" arm above, and rest/vary_test.go live).
+			checkResponse(opPath+".responses.default", true, op.Responses.Default)
+		}
+	}
+
+	// Non-vacuousness: the walk must actually find the Vary declarations (17
+	// success responses, the shared Error component, and every non-401 error
+	// response that resolves to it). A walk that silently iterated nothing would
+	// pass every per-response assertion above.
+	assert.GreaterOrEqual(t, varyDeclared, 17, "expected Vary on every gzipped response, saw %d", varyDeclared)
+}
+
 // TestSpec_EveryOperationHasGolden is coverage direction A: every operation
 // in the spec is exercised by at least one golden — including at least one
 // 2xx golden, so error-only coverage cannot count as witnessing the success
