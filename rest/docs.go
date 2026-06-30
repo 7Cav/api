@@ -67,12 +67,23 @@ func DocsHandler(version string) http.Handler {
 			[]byte("version: "+version), 1)
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// GzipMiddleware compresses both the spec and the static assets (the ~3.6 MB
+	// Scalar bundle is the one that matters) when the client advertises gzip, the
+	// same negotiation the /api stack runs. The docs handler owns its own
+	// compression so the public-listener split stays a plain path dispatch and
+	// only the docs surface changes. The file-server shapes this surface actually
+	// produces — the stale uncompressed Content-Length http.FileServer sets, and
+	// HEAD — the middleware already handles. (It is also hardened against the
+	// bodyless 304/204 shapes, but this surface never mints them: the embedded FS
+	// carries no modtime or ETag, so http.FileServer sends no validators and
+	// answers no conditional GET with a 304.) A client that does not negotiate
+	// gzip is served the bytes verbatim.
+	return GzipMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == specURLPath {
 			w.Header().Set("Content-Type", "application/yaml")
 			_, _ = w.Write(spec)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
-	})
+	}))
 }
