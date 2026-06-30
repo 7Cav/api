@@ -68,6 +68,14 @@ paths:
         "200":
           description: The full milpac profile.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -115,6 +123,14 @@ paths:
         "200":
           description: The full milpac profile.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -150,6 +166,14 @@ paths:
         "200":
           description: The full milpac profile.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -185,6 +209,14 @@ paths:
         "200":
           description: The full milpac profile.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -216,6 +248,14 @@ paths:
         "200":
           description: Profiles keyed by milpac relation id.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -251,6 +291,14 @@ paths:
         "200":
           description: Lite profiles keyed by milpac relation id.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -284,6 +332,14 @@ paths:
         "200":
           description: S1 uniforms profiles keyed by milpac relation id.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -336,6 +392,14 @@ paths:
             Matching lite profiles keyed by milpac relation id; {} when
             nothing matches (200, never 404).
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -365,6 +429,14 @@ paths:
         "200":
           description: Rank reference list.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -394,6 +466,14 @@ paths:
         "200":
           description: Position group reference tree.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -421,6 +501,14 @@ paths:
         "200":
           description: AWOL list.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -453,6 +541,14 @@ paths:
         "200":
           description: Forum group directory.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: data may be up to 10 minutes stale.
@@ -576,6 +672,14 @@ paths:
         "200":
           description: One page of tickets.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: always served live. Responses are
@@ -617,6 +721,14 @@ paths:
         "200":
           description: The ticket with its first messages.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: always served live. Responses are
@@ -655,6 +767,14 @@ paths:
         "200":
           description: The ticket with its first messages.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: always served live. Responses are
@@ -715,6 +835,14 @@ paths:
         "200":
           description: One page of the message thread.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: always served live. Responses are
@@ -745,6 +873,14 @@ paths:
         "200":
           description: Category reference tree.
           headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
             Cache-Control:
               description: >-
                 Freshness signal: always served live. Responses are
@@ -826,6 +962,15 @@ components:
         JSON error body. `code` is a numeric status code (3 InvalidArgument →
         400, 5 NotFound → 404, 7 PermissionDenied → 403, 13 Internal → 500).
         `message` is a human-readable description of the failure.
+      headers:
+        Vary:
+          description: >-
+            Cache-keying hint: the server selects the body encoding from
+            Accept-Encoding, so a shared cache must store the gzip and
+            identity variants under separate keys.
+          schema:
+            type: string
+            const: Accept-Encoding
       content:
         application/json:
           schema:
