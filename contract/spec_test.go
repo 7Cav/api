@@ -937,6 +937,102 @@ func TestSpec_Every200DeclaresCacheControl(t *testing.T) {
 	assert.GreaterOrEqual(t, two00s, 16, "expected a 2xx declaration per public operation, saw %d", two00s)
 }
 
+// TestSpec_VaryAccompaniesEveryGzippedResponse pins the Vary: Accept-Encoding
+// declaration (#229, #230) at the spec layer, both directions, the same way
+// TestSpec_Every200DeclaresCacheControl pins Cache-Control. The discriminator
+// is different, though, because Vary has a broader footprint than the freshness
+// signal: GzipMiddleware runs inside auth but outside the mux, so it stamps Vary
+// on EVERY response a handler produces — all 2xx AND the JSON error tier (the
+// shared Error response, covering 400/403/404/500 and the default fall-through).
+// The only response that carries no Vary is the 401 tier, because AuthMiddleware
+// short-circuits before the gzip layer ever runs. So the rule follows that
+// "reaches the gzip layer vs the 401 short-circuit" seam, NOT 2xx-vs-non-2xx:
+//
+//   - every operation 2xx response, every non-401 operation error response
+//     (the shared Error shape, reached through gzip), the operation default
+//     fall-through, and the shared Error component MUST declare Vary;
+//   - the shared Unauthorized component and any literal 401 response MUST NOT —
+//     the pre-routing auth tier never reaches GzipMiddleware.
+//
+// Without this net a new endpoint can document Cache-Control (which the spec
+// test above enforces) but forget Vary, and the spec silently drifts from the
+// wire again — the exact #228 class of bug. The VALUES the stack actually sends
+// are pinned live in rest/vary_test.go; this is the structural guard keeping the
+// docs honest.
+func TestSpec_VaryAccompaniesEveryGzippedResponse(t *testing.T) {
+	_, model := loadSpec(t)
+
+	varyDeclared := 0
+	checkResponse := func(where string, wantVary bool, r *v3.Response) {
+		if r == nil {
+			return
+		}
+		var hdr *v3.Header
+		if r.Headers != nil {
+			hdr = r.Headers.GetOrZero("Vary")
+		}
+		if !wantVary {
+			assert.Nil(t, hdr,
+				"%s: declares Vary but never reaches the gzip layer — the 401 auth tier short-circuits before GzipMiddleware, so it carries no Vary on the wire", where)
+			return
+		}
+		require.NotNil(t, hdr,
+			"%s: response reaches the gzip layer but declares no Vary header — GzipMiddleware stamps Vary: Accept-Encoding on every handler-produced response (#229), so the spec must say so", where)
+		// Deliberately NOT required, for the same reason the Cache-Control test
+		// documents: the validator enforces required response headers, and the
+		// frozen golden corpus (recorded from the old stack, allowlist-filtered,
+		// carrying no Vary) replays against this document, so required: true
+		// breaks TestSpec_GoldenReplay permanently. The always-sent guarantee is
+		// pinned live instead (rest/vary_test.go).
+		assert.False(t, hdr.Required,
+			"%s: Vary must stay optional — required: true fails the frozen-corpus replay (goldens record no Vary)", where)
+		require.NotNil(t, hdr.Schema, "%s: Vary header declares no schema", where)
+		s := hdr.Schema.Schema()
+		require.NotNil(t, s, "%s: Vary header schema does not build", where)
+		assert.Equal(t, []string{"string"}, s.Type, "%s: Vary schema must be a string", where)
+		require.NotNil(t, s.Const,
+			"%s: Vary schema must pin its exact value with const — the declaration IS the recorded cache-keying header", where)
+		assert.Equal(t, "Accept-Encoding", s.Const.Value,
+			"%s: Vary const must be Accept-Encoding", where)
+		varyDeclared++
+	}
+
+	if model.Components != nil {
+		for pair := orderedmap.First(model.Components.Responses); pair != nil; pair = pair.Next() {
+			// Shared error tier: Error is handler-produced (flows through gzip)
+			// and carries Vary; Unauthorized is the pre-gzip 401 short-circuit
+			// and does not.
+			name := pair.Key()
+			checkResponse("components.responses."+name, name != "Unauthorized", pair.Value())
+		}
+	}
+
+	for pair := orderedmap.First(model.Paths.PathItems); pair != nil; pair = pair.Next() {
+		route := pair.Key()
+		for method, op := range pair.Value().GetOperations().FromOldest() {
+			opPath := strings.ToUpper(method) + " " + route
+			if op.Responses == nil {
+				continue // absence of responses is the replay loop's failure to report
+			}
+			for rp := orderedmap.First(op.Responses.Codes); rp != nil; rp = rp.Next() {
+				code := rp.Key()
+				// Everything a handler produces is gzipped; only the 401 tier
+				// short-circuits before the gzip layer runs.
+				checkResponse(opPath+".responses."+code, code != "401", rp.Value())
+			}
+			// The default fall-through resolves to the shared Error shape, which
+			// is handler-produced and therefore reached through gzip.
+			checkResponse(opPath+".responses.default", true, op.Responses.Default)
+		}
+	}
+
+	// Non-vacuousness: the walk must actually find the Vary declarations (17
+	// success responses, the shared Error component, and every non-401 error
+	// response that resolves to it). A walk that silently iterated nothing would
+	// pass every per-response assertion above.
+	assert.GreaterOrEqual(t, varyDeclared, 17, "expected Vary on every gzipped response, saw %d", varyDeclared)
+}
+
 // TestSpec_EveryOperationHasGolden is coverage direction A: every operation
 // in the spec is exercised by at least one golden — including at least one
 // 2xx golden, so error-only coverage cannot count as witnessing the success
