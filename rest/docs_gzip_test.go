@@ -4,11 +4,14 @@ package rest_test
 // handler serves the embedded Scalar bundle (~3.6 MB) and the OpenAPI spec; it
 // must compress them when the client advertises Accept-Encoding: gzip and serve
 // them verbatim when it does not — reusing the same GzipMiddleware the /api
-// stack uses, not a second compression path. A ResponseRecorder is enough here:
-// the deferred gz.Close runs before ServeHTTP returns, so the recorder body
-// holds the complete gzip stream, and decode-equality against the verbatim
-// response is the acceptance check (the middleware's stale-Content-Length wire
-// behavior is pinned crisply in gzip_test.go).
+// stack uses, not a second compression path. The recorder-based tests below
+// cover gzip negotiation and decode-equality against the verbatim response (with
+// a Content-Length header pin); the deferred gz.Close runs before ServeHTTP
+// returns, so the recorder body holds the complete gzip stream. A recorder
+// cannot observe the wire Content-Length, though, so the docs surface's
+// stale-Content-Length behavior is pinned by the httptest.NewServer test in this
+// file, on a length-enforcing transport; gzip_test.go covers the generic
+// GzipMiddleware composition.
 
 import (
 	"bytes"
@@ -129,16 +132,20 @@ func TestDocsHandler_ServesVerbatimWhenGzipNotNegotiated(t *testing.T) {
 // The genuine wire check for acceptance criterion 4 (#218): over a real
 // transport — which, unlike a recorder, enforces a declared Content-Length — a
 // gzip-negotiated bundle request must carry no stale uncompressed
-// Content-Length. http.FileServer sets Content-Length to the UNCOMPRESSED size;
-// were GzipMiddleware to leave it on the response, net/http would close the
-// connection short of the declared length and the client would hit unexpected
-// EOF, so the gunzip below would fail instead of decoding the asset whole. This
-// is the only construction that exercises the real GzipMiddleware+http.FileServer
-// composition on a length-enforcing transport. Setting Accept-Encoding: gzip by
-// hand suppresses the transport's transparent decompression, so the test reads
-// the raw gzip stream with Content-Encoding intact; the verbatim asset is
-// fetched over the same server WITHOUT the header, where the transport
-// transparently yields the decoded bytes.
+// Content-Length. The deterministic guard is the direct Content-Length header
+// assertion below (require.Empty): http.FileServer sets Content-Length to the
+// UNCOMPRESSED size, and this test fails the moment that stale value reaches the
+// wire. The gunzip round-trip that follows is additional integrity
+// verification — it confirms the asset decodes byte-for-byte — and only
+// contingently doubles as a truncation catch: were the stale length left on,
+// net/http would also close the connection short of the declared length and the
+// client would hit unexpected EOF. This is the only construction that exercises
+// the real GzipMiddleware+http.FileServer composition on a length-enforcing
+// transport. Setting Accept-Encoding: gzip by hand suppresses the transport's
+// transparent decompression, so the test reads the raw gzip stream with
+// Content-Encoding intact; the verbatim asset is fetched over the same server
+// WITHOUT the header, where the transport transparently yields the decoded
+// bytes.
 func TestDocsHandler_GzipBundleCarriesNoStaleContentLengthOnTheWire(t *testing.T) {
 	srv := httptest.NewServer(rest.DocsHandler("dev"))
 	defer srv.Close()
@@ -162,7 +169,7 @@ func TestDocsHandler_GzipBundleCarriesNoStaleContentLengthOnTheWire(t *testing.T
 	require.NoError(t, err, "body must open as a gzip stream")
 	decoded, err := io.ReadAll(zr)
 	require.NoError(t, err,
-		"compressed bundle must arrive whole, not truncated at a stale Content-Length")
+		"compressed bundle must decode whole (byte-for-byte integrity check; the Content-Length header pin above is the primary stale-length guard)")
 	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
 
 	// Verbatim fetch over the same server: no Accept-Encoding, so the transport
