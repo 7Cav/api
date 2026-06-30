@@ -962,6 +962,15 @@ components:
         JSON error body. `code` is a numeric status code (3 InvalidArgument →
         400, 5 NotFound → 404, 7 PermissionDenied → 403, 13 Internal → 500).
         `message` is a human-readable description of the failure.
+      headers:
+        Vary:
+          description: >-
+            Cache-keying hint: the server selects the body encoding from
+            Accept-Encoding, so a shared cache must store the gzip and
+            identity variants under separate keys.
+          schema:
+            type: string
+            const: Accept-Encoding
       content:
         application/json:
           schema:

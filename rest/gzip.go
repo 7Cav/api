@@ -19,12 +19,14 @@ func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The response body is selected by proactive content negotiation on
 		// Accept-Encoding, so declare that to any shared cache: it must key each
-		// encoding variant separately rather than serve one body for both. Set
-		// unconditionally, before the branch, so every response inherits it —
-		// the gzip branch and the identity pass-through alike, and every status,
-		// including the bodyless 204/304 finals (Vary is a cache-keying hint, so
-		// it is correct to keep there, unlike the Content-Encoding stripped off
-		// them below). Add, not Set, so a handler's own Vary value survives.
+		// encoding variant separately rather than serve one body for both.
+		// Applied unconditionally, before the branch, so every response that
+		// reaches this layer inherits it (the outer auth 401 short-circuits
+		// before it) — the gzip branch and the identity pass-through alike, and
+		// every status, including the bodyless 204/304 finals (Vary is a
+		// cache-keying hint, so it is correct to keep there, unlike the
+		// Content-Encoding stripped off them below). Add, not Set, so a Vary
+		// value already set by an outer layer survives — Set would drop it.
 		w.Header().Add("Vary", "Accept-Encoding")
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			w.Header().Set("Content-Encoding", "gzip")
