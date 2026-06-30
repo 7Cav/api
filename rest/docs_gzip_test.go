@@ -23,9 +23,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// docsGetGzip issues a docs request advertising Accept-Encoding: gzip. The
+// docsGetGzip issues a docs request advertising Accept-Encoding: gzip. A
 // recorder does not transparently decompress (only a real transport does), so
-// the body is the raw response bytes exactly as the wire would carry them.
+// the body holds the gzip stream directly for the test to decode. It is not a
+// faithful wire image, though: a recorder enforces no Content-Length, so the
+// genuine-transport check lives in the httptest.NewServer test below.
 func docsGetGzip(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
@@ -61,6 +63,8 @@ func TestDocsHandler_GzipsBundleWhenNegotiated(t *testing.T) {
 	require.Equal(t, http.StatusOK, gz.Code)
 	require.Equal(t, "gzip", gz.Header().Get("Content-Encoding"),
 		"a gzip-negotiated docs asset must be served compressed")
+	require.Empty(t, gz.Header().Get("Content-Length"),
+		"the stale uncompressed Content-Length http.FileServer sets must be stripped on first write")
 
 	assert.Less(t, gz.Body.Len(), plain.Body.Len(),
 		"the compressed bundle must be smaller than the verbatim bundle")
@@ -82,6 +86,8 @@ func TestDocsHandler_GzipsSpecWithVersionStampIntact(t *testing.T) {
 	require.Equal(t, http.StatusOK, gz.Code)
 	require.Equal(t, "gzip", gz.Header().Get("Content-Encoding"),
 		"the served spec must compress when gzip is negotiated")
+	require.Empty(t, gz.Header().Get("Content-Length"),
+		"the compressed spec must carry no stale uncompressed Content-Length")
 
 	decoded := gunzip(t, gz.Body.Bytes())
 	assert.Equal(t, plain.Body.Bytes(), decoded,
@@ -92,11 +98,12 @@ func TestDocsHandler_GzipsSpecWithVersionStampIntact(t *testing.T) {
 		"the dev sentinel must stay replaced under compression")
 }
 
-// A docs request that does not advertise gzip is served verbatim — no
-// Content-Encoding, byte-for-byte as before #218. This is the half of the
-// negotiation the existing docs tests already exercise implicitly (they send no
-// Accept-Encoding); pin it explicitly for both the asset and the spec path so a
-// regression that compresses unconditionally is caught.
+// A docs request that does not advertise gzip is served verbatim: no
+// Content-Encoding, and the body is the raw asset bytes, not a gzip stream.
+// This is the half of the negotiation the existing docs tests already exercise
+// implicitly (they send no Accept-Encoding); pin it explicitly for both the
+// asset and the spec path so a regression that compresses unconditionally is
+// caught.
 func TestDocsHandler_ServesVerbatimWhenGzipNotNegotiated(t *testing.T) {
 	h := rest.DocsHandler("dev")
 
@@ -107,12 +114,66 @@ func TestDocsHandler_ServesVerbatimWhenGzipNotNegotiated(t *testing.T) {
 			assert.Empty(t, rr.Header().Get("Content-Encoding"),
 				"an un-negotiated docs response must not be compressed")
 			// The body must not be a gzip stream — its first bytes must not be
-			// the gzip magic number (0x1f 0x8b).
-			if rr.Body.Len() >= 2 {
-				b := rr.Body.Bytes()
-				assert.False(t, b[0] == 0x1f && b[1] == 0x8b,
-					"an un-negotiated body must be raw, not a gzip stream")
-			}
+			// the gzip magic number (0x1f 0x8b). Assert the body is non-trivial
+			// first, so a short/empty response fails loudly instead of skipping
+			// the magic-byte check.
+			require.GreaterOrEqual(t, rr.Body.Len(), 2,
+				"the docs body must be non-trivial, not empty or truncated")
+			b := rr.Body.Bytes()
+			assert.False(t, b[0] == 0x1f && b[1] == 0x8b,
+				"an un-negotiated body must be raw, not a gzip stream")
 		})
 	}
+}
+
+// The genuine wire check for acceptance criterion 4 (#218): over a real
+// transport — which, unlike a recorder, enforces a declared Content-Length — a
+// gzip-negotiated bundle request must carry no stale uncompressed
+// Content-Length. http.FileServer sets Content-Length to the UNCOMPRESSED size;
+// were GzipMiddleware to leave it on the response, net/http would close the
+// connection short of the declared length and the client would hit unexpected
+// EOF, so the gunzip below would fail instead of decoding the asset whole. This
+// is the only construction that exercises the real GzipMiddleware+http.FileServer
+// composition on a length-enforcing transport. Setting Accept-Encoding: gzip by
+// hand suppresses the transport's transparent decompression, so the test reads
+// the raw gzip stream with Content-Encoding intact; the verbatim asset is
+// fetched over the same server WITHOUT the header, where the transport
+// transparently yields the decoded bytes.
+func TestDocsHandler_GzipBundleCarriesNoStaleContentLengthOnTheWire(t *testing.T) {
+	srv := httptest.NewServer(rest.DocsHandler("dev"))
+	defer srv.Close()
+
+	// Compressed fetch: Accept-Encoding set by hand, so the transport leaves the
+	// gzip stream raw and preserves Content-Encoding.
+	gzReq, err := http.NewRequest(http.MethodGet, srv.URL+"/scalar.standalone.js", nil)
+	require.NoError(t, err)
+	gzReq.Header.Set("Accept-Encoding", "gzip")
+	gzRes, err := srv.Client().Do(gzReq)
+	require.NoError(t, err)
+	defer gzRes.Body.Close()
+
+	require.Equal(t, http.StatusOK, gzRes.StatusCode)
+	require.Equal(t, "gzip", gzRes.Header.Get("Content-Encoding"),
+		"a gzip-negotiated bundle must be served compressed")
+	require.Empty(t, gzRes.Header.Get("Content-Length"),
+		"the stale uncompressed Content-Length must never reach the wire")
+
+	zr, err := gzip.NewReader(gzRes.Body)
+	require.NoError(t, err, "body must open as a gzip stream")
+	decoded, err := io.ReadAll(zr)
+	require.NoError(t, err,
+		"compressed bundle must arrive whole, not truncated at a stale Content-Length")
+	require.NoError(t, zr.Close(), "gzip trailer (CRC + size) must be intact")
+
+	// Verbatim fetch over the same server: no Accept-Encoding, so the transport
+	// negotiates gzip and transparently decodes, yielding the raw asset bytes.
+	verbatimRes, err := srv.Client().Get(srv.URL + "/scalar.standalone.js")
+	require.NoError(t, err)
+	defer verbatimRes.Body.Close()
+	require.Equal(t, http.StatusOK, verbatimRes.StatusCode)
+	verbatim, err := io.ReadAll(verbatimRes.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, verbatim, decoded,
+		"the compressed bundle must decode byte-for-byte to the verbatim asset")
 }
