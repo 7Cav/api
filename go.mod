@@ -5,8 +5,8 @@ go 1.25.10
 require (
 	github.com/getsentry/sentry-go v0.47.0
 	github.com/go-sql-driver/mysql v1.10.0
-	github.com/pb33f/libopenapi v0.38.1
-	github.com/pb33f/libopenapi-validator v0.13.10
+	github.com/pb33f/libopenapi v0.38.3
+	github.com/pb33f/libopenapi-validator v0.13.13
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.69.0
@@ -48,7 +48,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	go.yaml.in/yaml/v4 v4.0.0-rc.5 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
