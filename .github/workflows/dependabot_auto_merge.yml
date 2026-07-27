@@ -1,0 +1,33 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    branches: [develop]
+
+# Dependabot-triggered workflows get a read-only GITHUB_TOKEN regardless of the
+# repository default, so this block is load-bearing — without it the merge step
+# fails on permissions rather than on anything to do with the update itself.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    name: Auto-merge
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3.1.0
+
+      # Arming auto-merge does not bypass anything: the PR still waits on the
+      # Build/Lint/Test gate the ruleset requires. Majors are left to land by
+      # hand. `dependabot.yml` does no grouping, so a PR carries exactly one
+      # update and this gate can't be straddled by a mixed batch.
+      - name: Enable auto-merge for non-major updates
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

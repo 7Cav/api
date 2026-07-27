@@ -1,0 +1,5 @@
+# Review routing only. The `default-branch` ruleset does not require code-owner
+# review: GitHub's softener is that an approval from any one code owner suffices,
+# which needs two or more owners who actually review to be anything other than a
+# merge block. Revisit if a second regular reviewer appears.
+* @SyniRon
