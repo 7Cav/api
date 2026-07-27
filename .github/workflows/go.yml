@@ -1,5 +1,17 @@
 name: Go
-on: [push]
+# `pull_request` is what lets a fork PR be merged at all: a contributor without
+# push access pushes to their own fork, so the push event fires there and the
+# Build/Lint/Test runs never attach to the PR here — leaving the required
+# contexts permanently unsatisfiable.
+#
+# `push` is narrowed to develop rather than left bare. A same-repo PR matches
+# both events, so an unscoped `push` would run the whole suite twice per PR and
+# surface each required context twice. This way it is one run per event: PRs are
+# covered by `pull_request`, develop keeps its post-merge run.
+on:
+  push:
+    branches: [develop]
+  pull_request:
 jobs:
   build:
     name: Build
