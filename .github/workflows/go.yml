@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v7.0.0
+      uses: actions/checkout@v7.0.1
     # The proto/buf codegen toolchain was retired in Phase 4 (#135): no buf
     # install, no `make generate`. The repo builds straight from committed Go.
     - name: Tidy
@@ -45,7 +45,7 @@ jobs:
           --health-retries=24
     steps:
     - name: Check out code
-      uses: actions/checkout@v7.0.0
+      uses: actions/checkout@v7.0.1
     # The service container is up for the whole job; this step is "no
     # harness" only in the sense that TESTDB_ADDR is left unset. Mirror
     # of the with-harness guard, inverted: a known harness-backed test
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v7.0.0
+      uses: actions/checkout@v7.0.1
     # `make lint` is `go vet` since Phase 4 (#135) retired buf lint/breaking.
     - name: Lint
       run: make lint
