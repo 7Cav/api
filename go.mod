@@ -4,7 +4,7 @@ go 1.25.10
 
 require (
 	github.com/getsentry/sentry-go v0.49.0
-	github.com/go-sql-driver/mysql v1.10.0
+	github.com/go-sql-driver/mysql v1.10.1
 	github.com/pb33f/libopenapi v0.38.7
 	github.com/pb33f/libopenapi-validator v0.14.0
 	github.com/prometheus/client_golang v1.24.1
