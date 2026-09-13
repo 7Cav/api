@@ -147,13 +147,12 @@ func (server *MicroServer) Start() {
 	}
 
 	// Observability (PRD #112): errors-only Sentry capture, gated on SENTRY_DSN.
-	// Disabled (local/dev) nothing is initialised — one Info line, no client, no
-	// signal handler, so shutdown behaves exactly as before. Enabled, this
-	// BLOCKS boot before any listener opens: the dial pre-check (≤3s on an
-	// unreachable host) plus the startup-probe flush window (≤5s) — a worst-case
-	// ~8s delay on a degraded network, by design, so a broken pipeline is
-	// visible before traffic flows. The shutdown flush handler is installed only
-	// when capture is enabled.
+	// Disabled (local/dev) nothing is initialised: one Info line, no client, no
+	// signal handler, so shutdown behaves exactly as before. Enabled, the dial
+	// pre-check BLOCKS boot before any listener opens, for up to 3s on an
+	// unreachable host. That delay is accepted by design so the log names a
+	// broken pipeline before traffic flows. Start installs the shutdown flush
+	// handler only when capture is enabled.
 	if rest.SetupSentry(version) {
 		rest.FlushSentryOnShutdown()
 	}

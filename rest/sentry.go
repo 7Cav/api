@@ -19,15 +19,12 @@ package rest
 //     point calls (the error-writer behind writeError; methodNotAllowed
 //     reaches it without writeError): one place, every error.
 //
-// What this file deliberately does NOT reproduce — servers/sentry.go's three
-// boot-lifecycle pieces, which the cutover slice (#134) must port before
-// deleting that file: sentryDialCheck (warn-only TCP reachability check of
-// the DSN ingest host at boot), sentryStartupProbe (one canary event flushed
-// through the real transport before any listener opens), and
-// flushSentryOnShutdown (the SIGTERM/interrupt flush handler servers.Start
-// installs after setupSentry). Dropping them silently would make a
-// Sentry-down misconfig invisible at boot and lose every still-buffered
-// event on SIGTERM.
+// The boot/shutdown lifecycle lives in sentry_boot.go: sentryDialCheck (the
+// warn-only TCP reachability check of the DSN ingest host that SetupSentry
+// runs at boot) and FlushSentryOnShutdown (the SIGTERM/interrupt flush handler
+// servers.Start installs when SetupSentry returns true). Dropping either
+// silently would make a Sentry-down misconfig invisible at boot, or lose every
+// still-buffered event on SIGTERM.
 //
 // Tag discipline (PRD #112): events carry the validated key ID and the
 // matched route pattern — bearer material NEVER (same rule as the metrics
@@ -102,18 +99,12 @@ func SetupSentry(release string) bool {
 		return false
 	}
 
-	// Warn-only reachability pre-check: catches the misconfig class the probe
-	// below structurally cannot (fast send failures drain the queue and so
-	// still "flush"). Never changes the enabled/degraded semantics.
+	// Warn-only reachability pre-check. It never changes the enabled state.
+	// A refused or unresolvable host warns, and capture stays on because the
+	// network may heal before the first real error.
 	sentryDialCheck(dsn)
 
-	// Probe failure still returns true — enabled-degraded, not disabled: a
-	// slow-network false positive must not turn off capture. Do NOT refactor
-	// this into `return sentryStartupProbe()`.
-	if sentryStartupProbe() {
-		Info.Println("Sentry error capture enabled (errors only), release:", release,
-			"— startup probe flushed (queue drained; delivery not verified — set SENTRY_DEBUG=true to confirm)")
-	}
+	Info.Println("Sentry error capture enabled (errors only), release:", release)
 	return true
 }
 

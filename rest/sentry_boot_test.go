@@ -2,10 +2,8 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"net"
 	"os"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -16,128 +14,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// drainTransport is an in-memory sentry.Transport with a controllable Flush
-// outcome. flushDrains=false simulates a drain timeout (queue still busy when
-// the window closes — the hang-class failure mode), NOT a delivery failure:
-// per the SDK's Flush contract, fast send failures dequeue and "flush"
-// successfully. It complements transportMock (sentry_test.go), whose Flush is
-// fixed true — these boot-lifecycle tests need to drive the not-drained path.
-type drainTransport struct {
-	mu          sync.Mutex
-	events      []*sentry.Event
-	flushDrains bool
-}
-
-func (t *drainTransport) Configure(sentry.ClientOptions)        {}
-func (t *drainTransport) Flush(time.Duration) bool              { return t.flushDrains }
-func (t *drainTransport) FlushWithContext(context.Context) bool { return t.flushDrains }
-func (t *drainTransport) Close()                                {}
-
-func (t *drainTransport) SendEvent(event *sentry.Event) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.events = append(t.events, event)
-}
-
-func (t *drainTransport) Events() []*sentry.Event {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return append([]*sentry.Event(nil), t.events...)
-}
-
-// bindDrainClient binds a drain-transport Sentry client to the global hub for
-// the duration of the test, restoring the unbound (disabled) state afterwards.
-func bindDrainClient(t *testing.T, flushDrains bool) *drainTransport {
-	t.Helper()
-	transport := &drainTransport{flushDrains: flushDrains}
-	client, err := sentry.NewClient(sentry.ClientOptions{Transport: transport})
-	require.NoError(t, err)
-	sentry.CurrentHub().BindClient(client)
-	t.Cleanup(func() { sentry.CurrentHub().BindClient(nil) })
-	return transport
-}
-
-func TestSentryStartupProbe_DrainTimeout_WarnsLoudly(t *testing.T) {
-	bindDrainClient(t, false)
-
-	var warnBuf bytes.Buffer
-	Warn.SetOutput(&warnBuf)
-	defer Warn.SetOutput(os.Stdout)
-
-	ok := sentryStartupProbe()
-
-	assert.False(t, ok)
-	assert.Contains(t, warnBuf.String(), "startup probe did not flush",
-		"a hang-class transport stall is the one failure mode the drain probe can see — it must be loud")
-}
-
-func TestSentryStartupProbe_FlushDrains_NoWarning(t *testing.T) {
-	transport := bindDrainClient(t, true)
-
-	var warnBuf bytes.Buffer
-	Warn.SetOutput(&warnBuf)
-	defer Warn.SetOutput(os.Stdout)
-
-	ok := sentryStartupProbe()
-
-	assert.True(t, ok)
-	assert.Empty(t, warnBuf.String(), "a drained probe must not warn")
-	events := transport.Events()
-	require.Len(t, events, 1, "the probe must push exactly one canary event through the transport")
-	event := events[0]
-	assert.Equal(t, "sentry startup probe", event.Message)
-	assert.Equal(t, []string{"sentry-startup-probe"}, event.Fingerprint,
-		"a fixed fingerprint folds every container restart into one Sentry issue — no resolve→reopen churn")
-	assert.Equal(t, "true", event.Tags["probe"], "probe events must be filterable")
-	assert.Equal(t, sentry.LevelInfo, event.Level, "the canary is informational, never an alertable error")
-}
-
-func TestSentryStartupProbe_ClientSideDrop_WarnsAndFails(t *testing.T) {
-	// A BeforeSend veto makes CaptureMessage return a nil event ID — the
-	// client dropped the canary before the transport ever saw it, so there is
-	// nothing to drain and the flush alone would report a false success.
-	client, err := sentry.NewClient(sentry.ClientOptions{
-		Transport:  &drainTransport{flushDrains: true},
-		BeforeSend: func(*sentry.Event, *sentry.EventHint) *sentry.Event { return nil },
-	})
-	require.NoError(t, err)
-	sentry.CurrentHub().BindClient(client)
-	t.Cleanup(func() { sentry.CurrentHub().BindClient(nil) })
-
-	var warnBuf bytes.Buffer
-	Warn.SetOutput(&warnBuf)
-	defer Warn.SetOutput(os.Stdout)
-
-	ok := sentryStartupProbe()
-
-	assert.False(t, ok, "a client-side drop means no canary exercised the pipeline — probe failed")
-	assert.Contains(t, warnBuf.String(), "dropped client-side",
-		"a canary that never reached the transport must be visible, not a silent flush success")
-}
-
-// TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine pins that SetupSentry
-// actually INVOKES the startup probe against the client it just configured: a
-// drain transport injected through the sentryTransport seam reports
-// Flush=not-drained, so the stalled-transport premise holds by construction —
-// no socket dial manufactures the stall, and machine load cannot invert the
-// outcome (#179: a refused dial is a fast send outcome that drains the queue,
-// so the old local-server stall lost the timing race under load). Deleting the
-// sentryStartupProbe() call from SetupSentry turns this red (no stall warning,
-// the enabled line prints, no canary reaches the transport).
-func TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine(t *testing.T) {
-	transport := &drainTransport{flushDrains: false}
+// TestSetupSentry_BootSendsNoEventAndWarnsOnUnreachableHost pins the boot
+// contract after #259: with a DSN, SetupSentry initialises the client, runs
+// the warn-only dial check, prints the enabled line, and hands the transport
+// nothing. Sentry receives no event at boot.
+//
+// The emptiness check is authoritative, not a race won. With a custom
+// Transport the SDK skips its async telemetry processor and hands events to
+// the transport on the capturing goroutine (sentry-go client.go, processEvent),
+// so a re-added boot event would sit in Events() before SetupSentry returns.
+//
+// 127.0.0.1:1 refuses instantly, so the dial check resolves no name and opens
+// no outbound connection. The test shrinks the dial window anyway so a
+// pathological environment cannot stall the suite.
+func TestSetupSentry_BootSendsNoEventAndWarnsOnUnreachableHost(t *testing.T) {
+	transport := &transportMock{}
 	sentryTransport = transport
-	t.Cleanup(func() { sentryTransport = nil })
-
-	// 127.0.0.1:1 refuses instantly — the suite's deterministic stand-in for
-	// the dial-check pre-check, which is frozen and irrelevant to the stall
-	// premise. Shrink its window anyway so a pathological environment cannot
-	// stall the suite. The probe window itself no longer needs shrinking: the
-	// stub's Flush reports not-drained immediately, regardless of load.
 	viper.Set("SENTRY_DSN", "http://public@127.0.0.1:1/1")
 	t.Cleanup(func() {
-		viper.Set("SENTRY_DSN", "")
 		sentry.CurrentHub().BindClient(nil)
+		sentryTransport = nil
+		viper.Set("SENTRY_DSN", "")
 	})
 	restoreDial := sentryDialCheckTimeout
 	sentryDialCheckTimeout = 500 * time.Millisecond
@@ -151,21 +48,18 @@ func TestSetupSentry_ProbeStall_WarnsAndWithholdsEnabledLine(t *testing.T) {
 
 	enabled := SetupSentry(testRelease)
 
-	assert.True(t, enabled, "a stalled probe means degraded, never disabled — capture stays on")
-	assert.Contains(t, warnBuf.String(), "startup probe did not flush",
-		"a transport that cannot drain within the window must be loud at boot")
-	assert.NotContains(t, infoBuf.String(), "Sentry error capture enabled",
-		"the success line must be withheld when the probe could not drain")
-	events := transport.Events()
-	require.Len(t, events, 1,
-		"the canary must reach the transport of the client SetupSentry just configured — the probe ran against THAT client, not some pre-bound stub")
-	assert.Equal(t, "sentry startup probe", events[0].Message)
+	assert.True(t, enabled, "a refused ingest host means degraded, never disabled. Capture stays on")
+	assert.Empty(t, transport.Events(),
+		"boot must hand the transport nothing. Sentry sees no event until the first real error")
+	assert.Contains(t, infoBuf.String(), "Sentry error capture enabled",
+		"the enabled line prints whenever init succeeded, whatever the dial check found")
+	assert.Contains(t, warnBuf.String(), "127.0.0.1:1",
+		"SetupSentry must still run the dial check, and the warning must name the unreachable host")
 }
 
 func TestSentryDialCheck_UnreachableHost_WarnsWithHost(t *testing.T) {
-	// 127.0.0.1:1 refuses instantly — the deterministic stand-in for the
-	// wrong-DSN-host misconfig class the startup probe cannot see (fast send
-	// failures still drain the queue). Shrink the dial window anyway so a
+	// 127.0.0.1:1 refuses instantly. It is the deterministic stand-in for the
+	// wrong-DSN-host misconfig class. Shrink the dial window anyway so a
 	// pathological environment cannot stall the suite.
 	restore := sentryDialCheckTimeout
 	sentryDialCheckTimeout = 500 * time.Millisecond
