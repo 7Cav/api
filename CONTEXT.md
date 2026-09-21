@@ -267,3 +267,19 @@ without opening a DB or touching viper (`servers/pool_test.go`), and
 `setupDatasource()` logs each returned warning via `Warn.Println`. A
 `max_connections` change is out of scope for the API; that's a
 server-side knob.
+
+## Release and deployment
+
+A **release** is a published GitHub release whose tag is a bare semver
+version (`3.1.6`, never `v3.1.6`; the `release-tags` ruleset from #243
+guards the tags). Publishing a release is the one human act that changes
+production. It builds the image and deploys it.
+
+A **deployment** is one release running on the **prod host**, recorded
+on GitHub against the `production` environment. A deployment succeeds
+only when the served spec's `info.version` reports that release's tag.
+A green image push is not a deployment. The prod host runs the tag it
+was deployed, never `latest`.
+
+_Avoid_: "update", "Watchtower update", "push to prod". The API stack
+does not depend on Watchtower.
