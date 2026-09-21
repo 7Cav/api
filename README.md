@@ -106,6 +106,12 @@ the single HTTP listener. The `docker-compose.yaml` in this repo is a
 prod-shaped template; the live compose file is customized and kept out of
 the repo.
 
+Publishing a GitHub release builds and pushes `7cav/api:<tag>`, then the
+`deploy` job sends the tag to the prod host over SSH and passes once
+`https://api.7cav.us/openapi.yaml` reports it. To redeploy or roll back,
+run the "Build and Push Docker Image" workflow by hand with the tag to
+deploy.
+
 You need a copy of the 7Cav XenForo database reachable from the container
 (see the `DB_*` environment variables in `docker-compose.yaml`). Then:
 
