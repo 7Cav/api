@@ -187,8 +187,8 @@ func TestStart_MakesMalformedTrustedProxiesFatal(t *testing.T) {
 // (rest.FlushSentryOnShutdown) ONLY inside the if-block gated on
 // rest.SetupSentry(...). Installing it unconditionally would rewrite the
 // process's signal semantics even when capture is disabled; dropping the call
-// would silently lose final-moment error events on every redeploy (Watchtower
-// recreates the container on each release). Source-level because Start blocks on
+// would silently lose final-moment error events on every redeploy (each
+// release recreates the container). Source-level because Start blocks on
 // Serve and can't be driven in-process — and because SetupSentry /
 // FlushSentryOnShutdown JUST moved packages (servers -> rest) in the #134
 // cutover, the exact "a refactor silently drops the wiring" moment this idiom

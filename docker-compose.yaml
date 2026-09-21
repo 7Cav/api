@@ -12,10 +12,12 @@ services:
     build:
       dockerfile: "Dockerfile"
       context: "./"
-    image: 7cav/api:latest
+    # The prod host pins API_TAG in its stack .env. The release workflow's
+    # deploy job writes the release tag there over SSH, then pulls and
+    # recreates. Unset, as in a local `docker compose up` from this template,
+    # the tag falls back to `latest`. Prod never runs `latest`.
+    image: 7cav/api:${API_TAG:-latest}
     container_name: 7cav-api
-    labels:
-      - com.centurylinklabs.watchtower.enable=true
     networks:
       - edge
       - xenforo_internal
