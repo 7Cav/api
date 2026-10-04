@@ -69,7 +69,7 @@ shapes clients actually call are unchanged.
 - Adding an endpoint is no longer a single proto edit. It is a sequence of
   hand-written steps (wire types, handler, route registration, spec
   operation, goldens), written down as the add-an-endpoint checklist in
-  `CONTEXT.md`. The spec and golden steps are CI-enforced, so the sequence
+  `GLOSSARY.md`. The spec and golden steps are CI-enforced, so the sequence
   is guarded rather than remembered.
 - There is no `make generate` / `make install` / codegen step. `make lint`
   is `go vet`; the build is plain `go build ./...`.
