@@ -16,7 +16,7 @@ import (
 // are justified against prod (max_connections=300, forum pm.max_children=30,
 // all-time peak 68): 25 open + 25 idle keeps the pool warm, 30m lifetime
 // recycles conns under wait_timeout. See poolConfig's doc comment and
-// CONTEXT.md.
+// GLOSSARY.md.
 //
 // An UNSET override (empty string) is a clean default, NOT a rejected one, so it
 // must produce ZERO warnings — silence is the signal that the operator made no

@@ -94,7 +94,7 @@ The contract is checked into the repo, not generated:
 `contract/spec_test.go` validates the spec against the corpus in both
 directions, so the three stay in step and any drift fails CI naming the
 operation and field. The domain glossary and the add-an-endpoint checklist
-live in [`CONTEXT.md`](CONTEXT.md).
+live in [`GLOSSARY.md`](GLOSSARY.md).
 
 [prd]: https://github.com/7Cav/api/issues/112
 [adr6]: docs/adr/0006-single-listener-net-http-and-hand-owned-openapi.md
@@ -147,5 +147,5 @@ before pushing changes that touch the wire surface.
 
 Wire types → handler → route registration → spec operation → goldens. The
 spec and golden steps are CI-enforced. The full checklist is in
-[`CONTEXT.md`](CONTEXT.md); the in-code long form is in the package docs of
+[`GLOSSARY.md`](GLOSSARY.md); the in-code long form is in the package docs of
 `rest/rest.go` and `types/types.go`.
