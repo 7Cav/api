@@ -112,7 +112,7 @@ var errOutageSentry = errors.New("simulated datastore outage")
 
 // enableSentry drives the PRODUCTION init path (SetupSentry) with the
 // transport seam swapped for a capture mock, and restores the disabled state
-// afterwards so the rest of the package's tests keep running with no client.
+// afterwards so the rest of the package's tests keep running with capture off.
 func enableSentry(t *testing.T) *transportMock {
 	t.Helper()
 	tr := &transportMock{}
@@ -128,17 +128,17 @@ func enableSentry(t *testing.T) *transportMock {
 }
 
 // No DSN → complete no-op: nothing is initialised, exactly as in Phase 0 —
-// no client, so every capture point in the package stays a pass-through.
+// capture is off, so every capture point in the package stays a pass-through.
 func TestSetupSentry_NoDSNInitialisesNothing(t *testing.T) {
 	viper.Set("SENTRY_DSN", "")
 	assert.False(t, SetupSentry(testRelease), "no DSN must report capture disabled")
-	assert.Nil(t, sentry.CurrentHub().Client(), "no DSN must bind no client")
+	assert.False(t, sentry.CurrentHub().Client().IsEnabled(), "no DSN must leave capture disabled")
 }
 
 // A malformed DSN must fail SAFE — telemetry must never take the API down
 // (the init-failure branch in SetupSentry): Init errors, capture reports
-// disabled, no client binds, and nothing panics. The API then runs exactly as
-// in the no-DSN case.
+// disabled, the hub's client stays disabled, and nothing panics. The API then
+// runs exactly as in the no-DSN case.
 func TestSetupSentry_InvalidDSNFailsSafeWithoutClient(t *testing.T) {
 	viper.Set("SENTRY_DSN", "not-a-dsn")
 	t.Cleanup(func() { viper.Set("SENTRY_DSN", "") })
@@ -147,14 +147,13 @@ func TestSetupSentry_InvalidDSNFailsSafeWithoutClient(t *testing.T) {
 	require.NotPanics(t, func() { enabled = SetupSentry(testRelease) },
 		"a bad DSN must never panic the boot path")
 	assert.False(t, enabled, "a failed init must report capture disabled")
-	assert.Nil(t, sentry.CurrentHub().Client(), "a failed init must bind no client")
+	assert.False(t, sentry.CurrentHub().Client().IsEnabled(), "a failed init must leave capture disabled")
 }
 
 // With a DSN the client is initialised and release-tagged from the build-time
 // version the caller passes — every event carries it.
 func TestSetupSentry_DSNEnablesClientWithRelease(t *testing.T) {
 	tr := enableSentry(t)
-	require.NotNil(t, sentry.CurrentHub().Client(), "a DSN must bind a client")
 
 	sentry.CaptureMessage("wiring probe")
 	events := tr.Events()
@@ -381,13 +380,12 @@ func TestSentry_BeforeSendScrubsRequestAuthMaterial(t *testing.T) {
 	assert.Equal(t, "sweep-test", ev.Request.Headers["User-Agent"], "non-auth headers survive")
 }
 
-// No DSN → complete no-op (Phase 0 parity): with no client bound the sentry
+// No DSN → complete no-op (Phase 0 parity): with capture disabled the sentry
 // layer is a pass-through — panics propagate exactly as they do today
 // (net/http recovers them per-connection; here, to the test) with nothing
 // written, and 5xx responses flow through the choke point unchanged with no
 // capture machinery in the path.
 func TestSentry_NoDSNIsCompletePassThrough(t *testing.T) {
-	require.Nil(t, sentry.CurrentHub().Client(), "precondition: no client bound")
 	captureErrorLog(t)
 
 	h := New(&sentryFakeDatastore{findAllRanks: func() ([]*types.RankExpanded, error) {

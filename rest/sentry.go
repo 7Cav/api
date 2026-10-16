@@ -171,7 +171,7 @@ func sentryLabelsFromContext(ctx context.Context) *sentryLabels {
 // and the client sees the truncation instead of trusting a half response.
 func sentryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if sentry.CurrentHub().Client() == nil {
+		if !sentry.CurrentHub().Client().IsEnabled() {
 			next.ServeHTTP(w, r)
 			return
 		}

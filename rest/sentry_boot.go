@@ -62,7 +62,7 @@ func sentryDialCheck(rawDSN string) {
 // the call site, because installing the handler without a client would
 // silently rewrite the process's signal semantics for nothing.
 func FlushSentryOnShutdown() {
-	if sentry.CurrentHub().Client() == nil {
+	if !sentry.CurrentHub().Client().IsEnabled() {
 		// Only reachable on programmer error — the call site gates on
 		// SetupSentry. Loud so misuse never silently skips the handler.
 		Warn.Println("FlushSentryOnShutdown called without an initialised sentry client — shutdown flush handler not installed")
