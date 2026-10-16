@@ -20,7 +20,7 @@
 //   - sentryMiddleware (#132, sentry.go): panic recovery at the front of the
 //     chain — catches the metrics layer's re-panic, reports the event, and
 //     writes the contract 500; 5xx Sentry reports hook the writeError choke
-//     point. Env-gated by SENTRY_DSN (rest.SetupSentry): without a client it
+//     point. Env-gated by SENTRY_DSN (rest.SetupSentry): with capture off it
 //     is a complete no-op. Its route/key-id tags reach this OUTER layer via
 //     the sentryLabels context holder, filled by the sentryLabel wrapper
 //     inside auth (the same mechanism as metricLabels below).

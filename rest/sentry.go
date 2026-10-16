@@ -55,8 +55,8 @@ var sentryTransport sentry.Transport
 // SetupSentry initialises Sentry error capture (errors only, no tracing) when
 // SENTRY_DSN is present in the environment — the same gate as Phase 0's
 // servers.setupSentry, which this replaces at cutover (#134). Without a DSN
-// nothing is initialised — no client, no capture, local/dev unaffected; the
-// only side effect is one Info line making the disabled state visible at
+// nothing is initialised and capture stays off, so local/dev is unaffected.
+// The only side effect is one Info line making the disabled state visible at
 // boot. Returns whether capture was enabled.
 //
 // release is the build-time version (the -X servers.version injection today;
@@ -106,6 +106,14 @@ func SetupSentry(release string) bool {
 
 	Info.Println("Sentry error capture enabled (errors only), release:", release)
 	return true
+}
+
+// sentryCaptureEnabled reports whether the current hub's client captures
+// events, which is true only after SetupSentry initialised one. Since
+// sentry-go 0.50.0 the SDK binds a disabled no-op client by default, so
+// checking for a nil client no longer detects "off".
+func sentryCaptureEnabled() bool {
+	return sentry.CurrentHub().Client().IsEnabled()
 }
 
 // sentryDebugEnabled reads SENTRY_DEBUG strictly (mirrors Phase 0, which this
@@ -160,7 +168,7 @@ func sentryLabelsFromContext(ctx context.Context) *sentryLabels {
 // sentryLabel filled on the way out), and writes the contract 500 error shape
 // so the request still completes.
 //
-// Without an initialised client (no SENTRY_DSN) it is a complete no-op:
+// With capture disabled (no SENTRY_DSN) it is a complete no-op:
 // requests flow unchanged and panics propagate exactly as they do today
 // (net/http recovers them per-connection) — Phase 0 parity.
 //
@@ -171,7 +179,7 @@ func sentryLabelsFromContext(ctx context.Context) *sentryLabels {
 // and the client sees the truncation instead of trusting a half response.
 func sentryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if sentry.CurrentHub().Client() == nil {
+		if !sentryCaptureEnabled() {
 			next.ServeHTTP(w, r)
 			return
 		}
