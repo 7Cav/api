@@ -131,11 +131,11 @@ func TestSentryDebugEnabled_StrictParse(t *testing.T) {
 	}
 }
 
-// TestFlushSentryOnShutdown_NoClient_WarnsAndSkips pins the guard's
+// TestFlushSentryOnShutdown_CaptureDisabled_WarnsAndSkips pins the guard's
 // visibility: it only fires on programmer error (the call site must gate on
 // SetupSentry), and silent misuse would mean shutdown flushes everyone assumes
 // exist were never installed.
-func TestFlushSentryOnShutdown_NoClient_WarnsAndSkips(t *testing.T) {
+func TestFlushSentryOnShutdown_CaptureDisabled_WarnsAndSkips(t *testing.T) {
 	var warnBuf bytes.Buffer
 	Warn.SetOutput(&warnBuf)
 	defer Warn.SetOutput(os.Stdout)

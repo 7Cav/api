@@ -147,7 +147,7 @@ func (server *MicroServer) Start() {
 	}
 
 	// Observability (PRD #112): errors-only Sentry capture, gated on SENTRY_DSN.
-	// Disabled (local/dev) nothing is initialised: one Info line, no client, no
+	// Disabled (local/dev) nothing is initialised: one Info line, no capture, no
 	// signal handler, so shutdown behaves exactly as before. Enabled, the dial
 	// pre-check BLOCKS boot before any listener opens, for up to 3s on an
 	// unreachable host. That delay is accepted by design so the log names a

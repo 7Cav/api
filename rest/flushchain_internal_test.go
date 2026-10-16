@@ -30,7 +30,7 @@ import (
 )
 
 func TestFlushChain_NewShapedStackStreamsFlushedPrefix(t *testing.T) {
-	// Sentry ENABLED: without a client sentryMiddleware never mounts
+	// Sentry ENABLED: with capture off sentryMiddleware never mounts
 	// commitWriter, and the composed property would silently exclude the
 	// outermost wrapper. The premise that an enabled client mounts the
 	// wrapper UNCONDITIONALLY is itself pinned —

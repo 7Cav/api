@@ -139,7 +139,7 @@ func TestSetupSentry_NoDSNInitialisesNothing(t *testing.T) {
 // (the init-failure branch in SetupSentry): Init errors, capture reports
 // disabled, the hub's client stays disabled, and nothing panics. The API then
 // runs exactly as in the no-DSN case.
-func TestSetupSentry_InvalidDSNFailsSafeWithoutClient(t *testing.T) {
+func TestSetupSentry_InvalidDSNFailsSafeWithCaptureDisabled(t *testing.T) {
 	viper.Set("SENTRY_DSN", "not-a-dsn")
 	t.Cleanup(func() { viper.Set("SENTRY_DSN", "") })
 
@@ -161,7 +161,7 @@ func TestSetupSentry_DSNEnablesClientWithRelease(t *testing.T) {
 	assert.Equal(t, testRelease, events[0].Release, "events must carry the build-time release")
 }
 
-// commitWriter mounts UNCONDITIONALLY whenever a client is bound — the
+// commitWriter mounts UNCONDITIONALLY whenever capture is enabled — the
 // composed flush-chain pin (flushchain_internal_test.go) enables sentry on
 // exactly this premise, so a refactor that mounts the wrapper conditionally
 // (per-route, per-method, …) fails here by name instead of silently
@@ -174,7 +174,7 @@ func TestSentryMiddleware_MountsCommitWriterWhenEnabled(t *testing.T) {
 	}))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	require.True(t, sawCommitWriter,
-		"with a client bound, sentryMiddleware must hand every handler a *commitWriter — the recovery's committed signal and the composed flush-chain pin both stand on it")
+		"with capture enabled, sentryMiddleware must hand every handler a *commitWriter — the recovery's committed signal and the composed flush-chain pin both stand on it")
 }
 
 // The headline acceptance (#132): a panicking handler produces ONE event —
