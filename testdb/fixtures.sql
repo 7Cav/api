@@ -301,20 +301,26 @@ INSERT INTO xf_nf_tickets_ticket_field_value (ticket_id, field_id, field_value) 
 -- Raw key material is the testdb package's public contract
 -- (testdb.ActiveAPIKey / testdb.RevokedAPIKey); only hashes are stored,
 -- matching the datastore's UNHEX(SHA2(?, 256)) lookup. Scope 3 is an
--- inactive scope attached to the active key: it must NOT surface.
+-- inactive scope attached to the active key: it must NOT surface. Key 3,
+-- testdb.LoasAPIKey, holds read:loas alone, the scope the LOA route gates
+-- on. Its owner 402 has no xf_user row, because key validation never reads
+-- the user table.
 INSERT INTO xf_cav7_api_key_scope_def
   (scope_id, scope_name, title, description, is_active) VALUES
   (1, 'read',         'Read',         'Read milpacs data',  1),
   (2, 'read:tickets', 'Read tickets', 'Read tickets data',  1),
-  (3, 'admin',        'Admin',        'Retired scope',      0);
+  (3, 'admin',        'Admin',        'Retired scope',      0),
+  (4, 'read:loas',    'Read LOAs',    'Read LOA data',      1);
 
 INSERT INTO xf_cav7_api_key
   (key_id, user_id, key_hash, key_prefix, is_active, created_date) VALUES
   (1, 401, UNHEX(SHA2('cav7_harness_active', 256)),  'cav7_harness', 1, 1740000000),
-  (2, 400, UNHEX(SHA2('cav7_harness_revoked', 256)), 'cav7_harness', 0, 1740000000);
+  (2, 400, UNHEX(SHA2('cav7_harness_revoked', 256)), 'cav7_harness', 0, 1740000000),
+  (3, 402, UNHEX(SHA2('cav7_harness_loas', 256)),    'cav7_harness', 1, 1740000000);
 
 INSERT INTO xf_cav7_api_key_scope (key_id, scope_id) VALUES
   (1, 1),
   (1, 2),
   (1, 3),
-  (2, 1);
+  (2, 1),
+  (3, 4);

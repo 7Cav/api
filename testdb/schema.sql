@@ -3,8 +3,8 @@
 -- Tables are cribbed from the production XenForo database (MariaDB 11.5)
 -- and cover exactly what the API reads: the NF Rosters add-on tables, the
 -- NF Tickets add-on tables, the Cav7 ApiKeyManager tables, and the core
--- xf_user / xf_user_group / xf_user_connected_account / xf_post / xf_phrase
--- tables.
+-- xf_user / xf_user_group / xf_user_connected_account / xf_post / xf_thread /
+-- xf_phrase tables.
 --
 -- Index fidelity matters here: the harness carries production's stock
 -- indexes and must NOT carry the four indexes proposed by PRD #112
@@ -140,6 +140,48 @@ CREATE TABLE `xf_post` (
   KEY `thread_id_score_date` (`thread_id`,`vote_score`,`post_date`),
   KEY `user_id` (`user_id`),
   KEY `post_date` (`post_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- The LOA route reads each LOA forum thread's forum, post time, visibility
+-- and first post id from here. Copied from production DDL with its stock
+-- indexes.
+CREATE TABLE `xf_thread` (
+  `thread_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `node_id` int(10) unsigned NOT NULL,
+  `title` varchar(150) NOT NULL,
+  `reply_count` int(10) unsigned NOT NULL DEFAULT 0,
+  `view_count` int(10) unsigned NOT NULL DEFAULT 0,
+  `user_id` int(10) unsigned NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `post_date` int(10) unsigned NOT NULL,
+  `sticky` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `discussion_state` enum('visible','moderated','deleted') NOT NULL DEFAULT 'visible',
+  `discussion_open` tinyint(3) unsigned NOT NULL DEFAULT 1,
+  `discussion_type` varbinary(50) NOT NULL DEFAULT '',
+  `type_data` mediumblob NOT NULL,
+  `index_state` enum('default','indexed','not_indexed') NOT NULL DEFAULT 'default',
+  `first_post_id` int(10) unsigned NOT NULL,
+  `first_post_reaction_score` int(11) NOT NULL DEFAULT 0,
+  `first_post_reactions` blob DEFAULT NULL,
+  `last_post_date` int(10) unsigned NOT NULL,
+  `last_post_id` int(10) unsigned NOT NULL,
+  `last_post_user_id` int(10) unsigned NOT NULL,
+  `last_post_username` varchar(50) NOT NULL,
+  `prefix_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `tags` mediumblob NOT NULL,
+  `custom_fields` mediumblob NOT NULL,
+  `vote_score` int(11) NOT NULL,
+  `vote_count` int(10) unsigned NOT NULL DEFAULT 0,
+  `featured` tinyint(3) unsigned NOT NULL DEFAULT 0,
+  `sv_prefix_ids` mediumblob DEFAULT NULL,
+  PRIMARY KEY (`thread_id`),
+  KEY `node_id_last_post_date` (`node_id`,`last_post_date`),
+  KEY `node_id_sticky_state_last_post` (`node_id`,`sticky`,`discussion_state`,`last_post_date`),
+  KEY `node_id_sticky_state_vote_score` (`node_id`,`sticky`,`discussion_state`,`vote_score`),
+  KEY `last_post_date` (`last_post_date`),
+  KEY `last_post_user_id` (`last_post_user_id`),
+  KEY `post_date` (`post_date`),
+  KEY `user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `xf_user_connected_account` (

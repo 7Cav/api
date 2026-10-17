@@ -38,6 +38,8 @@ tags:
     description: Read-only forum support tickets.
   - name: forum
     description: Forum reference data (permission-group directory).
+  - name: loas
+    description: Trooper leaves of absence, read from the LOA forums.
 
 security:
   - bearer: []
@@ -565,6 +567,51 @@ paths:
                   $ref: '#/components/schemas/ForumGroup'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /api/v1/loas:
+    get:
+      operationId: LoaService_ListLoas
+      summary: List open and upcoming LOAs
+      description: >-
+        Every open and upcoming LOA, one record per LOA thread, ordered by
+        threadId ascending. Requires the read:loas scope. The API reads the
+        LOA forums live on every request, so each response is the complete
+        set. An LOA a leader edited shows its new dates on the next request,
+        and an LOA whose thread was deleted is gone. An LOA is open from the
+        start of its Start Date through the end of its End Date, counted in
+        UTC calendar days, and upcoming before that. The response leaves out
+        ended LOAs and threads whose dates or trooper can't be read. It reads
+        only threads posted in the year before today.
+      tags: [loas]
+      responses:
+        "200":
+          description: Open and upcoming LOAs.
+          headers:
+            Vary:
+              description: >-
+                The server picks the body encoding from Accept-Encoding, so a
+                shared cache must store the gzip and identity variants under
+                separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
+            Cache-Control:
+              description: >-
+                Always served live. Responses are stale immediately, so don't
+                cache them. LOA data is limited access.
+              schema:
+                type: string
+                const: max-age=0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoasResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Error'
         default:
           $ref: '#/components/responses/Error'
 
@@ -1449,6 +1496,104 @@ components:
           items:
             $ref: '#/components/schemas/Awol'
       required: [awols]
+      additionalProperties: false
+
+    # --- LOAs --------------------------------------------------------------
+    LoaForum:
+      type: string
+      description: >-
+        The LOA forum the thread sits in. Each battalion has one, ACD and
+        reservists share one, and regimental leadership has its own. A served
+        LOA always carries one of the five named forums.
+      enum:
+        - LOA_FORUM_UNSPECIFIED
+        - LOA_FORUM_1_7
+        - LOA_FORUM_2_7
+        - LOA_FORUM_3_7
+        - LOA_FORUM_ACD
+        - LOA_FORUM_REGIMENTAL
+
+    LoaState:
+      type: string
+      enum:
+        - LOA_STATE_UNSPECIFIED
+        - LOA_STATE_OPEN
+        - LOA_STATE_UPCOMING
+        - LOA_STATE_ENDED
+        - LOA_STATE_NEEDS_REVIEW
+
+    LoaReviewReason:
+      type: string
+      description: >-
+        Why an LOA needs review. LOA_REVIEW_REASON_UNSPECIFIED on every LOA
+        not in review.
+      enum:
+        - LOA_REVIEW_REASON_UNSPECIFIED
+        - LOA_REVIEW_REASON_DATES_UNREADABLE
+        - LOA_REVIEW_REASON_END_BEFORE_START
+        - LOA_REVIEW_REASON_TOO_LONG
+        - LOA_REVIEW_REASON_NO_SUBJECT
+        - LOA_REVIEW_REASON_UNKNOWN_SUBJECT
+
+    LoaSubject:
+      type: object
+      description: >-
+        The trooper on leave: their forum user id, current forum username and
+        milpac id. milpacId is "0" when the trooper has no milpac record.
+      properties:
+        userId:
+          $ref: '#/components/schemas/Uint64String'
+        username:
+          type: string
+        milpacId:
+          $ref: '#/components/schemas/Uint64String'
+      required: [userId, username, milpacId]
+      additionalProperties: false
+
+    Loa:
+      type: object
+      properties:
+        threadId:
+          $ref: '#/components/schemas/Uint64String'
+        forumUrl:
+          type: string
+          description: >-
+            Link to the LOA thread on the forum. Empty when the server has no
+            forum base URL configured.
+        postDate:
+          type: integer
+          minimum: 0
+          maximum: 4294967295
+          description: When the thread was posted, in unix seconds.
+        forum:
+          $ref: '#/components/schemas/LoaForum'
+        subject:
+          $ref: '#/components/schemas/LoaSubject'
+        startDate:
+          type: string
+          pattern: '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'
+          description: First day of leave, YYYY-MM-DD.
+        endDate:
+          type: string
+          pattern: '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'
+          description: Last day of leave, YYYY-MM-DD. The LOA is open through the whole day.
+        state:
+          $ref: '#/components/schemas/LoaState'
+        reviewReason:
+          $ref: '#/components/schemas/LoaReviewReason'
+        reason:
+          type: string
+      required: [threadId, forumUrl, postDate, forum, subject, startDate, endDate, state, reviewReason, reason]
+      additionalProperties: false
+
+    LoasResponse:
+      type: object
+      properties:
+        loas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Loa'
+      required: [loas]
       additionalProperties: false
 
     # --- tickets -----------------------------------------------------------

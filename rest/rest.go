@@ -170,6 +170,10 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	// Same read scope and read-family freshness bound as the milpac surface.
 	handle(mux, "GET /api/v1/forum/groups", "read", maxAgeRosterFamily, getForumGroups(ds))
 
+	// --- LOAs (scope: read:loas, max-age 0) --------------------------------
+	// read:loas alone grants access. The route doesn't also require read.
+	handle(mux, "GET /api/v1/loas", "read:loas", maxAgeLoas, listLoas(ds))
+
 	// --- tickets (scope: read:tickets, max-age 0 — never cached, live) -----
 	// The literal /categories segment wins over {ticket_id} (mux precedence,
 	// golden-pinned by tickets/categories).

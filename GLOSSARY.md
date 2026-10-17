@@ -170,9 +170,11 @@ service. Each token carries a set of named scopes. Current scopes:
 - **`read`** — gates the milpac surface (profiles, rosters, ranks,
   positions, AWOL).
 - **`read:tickets`** — gates the tickets surface.
+- **`read:loas`** gates the LOA routes.
 
-Scope membership is checked per-handler; a token with `read` cannot
-read tickets, and vice versa.
+Each route checks its own scope, and no scope implies another. A token
+with `read` cannot read tickets or LOAs, and a token with
+`read:tickets` or `read:loas` reads only the routes its scope gates.
 
 ## Wire conventions (house style)
 

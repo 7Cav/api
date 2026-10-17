@@ -2,6 +2,7 @@ package rest_test
 
 import (
 	"compress/gzip"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -50,6 +51,10 @@ type fakeDatastore struct {
 	findProfilesByPosition func(positionQuery string) (*types.LiteRoster, error)
 	findAwol               func() ([]*types.Awol, error)
 	findForumGroups        func() ([]*types.ForumGroup, error)
+
+	// LOA override. The seeded default lives in fake_loas_test.go. A test
+	// sets it to inject an outage or to observe the query the handler passed.
+	findLoas func(ctx context.Context, q datastores.LoaQuery) ([]*types.Loa, error)
 
 	// Tickets overrides (seeded defaults live in fake_tickets_test.go); a
 	// test sets one to inject an outage or observe the bound filter.
@@ -104,6 +109,8 @@ func (f *fakeDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResult,
 		return &datastores.ApiKeyResult{KeyId: 102, UserId: 8, Scopes: scopes("read:tickets")}, nil
 	case "cav7_noscopekey":
 		return &datastores.ApiKeyResult{KeyId: 103, UserId: 9, Scopes: scopes()}, nil
+	case "cav7_loaskey":
+		return &datastores.ApiKeyResult{KeyId: 105, UserId: 10, Scopes: scopes("read:loas")}, nil
 	default:
 		return nil, nil // zero rows — generic Unauthorized, leaks nothing
 	}
@@ -263,6 +270,7 @@ var implementedCases = []string{
 	"milpacs/position_groups",
 	"milpacs/awol",
 	"forum/groups",
+	"loas/default",
 	"position/search_happy",
 	"position/search_empty_result",
 	"position/search_multi_segment",
@@ -327,6 +335,7 @@ var implementedCases = []string{
 	"auth/milpacs_no_scopes",
 	"auth/tickets_missing_header",
 	"auth/tickets_wrong_scope",
+	"auth/loas_wrong_scope",
 	"auth/tickets_raw_key",
 	"auth/tickets_invalid_key",
 	"auth/unknown_path_authenticated",

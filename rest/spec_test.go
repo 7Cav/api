@@ -55,6 +55,8 @@ var specRoutes = map[string]string{
 	"/api/v1/milpacs/awol":            "/api/v1/milpacs/awol",
 	// Forum group directory (#203): xf_user_group, bare array.
 	"/api/v1/forum/groups": "/api/v1/forum/groups",
+	// LOAs (#277): the default window, plus the read-key 403.
+	"/api/v1/loas": "/api/v1/loas",
 	// Position search (#128): happy (%20-encoded title), empty result
 	// (frozen #137 behavior), multi-segment (the ** glob form an OpenAPI
 	// template cannot express — classified to the canonical template so the

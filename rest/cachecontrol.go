@@ -31,6 +31,10 @@ import (
 //     itself is the verifiable fact. max-age=0 (stale immediately) is the
 //     honest signal for never-cached; anything larger would invent a
 //     freshness bound that never existed.
+//   - maxAgeLoas (0): a decision, not parity, because the route postdates
+//     the retired cache. LOA data is limited access, so no shared cache
+//     should keep a copy. The route also reads the forum live on every
+//     request, so an edited or deleted LOA thread shows on the next one.
 //
 // The header goes on 200s ONLY — also parity: the retired cache stored 200s
 // and nothing else ("[CACHE] Non-200 response: %d, not caching"), so error
@@ -39,6 +43,7 @@ import (
 const (
 	maxAgeRosterFamily = 600 // seconds; scope "read" — the surface the old cache covered
 	maxAgeTickets      = 0   // seconds; scope "read:tickets" — the surface the old cache bypassed
+	maxAgeLoas         = 0   // seconds; scope "read:loas", limited-access data read live
 )
 
 // cacheControl wraps a route handler, stamping the route group's
