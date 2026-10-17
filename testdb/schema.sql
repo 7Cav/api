@@ -4,7 +4,7 @@
 -- and cover exactly what the API reads: the NF Rosters add-on tables, the
 -- NF Tickets add-on tables, the Cav7 ApiKeyManager tables, and the core
 -- xf_user / xf_user_group / xf_user_connected_account / xf_post / xf_thread /
--- xf_phrase tables.
+-- xf_username_change / xf_phrase tables.
 --
 -- Index fidelity matters here: the harness carries production's stock
 -- indexes and must NOT carry the four indexes proposed by PRD #112
@@ -182,6 +182,28 @@ CREATE TABLE `xf_thread` (
   KEY `last_post_user_id` (`last_post_user_id`),
   KEY `post_date` (`post_date`),
   KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- The LOA route resolves a Username label that holds a member's old name
+-- through the approved changes recorded here. Copied from production DDL
+-- with its stock indexes.
+CREATE TABLE `xf_username_change` (
+  `change_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL,
+  `old_username` varchar(50) NOT NULL,
+  `new_username` varchar(50) NOT NULL,
+  `change_reason` varchar(200) NOT NULL DEFAULT '',
+  `change_state` enum('moderated','approved','rejected') NOT NULL DEFAULT 'approved',
+  `change_user_id` int(10) unsigned NOT NULL,
+  `change_date` int(10) unsigned NOT NULL,
+  `moderator_user_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `reject_reason` varchar(200) NOT NULL DEFAULT '',
+  `visible` tinyint(3) unsigned NOT NULL DEFAULT 1,
+  PRIMARY KEY (`change_id`),
+  KEY `change_date` (`change_date`),
+  KEY `old_username_state_date` (`old_username`,`change_state`,`change_date`),
+  KEY `new_username_state` (`new_username`,`change_state`),
+  KEY `user_id_state_date` (`user_id`,`change_state`,`change_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `xf_user_connected_account` (
