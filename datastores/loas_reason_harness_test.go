@@ -75,6 +75,24 @@ func TestFindLoas_ReasonIsPlainTextWithItsLines(t *testing.T) {
 	}
 }
 
+// The parser reads a Start Date label as the Start Date field even without
+// bold markup, so the reason ends there instead of taking in the dates.
+func TestFindLoas_ReasonStopsAtAnUnboldedStartDateLabel(t *testing.T) {
+	ds := openHarnessDatastore(t)
+	insertLoaMembers(t, ds, loaAlpha)
+	insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
+		message: edited(t, handPostedOpen(t), "[B]Start Date[/B]\n", "Start Date\n")})
+
+	loa := loaByThread(findLoas(t, ds), 7001)
+	if loa == nil {
+		t.Fatal("thread 7001: not returned")
+	}
+	want := [][]string{{"Family", "trip."}}
+	if got := reasonLines(loa.Reason); !slices.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("reason = %q, want the words %q", loa.Reason, want)
+	}
+}
+
 // A post with no reason field gives an empty reason.
 func TestFindLoas_PostWithoutReasonFieldGivesEmptyReason(t *testing.T) {
 	ds := openHarnessDatastore(t)

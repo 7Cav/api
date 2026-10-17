@@ -145,7 +145,9 @@ func mentionedUser(line string) uint64 {
 // loaReason reads the reason field as plain text, or returns "" when the post
 // has no reason label. lines and plain are the post's lines as textLines
 // returns them. The value is the rest of the label's line and every line
-// after it, up to the next bold label or the end of the post. Each line loses
+// after it, up to the next bold label, the Start Date label, or the end of the
+// post. The Start Date label ends it even without bold markup, because
+// parseLoaPost reads that line as the Start Date field. Each line loses
 // its BBCode and stays a line of its own, so a consumer can show the reason
 // as the trooper wrote it without rendering BBCode.
 func loaReason(lines, plain []string) string {
@@ -155,7 +157,8 @@ func loaReason(lines, plain []string) string {
 			continue
 		}
 		end := i + 1
-		for end < len(lines) && !boldLabelLine.MatchString(lines[end]) {
+		for end < len(lines) && !boldLabelLine.MatchString(lines[end]) &&
+			!startDateLabel.MatchString(dateText(lines[end])) {
 			end++
 		}
 		return joinLines(append([]string{m[1]}, plain[i+1:end]...))
