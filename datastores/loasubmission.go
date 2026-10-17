@@ -34,14 +34,6 @@ var loaForms = map[uint32]loaForm{
 // before or after its thread's post time.
 const loaMatchSeconds = 5
 
-// loaGap is a thread whose opening post leaves a field for its form
-// submission to fill.
-type loaGap struct {
-	node   uint32
-	posted uint32
-	post   *loaPost
-}
-
 // hasGap reports whether the post lacks a readable Start Date, a readable End
 // Date or a reason, which its submission can then fill in.
 func (p loaPost) hasGap() bool {
@@ -49,14 +41,15 @@ func (p loaPost) hasGap() bool {
 }
 
 // fillFromSubmissions fills in each gap's post from the form submission that
-// created its thread. Nothing stored links the two, so it matches them by
+// created its thread. A gap is a thread whose opening post leaves a field for
+// its submission to fill. Nothing stored links the two, so it matches them by
 // time. Among the forms that post to the thread's forum, the match is the
 // submission whose submit time is closest to the thread's post time, at most
 // 5 seconds before or after it. Of two submissions equally close, the lower
 // submission id wins. Each field the post lacks fills on its own, so a date
 // the post gives stays. A thread with no submission that close, such as a
 // hand-posted one, comes back as its post reads.
-func (ds *Mysql) fillFromSubmissions(ctx context.Context, gaps []loaGap) error {
+func (ds *Mysql) fillFromSubmissions(ctx context.Context, gaps []*parsedThread) error {
 	if len(gaps) == 0 {
 		return nil
 	}
@@ -79,7 +72,7 @@ func (ds *Mysql) fillFromSubmissions(ctx context.Context, gaps []loaGap) error {
 	for i, g := range gaps {
 		best := int64(loaMatchSeconds + 1)
 		for j := range subs {
-			if loaForms[subs[j].FormID].forum != loaForums[g.node] {
+			if loaForms[subs[j].FormID].forum != g.forum {
 				continue
 			}
 			if d := secondsApart(subs[j].LogDate, g.posted); d < best {

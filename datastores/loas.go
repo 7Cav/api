@@ -71,7 +71,7 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 		reviewSince = endedSince
 	}
 
-	var threads []struct {
+	var rows []struct {
 		ThreadID uint32 `gorm:"column:thread_id"`
 		NodeID   uint32 `gorm:"column:node_id"`
 		PostDate uint32 `gorm:"column:post_date"`
@@ -84,50 +84,55 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 		Where("xf_thread.discussion_state = ?", "visible").
 		Where("xf_thread.post_date >= ?", lookback.Unix()).
 		Order("xf_thread.thread_id").
-		Scan(&threads).Error
+		Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("reading LOA threads: %w", err)
 	}
 
-	posts := make([]loaPost, len(threads))
-	for i, th := range threads {
-		posts[i] = parseLoaPost(th.Message)
+	threads := make([]parsedThread, len(rows))
+	for i, r := range rows {
+		threads[i] = parsedThread{
+			id:     r.ThreadID,
+			forum:  loaForums[r.NodeID],
+			posted: r.PostDate,
+			post:   parseLoaPost(r.Message),
+		}
 	}
 	// The post stays the record. Where it gives no readable date or no
 	// reason, the form submission that created the thread fills in that
 	// field.
-	var gaps []loaGap
-	for i, th := range threads {
-		if posts[i].hasGap() {
-			gaps = append(gaps, loaGap{node: th.NodeID, posted: th.PostDate, post: &posts[i]})
+	var gaps []*parsedThread
+	for i := range threads {
+		if threads[i].post.hasGap() {
+			gaps = append(gaps, &threads[i])
 		}
 	}
 	if err := ds.fillFromSubmissions(ctx, gaps); err != nil {
 		return nil, err
 	}
-	subjects, err := ds.loaSubjects(ctx, posts)
+	subjects, err := ds.loaSubjects(ctx, threads)
 	if err != nil {
 		return nil, err
 	}
 
 	base := ds.forumBaseURL()
 	loas := make([]*types.Loa, 0, len(threads))
-	for i, th := range threads {
-		post := posts[i]
+	for _, th := range threads {
+		post := th.post
 		var link string
 		if base != "" {
-			link = fmt.Sprintf("%s/threads/%d/", base, th.ThreadID)
+			link = fmt.Sprintf("%s/threads/%d/", base, th.id)
 		}
 		loa := &types.Loa{
-			ThreadId:  uint64(th.ThreadID),
+			ThreadId:  uint64(th.id),
 			ForumUrl:  link,
-			PostDate:  th.PostDate,
-			Forum:     loaForums[th.NodeID],
+			PostDate:  th.posted,
+			Forum:     th.forum,
 			StartDate: loaDateString(post.start),
 			EndDate:   loaDateString(post.end),
 			Reason:    post.reason,
 		}
-		subject, known := subjects.resolve(post, th.PostDate)
+		subject, known := subjects.resolve(th)
 		if !known {
 			// A Subject who matches no member shows the name as written,
 			// with user and milpac ids of 0. A post with no Username label
@@ -138,7 +143,7 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 		if reason := loaReviewReason(post, known); reason != types.LoaReviewReasonUnspecified {
 			// A needs-review LOA may give no End Date to window on, so its
 			// thread's post date decides instead.
-			if int64(th.PostDate) < reviewSince.Unix() {
+			if int64(th.posted) < reviewSince.Unix() {
 				continue
 			}
 			loa.State = types.LoaStateNeedsReview
@@ -153,6 +158,15 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 		loas = append(loas, loa)
 	}
 	return loas, nil
+}
+
+// parsedThread is one thread in an LOA forum as FindLoas reads it: the
+// thread's id, its forum and post time, and what its opening post says.
+type parsedThread struct {
+	id     uint32
+	forum  types.LoaForum
+	posted uint32
+	post   loaPost
 }
 
 // loaSubjectIndex holds the members the posts' Username labels can resolve
@@ -175,22 +189,22 @@ type loaRename struct {
 	date   uint32
 }
 
-// resolve returns the Subject a post's last Username label names. A mention
-// names the member by id, whatever its text says now, because the text is
-// the name the member had when the post was written. A typed label names
-// the member with that current username, without regard to case, and
-// otherwise the member who renamed away from it.
-func (s loaSubjectIndex) resolve(post loaPost, posted uint32) (types.LoaSubject, bool) {
-	if post.mentionID != 0 {
-		subject, ok := s.byID[post.mentionID]
+// resolve returns the Subject the last Username label in a thread's opening
+// post names. A mention names the member by id, whatever its text says now,
+// because the text is the name the member had when the post was written. A
+// typed label names the member with that current username, without regard
+// to case, and otherwise the member who renamed away from it.
+func (s loaSubjectIndex) resolve(th parsedThread) (types.LoaSubject, bool) {
+	if th.post.mentionID != 0 {
+		subject, ok := s.byID[th.post.mentionID]
 		return subject, ok
 	}
-	name := strings.ToLower(post.subject)
+	name := strings.ToLower(th.post.subject)
 	if subject, ok := s.byName[name]; ok {
 		return subject, true
 	}
 	if renames := s.renamedFrom[name]; len(renames) > 0 {
-		subject, ok := s.byID[heldAt(renames, posted)]
+		subject, ok := s.byID[heldAt(renames, th.posted)]
 		return subject, ok
 	}
 	return types.LoaSubject{}, false
@@ -218,8 +232,8 @@ func heldAt(renames []loaRename, posted uint32) uint64 {
 	return before.userID
 }
 
-// loaSubjects reads the members the posts' Username labels can resolve to.
-func (ds *Mysql) loaSubjects(ctx context.Context, posts []loaPost) (loaSubjectIndex, error) {
+// loaSubjects reads the members the threads' Username labels can resolve to.
+func (ds *Mysql) loaSubjects(ctx context.Context, threads []parsedThread) (loaSubjectIndex, error) {
 	idx := loaSubjectIndex{
 		byID:        map[uint64]types.LoaSubject{},
 		byName:      map[string]types.LoaSubject{},
@@ -227,8 +241,8 @@ func (ds *Mysql) loaSubjects(ctx context.Context, posts []loaPost) (loaSubjectIn
 	}
 	var ids []uint64
 	var names []string
-	for _, p := range posts {
-		switch {
+	for _, th := range threads {
+		switch p := th.post; {
 		case p.mentionID != 0:
 			ids = append(ids, p.mentionID)
 		case p.hasSubject:
