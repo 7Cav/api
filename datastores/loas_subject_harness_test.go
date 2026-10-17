@@ -34,15 +34,15 @@ func TestFindLoas_MentionResolvesTheSubjectById(t *testing.T) {
 	}
 }
 
-// loaRename is one row of the forum's record of username changes.
-type loaRename struct {
+// usernameChangeRow is one row of the forum's record of username changes.
+type usernameChangeRow struct {
 	member   loaMember
 	from, to string
 	state    string // change_state; "": approved
 	at       time.Time
 }
 
-func insertLoaRenames(t *testing.T, ds datastores.Mysql, renames ...loaRename) {
+func insertLoaRenames(t *testing.T, ds datastores.Mysql, renames ...usernameChangeRow) {
 	t.Helper()
 	for _, r := range renames {
 		state := r.state
@@ -79,8 +79,8 @@ func TestFindLoas_PreviousUsernameResolvesTheSubject(t *testing.T) {
 			insertLoaMembers(t, ds, loaAlpha)
 			// Alpha posted as Loa.Formerly, then renamed twice.
 			insertLoaRenames(t, ds,
-				loaRename{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Middle", at: loaPosted.AddDate(0, 0, 2)},
-				loaRename{member: loaAlpha, from: "Loa.Middle", to: "Loa.Alpha", at: loaPosted.AddDate(0, 0, 5)})
+				usernameChangeRow{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Middle", at: loaPosted.AddDate(0, 0, 2)},
+				usernameChangeRow{member: loaAlpha, from: "Loa.Middle", to: "Loa.Alpha", at: loaPosted.AddDate(0, 0, 5)})
 			insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
 				message: handPostedNaming(t, tc.label)})
 
@@ -100,7 +100,7 @@ func TestFindLoas_UnapprovedRenameDoesNotResolveTheSubject(t *testing.T) {
 			ds := openHarnessDatastore(t)
 			insertLoaMembers(t, ds, loaAlpha)
 			insertLoaRenames(t, ds,
-				loaRename{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Alpha", state: state, at: loaPosted.AddDate(0, 0, 2)})
+				usernameChangeRow{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Alpha", state: state, at: loaPosted.AddDate(0, 0, 2)})
 			insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
 				message: handPostedNaming(t, "Loa.Formerly")})
 
@@ -117,7 +117,7 @@ func TestFindLoas_CurrentUsernameWinsOverPreviousUsername(t *testing.T) {
 	ds := openHarnessDatastore(t)
 	insertLoaMembers(t, ds, loaAlpha, loaBravo)
 	insertLoaRenames(t, ds,
-		loaRename{member: loaAlpha, from: "Loa.Bravo", to: "Loa.Alpha", at: loaPosted.AddDate(-1, 0, 0)})
+		usernameChangeRow{member: loaAlpha, from: "Loa.Bravo", to: "Loa.Alpha", at: loaPosted.AddDate(-1, 0, 0)})
 	insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaACD, starter: loaBravo.userID,
 		message: handPostedNaming(t, "Loa.Bravo")})
 
@@ -134,15 +134,15 @@ func TestFindLoas_CurrentUsernameWinsOverPreviousUsername(t *testing.T) {
 func TestFindLoas_PreviousUsernameOfSeveralMembersNamesWhoHeldItAtPostTime(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		renames []loaRename // in insert order
+		renames []usernameChangeRow // in insert order
 		want    loaMember
 	}{
-		{"held at post time", []loaRename{
+		{"held at post time", []usernameChangeRow{
 			{member: loaCharlie, from: "Loa.Formerly", to: "Loa.Charlie", at: time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)},
 			{member: loaBravo, from: "Loa.Formerly", to: "Loa.Bravo", at: time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)},
 			{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Alpha", at: time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)},
 		}, loaBravo},
-		{"every change before the post", []loaRename{
+		{"every change before the post", []usernameChangeRow{
 			{member: loaBravo, from: "Loa.Formerly", to: "Loa.Bravo", at: time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)},
 			{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Alpha", at: time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)},
 		}, loaBravo},
@@ -167,7 +167,7 @@ func TestFindLoas_UsernameChangeReadFailureIsAnError(t *testing.T) {
 	ds := openHarnessDatastore(t)
 	insertLoaMembers(t, ds, loaAlpha)
 	insertLoaRenames(t, ds,
-		loaRename{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Alpha", at: loaPosted.AddDate(0, 0, 2)})
+		usernameChangeRow{member: loaAlpha, from: "Loa.Formerly", to: "Loa.Alpha", at: loaPosted.AddDate(0, 0, 2)})
 	insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
 		message: handPostedNaming(t, "Loa.Formerly")})
 	mustExec(t, ds, "DROP TABLE xf_username_change")

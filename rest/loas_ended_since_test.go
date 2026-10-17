@@ -2,10 +2,8 @@ package rest_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/7cav/api/datastores"
@@ -50,7 +48,7 @@ func TestNewStack_LoasMalformedEndedSinceIs400(t *testing.T) {
 			rr := forumGet(t, h, path, "cav7_loaskey")
 
 			require.Equal(t, http.StatusBadRequest, rr.Code)
-			assert.Equal(t, 3, errorCode(t, rr), "invalid-argument code")
+			assert.Equal(t, 3, errorBody(t, rr).Code, "invalid-argument code")
 		})
 	}
 }
@@ -65,15 +63,5 @@ func TestNewStack_LoasEndedSinceTooFarBackIs400(t *testing.T) {
 	rr := forumGet(t, h, "/api/v1/loas?endedSince=2024-01-01", "cav7_loaskey")
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Equal(t, 3, errorCode(t, rr), "invalid-argument code")
-}
-
-// errorCode reads the code of an error body.
-func errorCode(t *testing.T, rr *httptest.ResponseRecorder) int {
-	t.Helper()
-	var body struct {
-		Code int `json:"code"`
-	}
-	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
-	return body.Code
+	assert.Equal(t, 3, errorBody(t, rr).Code, "invalid-argument code")
 }

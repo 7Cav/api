@@ -10,24 +10,24 @@ import (
 	"github.com/7cav/api/types"
 )
 
-// loaForm is an LOA form as the forum's forms add-on stores it: its form id,
-// the forum it posts to, and the question ids of its Start Date, End Date
-// and reason questions. The ids are the production forum's, copied from its
-// question catalog. They are written out here, not taken from the code's own
-// table, so a wrong id in that table turns a row red.
-type loaForm struct {
+// storedLoaForm is an LOA form as the forum's forms add-on stores it: its
+// form id, the forum it posts to, and the question ids of its Start Date,
+// End Date and reason questions. The ids are the production forum's, copied
+// from its question catalog. They are written out here, not taken from the
+// code's own table, so a wrong id in that table turns a row red.
+type storedLoaForm struct {
 	id                 uint32
 	node               uint32
 	start, end, reason uint32
 }
 
 var (
-	loaForm2  = loaForm{id: 2, node: nodeLoa1_7, start: 29, end: 30, reason: 28}
-	loaForm4  = loaForm{id: 4, node: nodeLoa2_7, start: 46, end: 47, reason: 45}
-	loaForm16 = loaForm{id: 16, node: nodeLoa3_7, start: 364, end: 365, reason: 363}
-	loaForm5  = loaForm{id: 5, node: nodeLoaACD, start: 55, end: 56, reason: 140}
-	loaForm12 = loaForm{id: 12, node: nodeLoaACD, start: 172, end: 173, reason: 171}
-	loaForm11 = loaForm{id: 11, node: nodeLoaRegimental, start: 156, end: 324, reason: 166}
+	loaForm2  = storedLoaForm{id: 2, node: nodeLoa1_7, start: 29, end: 30, reason: 28}
+	loaForm4  = storedLoaForm{id: 4, node: nodeLoa2_7, start: 46, end: 47, reason: 45}
+	loaForm16 = storedLoaForm{id: 16, node: nodeLoa3_7, start: 364, end: 365, reason: 363}
+	loaForm5  = storedLoaForm{id: 5, node: nodeLoaACD, start: 55, end: 56, reason: 140}
+	loaForm12 = storedLoaForm{id: 12, node: nodeLoaACD, start: 172, end: 173, reason: 171}
+	loaForm11 = storedLoaForm{id: 11, node: nodeLoaRegimental, start: 156, end: 324, reason: 166}
 )
 
 // loaSubmission is one filing of an LOA form and the answers it stored. The
@@ -35,7 +35,7 @@ var (
 // "\n" line breaks. The helper stores no row for an empty answer.
 type loaSubmission struct {
 	id                 uint32
-	form               loaForm
+	form               storedLoaForm
 	at                 time.Time
 	start, end, reason string
 }
@@ -77,7 +77,7 @@ func TestFindLoas_SubmissionFillsWhatThePostLacks(t *testing.T) {
 	insertLoaMembers(t, ds, loaAlpha, loaBravo)
 	rows := []struct {
 		name string
-		form loaForm
+		form storedLoaForm
 		post string
 	}{
 		{"form 2", loaForm2, withoutFields(t, loaPostForm2Node180,

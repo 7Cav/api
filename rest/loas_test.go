@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -27,11 +28,7 @@ func TestNewStack_LoasScopeGate(t *testing.T) {
 			rr := forumGet(t, h, "/api/v1/loas", key)
 
 			require.Equal(t, http.StatusForbidden, rr.Code)
-			var body struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			}
-			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+			body := errorBody(t, rr)
 			assert.Equal(t, 7, body.Code, "permission-denied code")
 			assert.Contains(t, body.Message, "read:loas", "the 403 names the missing scope")
 		})
@@ -59,11 +56,21 @@ func TestNewStack_LoasDatastoreFailureIs500(t *testing.T) {
 	rr := forumGet(t, h, "/api/v1/loas", "cav7_loaskey")
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
-	var body struct {
-		Code int `json:"code"`
-	}
+	assert.Equal(t, 13, errorBody(t, rr).Code, "internal-error code")
+}
+
+// errorResponse is the code and message of an error response.
+type errorResponse struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// errorBody reads the code and message of an error response.
+func errorBody(t *testing.T, rr *httptest.ResponseRecorder) errorResponse {
+	t.Helper()
+	var body errorResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
-	assert.Equal(t, 13, body.Code, "internal-error code")
+	return body
 }
 
 // LOA responses are stale immediately: no shared cache keeps limited-access
