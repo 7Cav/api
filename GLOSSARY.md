@@ -85,6 +85,50 @@ a decoration entry.
 An entry on the AWOL list — members flagged as absent without leave.
 Served by the AWOL route, used by status-tracking consumers.
 
+## LOA
+
+**LOA**:
+A trooper's notice that they will be away for at most 14 days, filed
+as its own thread in an LOA forum. The thread is the record, so its
+opening post as it reads now holds the LOA, and deleting the thread
+withdraws it.
+_Avoid_: leave request, absence notice
+
+**ELOA**:
+An extended leave of absence for a trooper who will be away longer
+than the 14 days an LOA allows. Staff process it through their own
+forms and the ELOA forum and move the trooper to the ELOA roster, so
+an ELOA is not an LOA.
+_Avoid_: long LOA
+
+**LOA forum**:
+A forum section that holds LOA threads. Each battalion has one, ACD
+and reservists share one, and regimental leadership has its own.
+_Avoid_: LOA node
+
+**Subject**:
+The trooper on leave, named in the LOA. Every LOA belongs to its
+Subject.
+_Avoid_: member, username
+
+**Submitter**:
+The account that filed the LOA. That is the Subject, or someone filing
+on their behalf such as a squad leader.
+_Avoid_: filer, poster, author
+
+**Open, upcoming, ended**:
+An LOA is open from the start of its Start Date through the end of its
+End Date, counted in UTC calendar days. Before that it is upcoming, and
+after that it is ended.
+_Avoid_: active, closed, expired
+
+**Needs review**:
+An LOA thread whose dates or Subject can't be taken as written, such as
+missing or reversed dates, a range well past the 14-day limit, or a
+Subject who matches no member. It records that the thread exists
+without claiming the trooper is away.
+_Avoid_: invalid, broken, unparsed
+
 ## Connected accounts
 
 Members are looked up by 7Cav user id, by username, and by external
