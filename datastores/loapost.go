@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/7cav/api/types"
 )
 
 // loaPost holds what an LOA's opening post says. A zero date means the post
@@ -22,6 +24,39 @@ type loaPost struct {
 	// reason is the text under the post's reason label as plain text, or
 	// "" when the post has no reason label.
 	reason string
+}
+
+// hasGap reports whether the post lacks a readable Start Date, a readable End
+// Date or a reason, which its submission can then fill in.
+func (p loaPost) hasGap() bool {
+	return p.start.IsZero() || p.end.IsZero() || p.reason == ""
+}
+
+// loaMaxDays is how many days past its Start Date an LOA's End Date may
+// fall. A Saturday-to-Saturday LOA ends exactly 14 days after it starts, and
+// the API doesn't flag it.
+const loaMaxDays = 14
+
+// loaReviewReason names the rule a thread trips, or returns
+// LoaReviewReasonUnspecified when the API can take it as written. known
+// reports whether the post's Username label matched a member. When several
+// rules apply it reports the first in this order, a choice the spec leaves
+// open.
+func loaReviewReason(post loaPost, known bool) types.LoaReviewReason {
+	switch {
+	case post.start.IsZero() || post.end.IsZero():
+		return types.LoaReviewReasonDatesUnreadable
+	case post.end.Before(post.start):
+		return types.LoaReviewReasonEndBeforeStart
+	case post.end.After(post.start.AddDate(0, 0, loaMaxDays)):
+		return types.LoaReviewReasonTooLong
+	case !post.hasSubject:
+		return types.LoaReviewReasonNoSubject
+	case !known:
+		return types.LoaReviewReasonUnknownSubject
+	default:
+		return types.LoaReviewReasonUnspecified
+	}
 }
 
 var (

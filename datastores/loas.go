@@ -328,11 +328,6 @@ func (ds *Mysql) loaMembers(ctx context.Context, where string, args ...any) ([]t
 	return members, nil
 }
 
-// loaMaxDays is how many days past its Start Date an LOA's End Date may
-// fall. A Saturday-to-Saturday LOA ends exactly 14 days after it starts, and
-// the API doesn't flag it.
-const loaMaxDays = 14
-
 // loaReviewWindowDays is how many days back, by post date, the default
 // window reaches for needs-review threads.
 const loaReviewWindowDays = 14
@@ -340,28 +335,6 @@ const loaReviewWindowDays = 14
 // loaMaxEndedSinceDays is how many days before today's UTC date endedSince
 // may go.
 const loaMaxEndedSinceDays = 365
-
-// loaReviewReason names the rule a thread trips, or returns
-// LoaReviewReasonUnspecified when the API can take it as written. known
-// reports whether the post's Username label matched a member. When several
-// rules apply it reports the first in this order, a choice the spec leaves
-// open.
-func loaReviewReason(post loaPost, known bool) types.LoaReviewReason {
-	switch {
-	case post.start.IsZero() || post.end.IsZero():
-		return types.LoaReviewReasonDatesUnreadable
-	case post.end.Before(post.start):
-		return types.LoaReviewReasonEndBeforeStart
-	case post.end.After(post.start.AddDate(0, 0, loaMaxDays)):
-		return types.LoaReviewReasonTooLong
-	case !post.hasSubject:
-		return types.LoaReviewReasonNoSubject
-	case !known:
-		return types.LoaReviewReasonUnknownSubject
-	default:
-		return types.LoaReviewReasonUnspecified
-	}
-}
 
 // loaDateString writes a date the post gave as YYYY-MM-DD, and a date it
 // didn't as "".

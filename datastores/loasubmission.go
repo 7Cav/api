@@ -34,12 +34,6 @@ var loaForms = map[uint32]loaForm{
 // before or after its thread's post time.
 const loaMatchSeconds = 5
 
-// hasGap reports whether the post lacks a readable Start Date, a readable End
-// Date or a reason, which its submission can then fill in.
-func (p loaPost) hasGap() bool {
-	return p.start.IsZero() || p.end.IsZero() || p.reason == ""
-}
-
 // fillFromSubmissions fills in each gap's post from the form submission that
 // created its thread. A gap is a thread whose opening post leaves a field for
 // its submission to fill. Nothing stored links the two, so it matches them by
