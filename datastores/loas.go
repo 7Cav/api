@@ -102,6 +102,7 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 			StartDate: post.start.Format(layoutISO),
 			EndDate:   post.end.Format(layoutISO),
 			State:     state,
+			Reason:    post.reason,
 		})
 	}
 	return loas, nil

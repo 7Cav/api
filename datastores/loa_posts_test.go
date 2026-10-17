@@ -71,6 +71,32 @@ const loaPostForm4Node178 = "" +
 	"[B][COLOR=rgb(213, 185, 0)]Submitter Name[/COLOR][/B] \n" +
 	"Loa.Alpha"
 
+// Form 5, Reservist LOA (node 400). Its reason label is "Details", with the
+// value on the label's own line. Rank AR and billet Reserve are the form's
+// default answers. It has no Request for Self, no Submitter Name and no
+// trailing newline.
+const loaPostForm5Node400Reservist = "" +
+	"\r\n" +
+	"\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]Rank[/COLOR]:[/B] AR\r\n" +
+	"\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]Username[/COLOR][/B]: [USER=9001]Loa.Alpha[/USER]\r\n" +
+	"\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]Primary Billet[/COLOR][/B]: Reserve\r\n" +
+	"\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]Details[/COLOR][/B]: Family trip.\r\n" +
+	"\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]Start Date[/COLOR][/B] \n" +
+	"Oct 3, 2026\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]End Date[/COLOR][/B] \n" +
+	"Oct 10, 2026\r\n" +
+	"\r\n" +
+	"[HR][/HR]\n" +
+	"[B][COLOR=rgb(213, 185, 0)]I understand that Leave of Absence does not exceed 14 days[/COLOR][/B] \n" +
+	"Yes\r\n" +
+	"[B][COLOR=rgb(213, 185, 0)]I have informed my immediate Chain of Command prior to submitting this request[/COLOR][/B] \n" +
+	"Yes"
+
 // Form 11, Regimental LOA (node 369): multi-line reason, empty Submitter Name.
 const loaPostForm11Node369 = "" +
 	"\r\n" +
