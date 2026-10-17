@@ -581,8 +581,9 @@ paths:
         set. An LOA a leader edited shows its new dates on the next request,
         and an LOA whose thread was deleted is gone. An LOA is open from the
         start of its Start Date through the end of its End Date, counted in
-        UTC calendar days, and upcoming before that. The response leaves out
-        ended LOAs. A thread the API can't take as written comes back as
+        UTC calendar days, upcoming before that, and ended after it. Without
+        endedSince the response leaves out ended LOAs. A thread the API can't
+        take as written comes back as
         LOA_STATE_NEEDS_REVIEW, and its reviewReason names the rule it
         tripped. The rules are dates it can't read, an End Date before the
         Start Date, an End Date more than 14 days after the Start Date, no
@@ -591,12 +592,32 @@ paths:
         flag an LOA whose End Date is exactly 14 days after its Start Date,
         such as Saturday to Saturday. A needs-review LOA may have no End Date
         to window on, so the response includes it when its thread was posted
-        in the last 14 days. The API reads only threads posted in the year
-        before today.
+        in the last 14 days. With endedSince, the response also includes the
+        LOAs that ended on or after that date, as LOA_STATE_ENDED, and the
+        needs-review LOAs whose thread was posted on or after it. The window
+        starts today, or on endedSince when that is earlier, and the API reads
+        only threads posted in the year before the window starts. The API
+        accepts the query key as endedSince or ended_since, and it ignores
+        unknown query parameters.
       tags: [loas]
+      parameters:
+        - name: endedSince
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+            description: >-
+              A YYYY-MM-DD date, read as a UTC calendar date. Adds the LOAs
+              that ended on or after it and the needs-review LOAs whose thread
+              was posted on or after it. It can be at most 365 days before
+              today's UTC date. An earlier date, or a value that isn't a
+              YYYY-MM-DD date, gets 400.
       responses:
         "200":
-          description: Open, upcoming and needs-review LOAs.
+          description: >-
+            Open, upcoming and needs-review LOAs, plus the ended ones when
+            endedSince is given.
           headers:
             Vary:
               description: >-
@@ -617,6 +638,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoasResponse'
+        "400":
+          $ref: '#/components/responses/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":

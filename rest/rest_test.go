@@ -271,6 +271,8 @@ var implementedCases = []string{
 	"milpacs/awol",
 	"forum/groups",
 	"loas/default",
+	"loas/ended_since",
+	"loas/ended_since_too_far_back",
 	"position/search_happy",
 	"position/search_empty_result",
 	"position/search_multi_segment",

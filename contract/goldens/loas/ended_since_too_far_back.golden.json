@@ -1,0 +1,16 @@
+{
+  "auth": "read:loas",
+  "body": {
+    "code": 3,
+    "details": [],
+    "message": "ended_since is more than 365 days before today's UTC date"
+  },
+  "case": "loas/ended_since_too_far_back",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "An endedSince more than 365 days before today's UTC date gets InvalidArgument, and the message names the limit.",
+  "path": "/api/v1/loas?endedSince=2025-01-01",
+  "status": 400
+}
