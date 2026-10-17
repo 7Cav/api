@@ -92,12 +92,16 @@ func (w *commitSnapshot) FlushError() error {
 // response: the route group's max-age on 200s, nothing anywhere else. The
 // tickets predicate is verbatim the retired cache middleware's bypass
 // (middleware/cache.go @ 92afba5^) — the exact line that made tickets
-// never-cached is the line that now classifies them as always-live.
+// never-cached is the line that now classifies them as always-live. The LOA
+// route postdates the cache and is read live by decision (#276).
 func wantCacheControl(status int, path string) string {
 	if status != http.StatusOK {
 		return ""
 	}
 	if path == "/api/v1/tickets" || strings.HasPrefix(path, "/api/v1/tickets/") {
+		return "max-age=0"
+	}
+	if path == "/api/v1/loas" {
 		return "max-age=0"
 	}
 	return "max-age=600"

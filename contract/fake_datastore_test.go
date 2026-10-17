@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/types"
@@ -45,6 +46,8 @@ func (recordingDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResul
 		return &datastores.ApiKeyResult{KeyId: 102, UserId: 8, Scopes: scopeSet("read:tickets")}, nil
 	case "cav7_noscopekey":
 		return &datastores.ApiKeyResult{KeyId: 103, UserId: 9, Scopes: scopeSet()}, nil
+	case "cav7_loaskey":
+		return &datastores.ApiKeyResult{KeyId: 105, UserId: 10, Scopes: scopeSet("read:loas")}, nil
 	default:
 		return nil, nil // zero rows — generic Unauthorized, leaks nothing
 	}
@@ -316,6 +319,76 @@ func (recordingDatastore) FindForumGroups() ([]*types.ForumGroup, error) {
 		{GroupId: 3, GroupName: "Administrative"},
 		{GroupId: 10, GroupName: "Rank - Major General"},
 	}, nil
+}
+
+// --- LOAs -----------------------------------------------------------------
+
+// loaSeedToday is the LOA seed's today. The seed keeps its own fixed clock
+// instead of reading the request instant, so the goldens recorded over it
+// replay the same on any day.
+var loaSeedToday = time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+
+// FindLoas is the LOA seed, one open, one upcoming and one needs-review LOA
+// in threadId order. The needs-review LOA gives no readable End Date. An
+// endedSince on or before Oct 9 adds an ended LOA, and one more than
+// datastores.LoaMaxEndedSinceDays days before loaSeedToday is the
+// too-far-back error. The Subjects come from
+// the profile seed, relation 1 for user 3 Jarvis.A and relation 2 for user 8
+// John.Doe, so userId and milpacId differ. rest/fake_loas_test.go mirrors
+// this set so the new-stack replay agrees with the recorded goldens.
+func (recordingDatastore) FindLoas(_ context.Context, q datastores.LoaQuery) ([]*types.Loa, error) {
+	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -datastores.LoaMaxEndedSinceDays)) {
+		return nil, fmt.Errorf("%w: seed limit", datastores.ErrEndedSinceTooFarBack)
+	}
+	var loas []*types.Loa
+	if !q.EndedSince.IsZero() && !q.EndedSince.After(time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)) {
+		loas = append(loas, &types.Loa{
+			ThreadId:  105497,
+			ForumUrl:  "https://7cav.us/threads/105497/",
+			PostDate:  1790272800,
+			Forum:     types.LoaForum3_7,
+			Subject:   types.LoaSubject{UserId: 8, Username: "John.Doe", MilpacId: 2},
+			StartDate: "2026-09-26",
+			EndDate:   "2026-10-09",
+			State:     types.LoaStateEnded,
+			Reason:    "Moving house.",
+		})
+	}
+	return append(loas, []*types.Loa{
+		{
+			ThreadId:  105512,
+			ForumUrl:  "https://7cav.us/threads/105512/",
+			PostDate:  1791568800,
+			Forum:     types.LoaForum1_7,
+			Subject:   types.LoaSubject{UserId: 3, Username: "Jarvis.A", MilpacId: 1},
+			StartDate: "2026-10-10",
+			EndDate:   "2026-10-23",
+			State:     types.LoaStateOpen,
+			Reason:    "Family trip.\nBack on the 24th.",
+		},
+		{
+			ThreadId:  105530,
+			ForumUrl:  "https://7cav.us/threads/105530/",
+			PostDate:  1791655200,
+			Forum:     types.LoaForumACD,
+			Subject:   types.LoaSubject{UserId: 8, Username: "John.Doe", MilpacId: 2},
+			StartDate: "2026-10-24",
+			EndDate:   "2026-11-06",
+			State:     types.LoaStateUpcoming,
+			Reason:    "Work travel.",
+		},
+		{
+			ThreadId:     105541,
+			ForumUrl:     "https://7cav.us/threads/105541/",
+			PostDate:     1791741600,
+			Forum:        types.LoaForum2_7,
+			Subject:      types.LoaSubject{UserId: 3, Username: "Jarvis.A", MilpacId: 1},
+			StartDate:    "2026-10-31",
+			EndDate:      "",
+			State:        types.LoaStateNeedsReview,
+			ReviewReason: types.LoaReviewReasonDatesUnreadable,
+		},
+	}...), nil
 }
 
 // --- Tickets --------------------------------------------------------------

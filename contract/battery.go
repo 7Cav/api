@@ -4,7 +4,7 @@ package contract
 // route × happy/edge/error/auth cases, both enum path forms, repeated-filter
 // and dual-spelling query combinations on tickets.
 //
-// 17 public routes (the keycloak lookup route
+// 18 public routes (the keycloak lookup route
 // /api/v1/milpac/keycloak/{keycloak_id} is deliberately NOT recorded — it
 // dies at cutover, so there is no golden to hold it to):
 //
@@ -25,6 +25,7 @@ package contract
 //  15. GET /api/v1/tickets/{ticket_id}/messages
 //  16. GET /api/v1/tickets/categories
 //  17. GET /api/v1/forum/groups
+//  18. GET /api/v1/loas
 //
 // Path literals reference the recording seed (see fake_datastore_test.go and
 // contract/README.md): relation 1 ↔ user 3 (Jarvis.A), relation 2 ↔ user 8
@@ -62,6 +63,8 @@ func Cases() []Case {
 			Notes: "Tickets surface, unknown key: generic 'Unauthorized'."},
 		{Name: "auth/tickets_wrong_scope", Method: "GET", Path: "/api/v1/tickets", Auth: AuthRead,
 			Notes: "'read' does not imply 'read:tickets': PermissionDenied JSON."},
+		{Name: "auth/loas_wrong_scope", Method: "GET", Path: "/api/v1/loas", Auth: AuthRead,
+			Notes: "'read' does not imply 'read:loas': PermissionDenied JSON naming the missing scope."},
 		{Name: "auth/unknown_path_authenticated", Method: "GET", Path: "/api/v1/does/not/exist", Auth: AuthRead,
 			Notes: "Unknown path under the API prefix with valid auth: JSON 404 body from the gateway mux."},
 		{Name: "auth/unknown_path_unauthenticated", Method: "GET", Path: "/api/v1/does/not/exist", Auth: AuthNone,
@@ -106,6 +109,14 @@ func Cases() []Case {
 		// --- Forum group directory ---------------------------------------
 		{Name: "forum/groups", Method: "GET", Path: "/api/v1/forum/groups", Auth: AuthRead,
 			Notes: "Forum permission-group directory (xf_user_group); bare array of {groupId, groupName}, 32-bit groupId as a JSON number, ordered by groupId asc (ADR 0007)."},
+
+		// --- LOAs -----------------------------------------------------------
+		{Name: "loas/default", Method: "GET", Path: "/api/v1/loas", Auth: AuthReadLoas,
+			Notes: "Every open and upcoming LOA, and the needs-review ones posted in the last 14 days, in threadId order. A needs-review LOA names its reviewReason and gives \"\" for a date it couldn't read. 64-bit ids are strings, the 32-bit postDate is a number, enums are names, and subject is an object."},
+		{Name: "loas/ended_since", Method: "GET", Path: "/api/v1/loas?endedSince=2026-10-01", Auth: AuthReadLoas,
+			Notes: "endedSince, sent as the camelCase key, adds the LOAs that ended on or after it. The body holds one LOA in each state, LOA_STATE_ENDED included, in threadId order."},
+		{Name: "loas/ended_since_too_far_back", Method: "GET", Path: "/api/v1/loas?endedSince=2025-01-01", Auth: AuthReadLoas,
+			Notes: "An endedSince more than 365 days before today's UTC date gets InvalidArgument, and the message names the limit."},
 
 		// --- Roster: both enum path forms, empty, errors -------------------
 		{Name: "roster/combat_by_name", Method: "GET", Path: "/api/v1/roster/ROSTER_TYPE_COMBAT", Auth: AuthRead,
