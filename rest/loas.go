@@ -38,8 +38,9 @@ func listLoas(ds datastores.Datastore) http.Handler {
 				writeError(w, r, codeInvalidArgument, "ended_since is more than 365 days before today's UTC date")
 				return
 			}
-			// The wire text stays fixed, and the detail stays in the log.
-			Error.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+			// The wire text stays fixed. writeError logs the 500 itself, so
+			// this line only keeps the detail as a debug trail.
+			Info.Printf("%s %s: %v", r.Method, r.URL.Path, err)
 			writeError(w, r, codeInternal, "error fetching LOAs")
 			return
 		}
