@@ -93,8 +93,8 @@ type Datastore interface {
 	// the LOA forums on every call and ordered by thread id ascending. Today
 	// is the UTC calendar date of q.Now. The slice is non-nil even when
 	// empty, and a read failure returns an error, never an empty list. For
-	// an EndedSince more than 365 days before today it returns an error
-	// wrapping ErrEndedSinceTooFarBack.
+	// an EndedSince more than LoaMaxEndedSinceDays days before today it
+	// returns an error wrapping ErrEndedSinceTooFarBack.
 	FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 
 	// Tickets

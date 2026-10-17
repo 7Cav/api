@@ -330,13 +330,14 @@ var loaSeedToday = time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
 
 // FindLoas is the LOA seed, one open, one upcoming and one needs-review LOA
 // in threadId order. The needs-review LOA gives no readable End Date. An
-// endedSince on or before Oct 9 adds an ended LOA, and one more than 365
-// days before loaSeedToday is the too-far-back error. The Subjects come from
+// endedSince on or before Oct 9 adds an ended LOA, and one more than
+// datastores.LoaMaxEndedSinceDays days before loaSeedToday is the
+// too-far-back error. The Subjects come from
 // the profile seed, relation 1 for user 3 Jarvis.A and relation 2 for user 8
 // John.Doe, so userId and milpacId differ. rest/fake_loas_test.go mirrors
 // this set so the new-stack replay agrees with the recorded goldens.
 func (recordingDatastore) FindLoas(_ context.Context, q datastores.LoaQuery) ([]*types.Loa, error) {
-	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -365)) {
+	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -datastores.LoaMaxEndedSinceDays)) {
 		return nil, fmt.Errorf("%w: seed limit", datastores.ErrEndedSinceTooFarBack)
 	}
 	var loas []*types.Loa

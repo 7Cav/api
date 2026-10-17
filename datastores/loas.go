@@ -2,7 +2,6 @@ package datastores
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -23,9 +22,14 @@ type LoaQuery struct {
 	EndedSince time.Time
 }
 
-// ErrEndedSinceTooFarBack reports an EndedSince more than 365 days before
-// today's UTC date. FindLoas wraps it with the dates.
-var ErrEndedSinceTooFarBack = errors.New("endedSince is more than 365 days back")
+// LoaMaxEndedSinceDays is how many days before today's UTC date EndedSince
+// may go.
+const LoaMaxEndedSinceDays = 365
+
+// ErrEndedSinceTooFarBack reports an EndedSince more than
+// LoaMaxEndedSinceDays days before today's UTC date. FindLoas wraps it with
+// the dates.
+var ErrEndedSinceTooFarBack = fmt.Errorf("endedSince is more than %d days back", LoaMaxEndedSinceDays)
 
 // loaForums maps each LOA forum's node id to the forum it reports. Adding an
 // LOA forum is a code change.
@@ -44,14 +48,15 @@ var loaForums = map[uint32]types.LoaForum{
 // open and upcoming LOAs, and the needs-review ones whose thread was posted
 // in the last 14 days. With EndedSince it also keeps the LOAs that ended on
 // or after that date and the needs-review ones posted on or after it, and an
-// EndedSince more than 365 days back is ErrEndedSinceTooFarBack.
+// EndedSince more than LoaMaxEndedSinceDays days back is
+// ErrEndedSinceTooFarBack.
 func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error) {
 	today := utcDate(q.Now)
 	var endedSince time.Time
 	if !q.EndedSince.IsZero() {
 		endedSince = utcDate(q.EndedSince)
 		// The limit counts days, not calendar years, from today's UTC date.
-		if limit := today.AddDate(0, 0, -loaMaxEndedSinceDays); endedSince.Before(limit) {
+		if limit := today.AddDate(0, 0, -LoaMaxEndedSinceDays); endedSince.Before(limit) {
 			return nil, fmt.Errorf("%w: %s is before %s", ErrEndedSinceTooFarBack,
 				endedSince.Format(layoutISO), limit.Format(layoutISO))
 		}
@@ -331,10 +336,6 @@ func (ds *Mysql) loaMembers(ctx context.Context, where string, args ...any) ([]t
 // loaReviewWindowDays is how many days back, by post date, the default
 // window reaches for needs-review threads.
 const loaReviewWindowDays = 14
-
-// loaMaxEndedSinceDays is how many days before today's UTC date endedSince
-// may go.
-const loaMaxEndedSinceDays = 365
 
 // loaDateString writes a date the post gave as YYYY-MM-DD, and a date it
 // didn't as "".
