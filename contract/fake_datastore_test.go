@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/types"
@@ -322,14 +323,37 @@ func (recordingDatastore) FindForumGroups() ([]*types.ForumGroup, error) {
 
 // --- LOAs -----------------------------------------------------------------
 
+// loaSeedToday is the LOA seed's today. The seed keeps its own fixed clock
+// instead of reading the request instant, so the goldens recorded over it
+// replay the same on any day.
+var loaSeedToday = time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+
 // FindLoas is the LOA seed, one open, one upcoming and one needs-review LOA
-// in threadId order. The needs-review LOA gives no readable End Date. The
-// Subjects come from the profile seed, relation 1 for user 3 Jarvis.A and
-// relation 2 for user 8 John.Doe, so userId and milpacId differ.
-// rest/fake_loas_test.go mirrors this set so the new-stack replay agrees with
-// the recorded golden.
-func (recordingDatastore) FindLoas(context.Context, datastores.LoaQuery) ([]*types.Loa, error) {
-	return []*types.Loa{
+// in threadId order. The needs-review LOA gives no readable End Date. An
+// endedSince on or before Oct 9 adds an ended LOA, and one more than 365
+// days before loaSeedToday is the too-far-back error. The Subjects come from
+// the profile seed, relation 1 for user 3 Jarvis.A and relation 2 for user 8
+// John.Doe, so userId and milpacId differ. rest/fake_loas_test.go mirrors
+// this set so the new-stack replay agrees with the recorded goldens.
+func (recordingDatastore) FindLoas(_ context.Context, q datastores.LoaQuery) ([]*types.Loa, error) {
+	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -365)) {
+		return nil, fmt.Errorf("%w: seed limit", datastores.ErrEndedSinceTooFarBack)
+	}
+	var loas []*types.Loa
+	if !q.EndedSince.IsZero() && !q.EndedSince.After(time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)) {
+		loas = append(loas, &types.Loa{
+			ThreadId:  105497,
+			ForumUrl:  "https://7cav.us/threads/105497/",
+			PostDate:  1790272800,
+			Forum:     types.LoaForum3_7,
+			Subject:   types.LoaSubject{UserId: 8, Username: "John.Doe", MilpacId: 2},
+			StartDate: "2026-09-26",
+			EndDate:   "2026-10-09",
+			State:     types.LoaStateEnded,
+			Reason:    "Moving house.",
+		})
+	}
+	return append(loas, []*types.Loa{
 		{
 			ThreadId:  105512,
 			ForumUrl:  "https://7cav.us/threads/105512/",
@@ -363,7 +387,7 @@ func (recordingDatastore) FindLoas(context.Context, datastores.LoaQuery) ([]*typ
 			State:        types.LoaStateNeedsReview,
 			ReviewReason: types.LoaReviewReasonDatesUnreadable,
 		},
-	}, nil
+	}...), nil
 }
 
 // --- Tickets --------------------------------------------------------------

@@ -54,6 +54,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // bracketKeyRegexp is the old gateway's bracket-key rewrite, mirrored exactly
@@ -217,6 +218,22 @@ func (b *queryBinder) uint32SliceField(snake string) []uint32 {
 			return nil
 		}
 		out = append(out, uint32(v))
+	}
+	return out
+}
+
+// dateField binds a YYYY-MM-DD date as midnight UTC on that date, and an
+// absent field as the zero time. Any other value, the empty string
+// included, fails.
+func (b *queryBinder) dateField(snake string) time.Time {
+	var out time.Time
+	for _, raw := range b.scalar(snake) {
+		v, err := time.Parse(time.DateOnly, raw)
+		if err != nil {
+			b.failField(snake, err)
+			return time.Time{}
+		}
+		out = v // every value parses, and the camel value, read last, wins
 	}
 	return out
 }
