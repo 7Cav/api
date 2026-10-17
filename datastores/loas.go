@@ -71,6 +71,18 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 	for i, th := range threads {
 		posts[i] = parseLoaPost(th.Message)
 	}
+	// The post stays the record. Where it gives no readable date or no
+	// reason, the form submission that created the thread fills in that
+	// field.
+	var gaps []loaGap
+	for i, th := range threads {
+		if posts[i].hasGap() {
+			gaps = append(gaps, loaGap{node: th.NodeID, posted: th.PostDate, post: &posts[i]})
+		}
+	}
+	if err := ds.fillFromSubmissions(ctx, gaps); err != nil {
+		return nil, err
+	}
 	subjects, err := ds.loaSubjects(ctx, posts)
 	if err != nil {
 		return nil, err

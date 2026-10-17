@@ -7,13 +7,16 @@ import "strconv"
 // thread gives one record, and ThreadId is its stable key. Deleting the
 // thread withdraws the LOA.
 //
-// StartDate and EndDate are YYYY-MM-DD calendar dates, or "" when the post
-// gives none the API can read. The datastore computes State from them
-// against the request's UTC date. A thread the API can't take as written has
-// State LoaStateNeedsReview, and ReviewReason names the rule it tripped.
+// StartDate and EndDate are YYYY-MM-DD calendar dates. When the post gives no
+// date the API can read, that date comes from the form submission that
+// created the thread, and it is "" when the submission gives none either.
+// The datastore computes State from them against the request's UTC date. A
+// thread the API can't take as written has State LoaStateNeedsReview, and
+// ReviewReason names the rule it tripped.
 //
 // Reason is the reason the trooper gave in the post, as plain text with the
-// post's line breaks kept. It is "" when the post gives none.
+// line breaks kept. When the post gives none it comes from the form
+// submission, and it is "" when neither gives one.
 type Loa struct {
 	ThreadId     uint64          `json:"threadId,string"`
 	ForumUrl     string          `json:"forumUrl"`
