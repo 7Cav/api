@@ -15,8 +15,8 @@ import (
 // LOAs that ended on or after it and the needs-review ones posted on or after
 // it. The read:loas scope gates it. The handler passes the request instant to
 // the datastore, which takes today as its UTC date and refuses an
-// ended_since more than 365 days before it. That refusal and a malformed
-// date are 400s.
+// ended_since more than datastores.LoaMaxEndedSinceDays days before it. That
+// refusal and a malformed date are 400s.
 // A datastore failure is a 500 with fixed wording and never an empty list,
 // because a consumer that replaces its copy on every sync would wipe it
 // during an outage.
@@ -35,11 +35,13 @@ func listLoas(ds datastores.Datastore) http.Handler {
 		if err != nil {
 			if errors.Is(err, datastores.ErrEndedSinceTooFarBack) {
 				Info.Printf("%s %s: %v", r.Method, r.URL.Path, err)
-				writeError(w, r, codeInvalidArgument, "ended_since is more than 365 days before today's UTC date")
+				writeError(w, r, codeInvalidArgument, "ended_since is more than %d days before today's UTC date",
+					datastores.LoaMaxEndedSinceDays)
 				return
 			}
-			// The wire text stays fixed, and the detail stays in the log.
-			Error.Printf("%s %s: %v", r.Method, r.URL.Path, err)
+			// The wire text stays fixed. writeError logs the 500 itself, so
+			// this line only keeps the detail as a debug trail.
+			Info.Printf("%s %s: %v", r.Method, r.URL.Path, err)
 			writeError(w, r, codeInternal, "error fetching LOAs")
 			return
 		}

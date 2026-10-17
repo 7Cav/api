@@ -20,7 +20,7 @@ func (f *fakeDatastore) FindLoas(ctx context.Context, q datastores.LoaQuery) ([]
 	if f.findLoas != nil {
 		return f.findLoas(ctx, q)
 	}
-	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -365)) {
+	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -datastores.LoaMaxEndedSinceDays)) {
 		return nil, fmt.Errorf("%w: seed limit", datastores.ErrEndedSinceTooFarBack)
 	}
 	var loas []*types.Loa
