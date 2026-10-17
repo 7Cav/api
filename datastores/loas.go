@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,14 +35,6 @@ var loaForums = map[uint32]types.LoaForum{
 	540: types.LoaForum3_7,
 	400: types.LoaForumACD,
 	369: types.LoaForumRegimental,
-}
-
-func loaForumNodes() []uint32 {
-	nodes := make([]uint32, 0, len(loaForums))
-	for node := range loaForums {
-		nodes = append(nodes, node)
-	}
-	return nodes
 }
 
 // FindLoas reads the visible threads in the LOA forums and returns one LOA
@@ -86,7 +80,7 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 	err := ds.Db.WithContext(ctx).Model(&xenforo.Thread{}).
 		Select("xf_thread.thread_id, xf_thread.node_id, xf_thread.post_date, xf_post.message").
 		Joins("JOIN xf_post ON xf_post.post_id = xf_thread.first_post_id").
-		Where("xf_thread.node_id IN ?", loaForumNodes()).
+		Where("xf_thread.node_id IN ?", slices.Collect(maps.Keys(loaForums))).
 		Where("xf_thread.discussion_state = ?", "visible").
 		Where("xf_thread.post_date >= ?", lookback.Unix()).
 		Order("xf_thread.thread_id").
