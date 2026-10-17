@@ -38,5 +38,16 @@ func (f *fakeDatastore) FindLoas(ctx context.Context, q datastores.LoaQuery) ([]
 			State:     types.LoaStateUpcoming,
 			Reason:    "Work travel.",
 		},
+		{
+			ThreadId:     105541,
+			ForumUrl:     "https://7cav.us/threads/105541/",
+			PostDate:     1791741600,
+			Forum:        types.LoaForum2_7,
+			Subject:      types.LoaSubject{UserId: 3, Username: "Jarvis.A", MilpacId: 1},
+			StartDate:    "2026-10-31",
+			EndDate:      "",
+			State:        types.LoaStateNeedsReview,
+			ReviewReason: types.LoaReviewReasonDatesUnreadable,
+		},
 	}, nil
 }

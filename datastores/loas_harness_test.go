@@ -424,27 +424,112 @@ func TestFindLoas_ReadsThreadsPostedInTheLastYear(t *testing.T) {
 	}
 }
 
-// For now, a thread whose dates or Subject can't be read is left out.
-func TestFindLoas_UnreadableThreadsAreLeftOut(t *testing.T) {
+// A thread the API can't take as written comes back as needs review, with
+// the reason naming the rule it tripped, instead of being left out. Each row
+// is a stored post that passes every rule, with one change that trips one.
+func TestFindLoas_ThreadsTrippingARuleNeedReview(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		thread loaThread
+		want   types.LoaReviewReason
+		// check asserts what else the row is about, if anything.
+		check func(t *testing.T, loa *types.Loa)
 	}{
-		// The End Date stays readable and in the future, so only the
-		// unreadable Start Date keeps this thread out.
-		{"start date unreadable", loaThread{id: 7001, node: nodeLoa1_7,
-			message: edited(t, loaPostForm2Node180, "Oct 10, 2026", "October 10,2026")}},
+		// The form-2 post runs Oct 10 to Oct 23. A needs-review LOA carries
+		// the date it could read and "" for the one it couldn't.
+		{"no Start Date", loaThread{id: 7001, node: nodeLoa1_7,
+			message: edited(t, loaPostForm2Node180, "[B][COLOR=rgb(213, 185, 0)]Start Date[/COLOR][/B] \nOct 10, 2026\r\n", "")},
+			types.LoaReviewReasonDatesUnreadable,
+			func(t *testing.T, loa *types.Loa) {
+				if loa.StartDate != "" || loa.EndDate != "2026-10-23" {
+					t.Errorf("startDate %q, endDate %q; want \"\", 2026-10-23", loa.StartDate, loa.EndDate)
+				}
+			}},
+		{"no End Date", loaThread{id: 7001, node: nodeLoa1_7,
+			message: edited(t, loaPostForm2Node180, "[B][COLOR=rgb(213, 185, 0)]End Date[/COLOR][/B] \nOct 23, 2026\r\n", "")},
+			types.LoaReviewReasonDatesUnreadable,
+			func(t *testing.T, loa *types.Loa) {
+				if loa.StartDate != "2026-10-10" || loa.EndDate != "" {
+					t.Errorf("startDate %q, endDate %q; want 2026-10-10, \"\"", loa.StartDate, loa.EndDate)
+				}
+			}},
+		// Both dates are past, so this one comes back though it would read
+		// as ended.
+		{"End Date before Start Date", loaThread{id: 7001, node: nodeLoa1_7,
+			message: edited(t, loaPostForm2Node180, "Oct 23, 2026", "Oct 3, 2026")},
+			types.LoaReviewReasonEndBeforeStart, nil},
+		// The regimental post runs Saturday Oct 10 to Saturday Oct 24, and
+		// one more day takes it past the 14-day limit.
+		{"End Date 15 days after Start Date", loaThread{id: 7001, node: nodeLoaRegimental,
+			message: edited(t, loaPostForm11Node369, "Oct 24, 2026", "Oct 25, 2026")},
+			types.LoaReviewReasonTooLong, nil},
+		// The member who started the thread is no stand-in for the Subject.
+		{"no Username label", loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
+			message: edited(t, handPostedOpen(t), "[B]Username[/B]: Loa.Alpha\n\n", "")},
+			types.LoaReviewReasonNoSubject,
+			func(t *testing.T, loa *types.Loa) {
+				if loa.Subject != (types.LoaSubject{}) {
+					t.Errorf("subject = %+v, want ids 0 and no username", loa.Subject)
+				}
+			}},
 		{"label names no member", loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
-			message: edited(t, handPostedOpen(t), "[B]Username[/B]: Loa.Alpha", "[B]Username[/B]: Loa.Nobody")}},
+			message: edited(t, handPostedOpen(t), "[B]Username[/B]: Loa.Alpha", "[B]Username[/B]: Loa.Nobody")},
+			types.LoaReviewReasonUnknownSubject,
+			func(t *testing.T, loa *types.Loa) {
+				if want := (types.LoaSubject{Username: "Loa.Nobody"}); loa.Subject != want {
+					t.Errorf("subject = %+v, want the name as written with ids 0: %+v", loa.Subject, want)
+				}
+			}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ds := openHarnessDatastore(t)
 			insertLoaMembers(t, ds, loaAlpha)
 			insertLoaThread(t, ds, tc.thread)
 
-			if loa := loaByThread(findLoas(t, ds), 7001); loa != nil {
-				t.Errorf("returned as %+v, want it left out", loa)
+			loa := loaByThread(findLoas(t, ds), tc.thread.id)
+			if loa == nil {
+				t.Fatal("not returned, want it in review")
+			}
+			if loa.State != types.LoaStateNeedsReview || loa.ReviewReason != tc.want {
+				t.Errorf("state %v, reviewReason %v; want %v, %v",
+					loa.State, loa.ReviewReason, types.LoaStateNeedsReview, tc.want)
+			}
+			if tc.check != nil {
+				tc.check(t, loa)
 			}
 		})
+	}
+}
+
+// By default a needs-review thread comes back only while it was posted in the
+// last 14 days, even when the dates it gives are open today. Threads posted
+// about a week ago come back in the rows above.
+func TestFindLoas_NeedsReviewPostedOver14DaysAgoIsLeftOut(t *testing.T) {
+	ds := openHarnessDatastore(t)
+	insertLoaMembers(t, ds, loaAlpha)
+	insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaACD, starter: loaAlpha.userID,
+		postDate: loaNow.AddDate(0, 0, -15),
+		message:  edited(t, handPostedOpen(t), "[B]Username[/B]: Loa.Alpha", "[B]Username[/B]: Loa.Nobody")})
+
+	if loa := loaByThread(findLoas(t, ds), 7001); loa != nil {
+		t.Errorf("returned as %v, %v; want a needs-review thread posted 15 days ago left out", loa.State, loa.ReviewReason)
+	}
+}
+
+// An LOA whose End Date is exactly 14 days after its Start Date, the
+// Saturday to Saturday many troopers file, is not flagged. The regimental
+// post runs Saturday Oct 10 to Saturday Oct 24.
+func TestFindLoas_FourteenDaysIsNotFlagged(t *testing.T) {
+	ds := openHarnessDatastore(t)
+	insertLoaMembers(t, ds, loaAlpha)
+	insertLoaThread(t, ds, loaThread{id: 7001, node: nodeLoaRegimental, message: loaPostForm11Node369})
+
+	loa := loaByThread(findLoas(t, ds), 7001)
+	if loa == nil {
+		t.Fatal("not returned, want it open")
+	}
+	if loa.State != types.LoaStateOpen || loa.ReviewReason != types.LoaReviewReasonUnspecified {
+		t.Errorf("state %v, reviewReason %v; want %v, %v",
+			loa.State, loa.ReviewReason, types.LoaStateOpen, types.LoaReviewReasonUnspecified)
 	}
 }

@@ -573,7 +573,7 @@ paths:
   /api/v1/loas:
     get:
       operationId: LoaService_ListLoas
-      summary: List open and upcoming LOAs
+      summary: List LOAs
       description: >-
         Every open and upcoming LOA, one record per LOA thread, ordered by
         threadId ascending. Requires the read:loas scope. The API reads the
@@ -582,12 +582,21 @@ paths:
         and an LOA whose thread was deleted is gone. An LOA is open from the
         start of its Start Date through the end of its End Date, counted in
         UTC calendar days, and upcoming before that. The response leaves out
-        ended LOAs and threads whose dates or trooper can't be read. It reads
-        only threads posted in the year before today.
+        ended LOAs. A thread the API can't take as written comes back as
+        LOA_STATE_NEEDS_REVIEW, and its reviewReason names the rule it
+        tripped. The rules are dates it can't read, an End Date before the
+        Start Date, an End Date more than 14 days after the Start Date, no
+        Username label, and a label that matches no member. When several
+        apply, which one the record names is unspecified. The API doesn't
+        flag an LOA whose End Date is exactly 14 days after its Start Date,
+        such as Saturday to Saturday. A needs-review LOA may have no End Date
+        to window on, so the response includes it when its thread was posted
+        in the last 14 days. The API reads only threads posted in the year
+        before today.
       tags: [loas]
       responses:
         "200":
-          description: Open and upcoming LOAs.
+          description: Open, upcoming and needs-review LOAs.
           headers:
             Vary:
               description: >-
@@ -1539,7 +1548,10 @@ components:
       type: object
       description: >-
         The trooper on leave: their forum user id, current forum username and
-        milpac id. milpacId is "0" when the trooper has no milpac record.
+        milpac id. milpacId is "0" when the trooper has no milpac record. On a
+        needs-review LOA whose Username label matches no member, username is
+        the name as written and both ids are "0". With no label, username is
+        empty.
       properties:
         userId:
           $ref: '#/components/schemas/Uint64String'
@@ -1572,11 +1584,13 @@ components:
         startDate:
           type: string
           pattern: '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'
-          description: First day of leave, YYYY-MM-DD.
+          description: First day of leave, YYYY-MM-DD, or empty when the API can't read it.
         endDate:
           type: string
           pattern: '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'
-          description: Last day of leave, YYYY-MM-DD. The LOA is open through the whole day.
+          description: >-
+            Last day of leave, YYYY-MM-DD, or empty when the API can't read
+            it. The LOA is open through the whole day.
         state:
           $ref: '#/components/schemas/LoaState'
         reviewReason:

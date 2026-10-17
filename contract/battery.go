@@ -112,7 +112,7 @@ func Cases() []Case {
 
 		// --- LOAs -----------------------------------------------------------
 		{Name: "loas/default", Method: "GET", Path: "/api/v1/loas", Auth: AuthReadLoas,
-			Notes: "Every open and upcoming LOA in threadId order. 64-bit ids are strings, the 32-bit postDate is a number, enums are names, and subject is an object."},
+			Notes: "Every open and upcoming LOA, and the needs-review ones posted in the last 14 days, in threadId order. A needs-review LOA names its reviewReason and gives \"\" for a date it couldn't read. 64-bit ids are strings, the 32-bit postDate is a number, enums are names, and subject is an object."},
 
 		// --- Roster: both enum path forms, empty, errors -------------------
 		{Name: "roster/combat_by_name", Method: "GET", Path: "/api/v1/roster/ROSTER_TYPE_COMBAT", Auth: AuthRead,
