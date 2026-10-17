@@ -45,6 +45,8 @@ func (recordingDatastore) ValidateApiKey(rawKey string) (*datastores.ApiKeyResul
 		return &datastores.ApiKeyResult{KeyId: 102, UserId: 8, Scopes: scopeSet("read:tickets")}, nil
 	case "cav7_noscopekey":
 		return &datastores.ApiKeyResult{KeyId: 103, UserId: 9, Scopes: scopeSet()}, nil
+	case "cav7_loaskey":
+		return &datastores.ApiKeyResult{KeyId: 105, UserId: 10, Scopes: scopeSet("read:loas")}, nil
 	default:
 		return nil, nil // zero rows — generic Unauthorized, leaks nothing
 	}
@@ -315,6 +317,38 @@ func (recordingDatastore) FindForumGroups() ([]*types.ForumGroup, error) {
 		{GroupId: 2, GroupName: "Registered"},
 		{GroupId: 3, GroupName: "Administrative"},
 		{GroupId: 10, GroupName: "Rank - Major General"},
+	}, nil
+}
+
+// --- LOAs -----------------------------------------------------------------
+
+// FindLoas is the LOA seed, one open and one upcoming LOA in threadId order.
+// The Subjects come from the profile seed, relation 1 for user 3 Jarvis.A and
+// relation 2 for user 8 John.Doe, so userId and milpacId differ.
+// rest/fake_loas_test.go mirrors this set so the new-stack replay agrees with
+// the recorded golden.
+func (recordingDatastore) FindLoas(context.Context, datastores.LoaQuery) ([]*types.Loa, error) {
+	return []*types.Loa{
+		{
+			ThreadId:  105512,
+			ForumUrl:  "https://7cav.us/threads/105512/",
+			PostDate:  1791568800,
+			Forum:     types.LoaForum1_7,
+			Subject:   types.LoaSubject{UserId: 3, Username: "Jarvis.A", MilpacId: 1},
+			StartDate: "2026-10-10",
+			EndDate:   "2026-10-23",
+			State:     types.LoaStateOpen,
+		},
+		{
+			ThreadId:  105530,
+			ForumUrl:  "https://7cav.us/threads/105530/",
+			PostDate:  1791655200,
+			Forum:     types.LoaForumACD,
+			Subject:   types.LoaSubject{UserId: 8, Username: "John.Doe", MilpacId: 2},
+			StartDate: "2026-10-24",
+			EndDate:   "2026-11-06",
+			State:     types.LoaStateUpcoming,
+		},
 	}, nil
 }
 

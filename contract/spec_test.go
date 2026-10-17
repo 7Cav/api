@@ -1189,7 +1189,7 @@ func TestSpec_DeclaredStatusesAreCorpusWitnessed(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(t, 15, unwitnessed401Ops,
+	assert.Equal(t, 16, unwitnessed401Ops,
 		"the 401 carve-out covers exactly the operations lacking a 401 golden")
 }
 

@@ -89,6 +89,12 @@ type Datastore interface {
 	FindProfileByGamertag(gamertag string) (*types.Profile, error)
 	ValidateApiKey(rawKey string) (*ApiKeyResult, error)
 
+	// FindLoas returns the LOAs in the window q describes, read live from
+	// the LOA forums on every call and ordered by thread id ascending. Today
+	// is the UTC calendar date of q.Now. The slice is non-nil even when
+	// empty, and a read failure returns an error, never an empty list.
+	FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
+
 	// Tickets
 	ListTickets(ctx context.Context, rc TicketReferenceCache, filter *ListTicketsFilter) (tickets []*types.Ticket, nextCursor string, hasMore bool, err error)
 	GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBaseURL string) (*types.Ticket, error)

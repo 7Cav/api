@@ -27,12 +27,14 @@ const (
 	AuthReadTickets Auth = "read:tickets"
 	// AuthNoScopes is a valid key holding no scopes at all.
 	AuthNoScopes Auth = "no-scopes"
+	// AuthReadLoas is a valid key holding only the "read:loas" scope.
+	AuthReadLoas Auth = "read:loas"
 )
 
 // Valid reports whether a is one of the defined credential tiers.
 func (a Auth) Valid() bool {
 	switch a {
-	case AuthNone, AuthRawKey, AuthInvalidKey, AuthRead, AuthReadTickets, AuthNoScopes:
+	case AuthNone, AuthRawKey, AuthInvalidKey, AuthRead, AuthReadTickets, AuthNoScopes, AuthReadLoas:
 		return true
 	}
 	return false
@@ -55,6 +57,8 @@ func authHeader(a Auth) (value string, present bool) {
 		return "Bearer cav7_ticketskey", true
 	case AuthNoScopes:
 		return "Bearer cav7_noscopekey", true
+	case AuthReadLoas:
+		return "Bearer cav7_loaskey", true
 	default:
 		panic(fmt.Sprintf("contract: unknown auth tier %q", a))
 	}
