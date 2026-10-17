@@ -1607,13 +1607,18 @@ components:
         startDate:
           type: string
           pattern: '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'
-          description: First day of leave, YYYY-MM-DD, or empty when the API can't read it.
+          description: >-
+            First day of leave, YYYY-MM-DD. When the thread gives no date the
+            API can read, the API uses the date from the LOA form that created
+            the thread. Empty when neither has one.
         endDate:
           type: string
           pattern: '^([0-9]{4}-[0-9]{2}-[0-9]{2})?$'
           description: >-
-            Last day of leave, YYYY-MM-DD, or empty when the API can't read
-            it. The LOA is open through the whole day.
+            Last day of leave, YYYY-MM-DD. When the thread gives no date the
+            API can read, the API uses the date from the LOA form that created
+            the thread. Empty when neither has one. The LOA is open through
+            the whole day.
         state:
           $ref: '#/components/schemas/LoaState'
         reviewReason:
@@ -1622,8 +1627,9 @@ components:
           type: string
           description: >-
             The reason the trooper gave in the LOA thread, as plain text with
-            no BBCode markup. Line breaks arrive as "\n". Empty when the
-            thread gives no reason.
+            no BBCode markup. Line breaks arrive as "\n". When the thread
+            gives no reason, the API uses the reason from the LOA form that
+            created the thread. Empty when neither has one.
       required: [threadId, forumUrl, postDate, forum, subject, startDate, endDate, state, reviewReason, reason]
       additionalProperties: false
 

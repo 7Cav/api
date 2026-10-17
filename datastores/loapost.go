@@ -57,7 +57,8 @@ var loaDateLayouts = []string{"Jan 2, 2006", "January 2, 2006"}
 // Those freeze at submission, but leaders extend about 40 LOAs a year by
 // editing the post, so the answers would keep the old End Date. A hand-posted
 // LOA has no submission at all. Moving this reader to the forms tables would
-// lose both.
+// lose both. FindLoas reads a submission's answers only for a date or reason
+// the post doesn't give.
 //
 // The forms write each answer under a bold, colored question label. Hand
 // copies drop the markup or lowercase it, and line endings mix "\r\n" and

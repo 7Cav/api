@@ -2,7 +2,8 @@
 --
 -- Tables are cribbed from the production XenForo database (MariaDB 11.5)
 -- and cover exactly what the API reads: the NF Rosters add-on tables, the
--- NF Tickets add-on tables, the Cav7 ApiKeyManager tables, and the core
+-- NF Tickets add-on tables, the Cav7 ApiKeyManager tables, the Snog Forms
+-- submission and answer tables, and the core
 -- xf_user / xf_user_group / xf_user_connected_account / xf_post / xf_thread /
 -- xf_username_change / xf_phrase tables.
 --
@@ -204,6 +205,45 @@ CREATE TABLE `xf_username_change` (
   KEY `old_username_state_date` (`old_username`,`change_state`,`change_date`),
   KEY `new_username_state` (`new_username`,`change_state`),
   KEY `user_id_state_date` (`user_id`,`change_state`,`change_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- ---------------------------------------------------------------------
+-- Snog Forms add-on
+-- ---------------------------------------------------------------------
+
+-- One row per form submission. When an LOA post gives no readable date or
+-- no reason, the LOA route finds the submission that created the thread by
+-- its submit time and reads its answers. Copied from production DDL with its
+-- stock indexes.
+CREATE TABLE `xf_snog_forms_logs` (
+  `log_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `form_id` int(10) unsigned NOT NULL,
+  `user_id` int(10) unsigned NOT NULL,
+  `ip_address` varbinary(16) NOT NULL,
+  `log_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `is_counted` tinyint(3) unsigned NOT NULL DEFAULT 1,
+  PRIMARY KEY (`log_id`),
+  KEY `form_id` (`form_id`),
+  KEY `user_id` (`user_id`),
+  KEY `ip_address` (`ip_address`),
+  KEY `is_counted` (`is_counted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- One row per answered question of a submission. Copied from production DDL
+-- with its stock indexes.
+CREATE TABLE `xf_snog_forms_answers` (
+  `answer_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `posid` int(10) unsigned NOT NULL DEFAULT 0,
+  `questionid` int(10) unsigned NOT NULL DEFAULT 0,
+  `answer_date` int(10) unsigned NOT NULL DEFAULT 0,
+  `user_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `answer` mediumtext DEFAULT NULL,
+  `log_id` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`answer_id`),
+  KEY `posid` (`posid`),
+  KEY `questionid` (`questionid`),
+  KEY `user_id` (`user_id`),
+  KEY `log_id` (`log_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `xf_user_connected_account` (
