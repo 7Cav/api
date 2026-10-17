@@ -1583,6 +1583,10 @@ components:
           $ref: '#/components/schemas/LoaReviewReason'
         reason:
           type: string
+          description: >-
+            The reason the trooper gave in the LOA thread, as plain text with
+            no BBCode markup. Line breaks arrive as "\n". Empty when the
+            thread gives no reason.
       required: [threadId, forumUrl, postDate, forum, subject, startDate, endDate, state, reviewReason, reason]
       additionalProperties: false
 

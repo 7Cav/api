@@ -8,9 +8,11 @@ import "strconv"
 // thread withdraws the LOA.
 //
 // StartDate and EndDate are YYYY-MM-DD calendar dates, and the datastore
-// computes State from them against the request's UTC date. Reason and
-// ReviewReason ship at their empty values until the reason text and the
-// needs-review rules land.
+// computes State from them against the request's UTC date. ReviewReason
+// ships at its empty value until the needs-review rules land.
+//
+// Reason is the reason the trooper gave in the post, as plain text with the
+// post's line breaks kept. It is "" when the post gives none.
 type Loa struct {
 	ThreadId     uint64          `json:"threadId,string"`
 	ForumUrl     string          `json:"forumUrl"`

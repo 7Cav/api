@@ -338,6 +338,7 @@ func (recordingDatastore) FindLoas(context.Context, datastores.LoaQuery) ([]*typ
 			StartDate: "2026-10-10",
 			EndDate:   "2026-10-23",
 			State:     types.LoaStateOpen,
+			Reason:    "Family trip.\nBack on the 24th.",
 		},
 		{
 			ThreadId:  105530,
@@ -348,6 +349,7 @@ func (recordingDatastore) FindLoas(context.Context, datastores.LoaQuery) ([]*typ
 			StartDate: "2026-10-24",
 			EndDate:   "2026-11-06",
 			State:     types.LoaStateUpcoming,
+			Reason:    "Work travel.",
 		},
 	}, nil
 }

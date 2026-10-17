@@ -19,6 +19,9 @@ type loaPost struct {
 	// mentionID is the user id of the member that label mentions, or 0
 	// when the label is typed text.
 	mentionID uint64
+	// reason is the text under the post's reason label as plain text, or
+	// "" when the post has no reason label.
+	reason string
 }
 
 var (
@@ -36,6 +39,12 @@ var (
 	usernameLabel  = regexp.MustCompile(`(?i)^\s*username\b\s*:?\s*\$?\s*(.*?)\s*$`)
 	startDateLabel = regexp.MustCompile(`(?i)^\s*start date\s*:?\s*(.*?)\s*$`)
 	endDateLabel   = regexp.MustCompile(`(?i)^\s*end date\s*:?\s*(.*?)\s*$`)
+	// reasonLabel opens the reason field. The reservist form labels it
+	// "Details", and the other LOA forms label it "Reason:".
+	reasonLabel = regexp.MustCompile(`(?i)^\s*(?:reason|details)\b\s*:?\s*(.*?)\s*$`)
+	// boldLabelLine matches a line that opens with a bold label. Every form
+	// question starts with one, and no stored reason line does.
+	boldLabelLine = regexp.MustCompile(`(?i)^\s*\[b\]`)
 )
 
 // loaDateLayouts are the layouts the LOA forms' date question writes, plus
@@ -54,10 +63,12 @@ var loaDateLayouts = []string{"Jan 2, 2006", "January 2, 2006"}
 // copies drop the markup or lowercase it, and line endings mix "\r\n" and
 // "\n". With the BBCode stripped, every layout reads as the label, an
 // optional colon, and the value. Username's value sits on the label's line. A
-// date's value sits on the label's line or the next non-blank one.
+// date's value sits on the label's line or the next non-blank one. The
+// reason's value can run over several lines.
 func parseLoaPost(message string) loaPost {
 	var p loaPost
 	lines := strings.Split(strings.ReplaceAll(message, "\r\n", "\n"), "\n")
+	p.reason = loaReason(lines)
 	var seenStart, seenEnd bool
 	for i, line := range lines {
 		// The last Username label names the Subject. On an LOA filed for
@@ -93,6 +104,29 @@ func mentionedUser(line string) uint64 {
 		return 0
 	}
 	return id
+}
+
+// loaReason reads the reason field as plain text, or returns "" when the post
+// has no reason label. The value is the rest of the label's line and every
+// line after it, up to the next bold label or the end of the post. Each line
+// loses its BBCode and stays a line of its own, so a consumer can show the
+// reason as the trooper wrote it without rendering BBCode.
+func loaReason(lines []string) string {
+	for i, line := range lines {
+		m := reasonLabel.FindStringSubmatch(stripBBCode(line))
+		if m == nil {
+			continue
+		}
+		value := []string{m[1]}
+		for _, next := range lines[i+1:] {
+			if boldLabelLine.MatchString(next) {
+				break
+			}
+			value = append(value, stripBBCode(next))
+		}
+		return strings.TrimSpace(strings.Join(value, "\n"))
+	}
+	return ""
 }
 
 // dateText reads one line of a date field. It drops struck-through text
