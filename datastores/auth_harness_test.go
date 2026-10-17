@@ -46,6 +46,23 @@ func TestValidateApiKey_ActiveKeyResolvesActiveScopes(t *testing.T) {
 	}
 }
 
+// The seeded read:loas key validates and carries the scope the LOA route
+// gates on.
+func TestValidateApiKey_LoasKeyCarriesReadLoas(t *testing.T) {
+	ds := openHarnessDatastore(t)
+
+	result, err := ds.ValidateApiKey(testdb.LoasAPIKey)
+	if err != nil {
+		t.Fatalf("ValidateApiKey(read:loas key): %v", err)
+	}
+	if result == nil {
+		t.Fatal("read:loas key must validate, got nil result")
+	}
+	if !result.HasScope("read:loas") {
+		t.Error("read:loas key must carry scope \"read:loas\"")
+	}
+}
+
 // A revoked (is_active = 0) key must fail validation with a nil result
 // and no error — the auth boundary then responds 401.
 func TestValidateApiKey_RevokedKeyYieldsNil(t *testing.T) {
