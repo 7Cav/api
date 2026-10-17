@@ -1,0 +1,79 @@
+{
+  "auth": "read:loas",
+  "body": {
+    "loas": [
+      {
+        "endDate": "2026-10-09",
+        "forum": "LOA_FORUM_3_7",
+        "forumUrl": "https://7cav.us/threads/105497/",
+        "postDate": 1790272800,
+        "reason": "Moving house.",
+        "reviewReason": "LOA_REVIEW_REASON_UNSPECIFIED",
+        "startDate": "2026-09-26",
+        "state": "LOA_STATE_ENDED",
+        "subject": {
+          "milpacId": "2",
+          "userId": "8",
+          "username": "John.Doe"
+        },
+        "threadId": "105497"
+      },
+      {
+        "endDate": "2026-10-23",
+        "forum": "LOA_FORUM_1_7",
+        "forumUrl": "https://7cav.us/threads/105512/",
+        "postDate": 1791568800,
+        "reason": "Family trip.\nBack on the 24th.",
+        "reviewReason": "LOA_REVIEW_REASON_UNSPECIFIED",
+        "startDate": "2026-10-10",
+        "state": "LOA_STATE_OPEN",
+        "subject": {
+          "milpacId": "1",
+          "userId": "3",
+          "username": "Jarvis.A"
+        },
+        "threadId": "105512"
+      },
+      {
+        "endDate": "2026-11-06",
+        "forum": "LOA_FORUM_ACD",
+        "forumUrl": "https://7cav.us/threads/105530/",
+        "postDate": 1791655200,
+        "reason": "Work travel.",
+        "reviewReason": "LOA_REVIEW_REASON_UNSPECIFIED",
+        "startDate": "2026-10-24",
+        "state": "LOA_STATE_UPCOMING",
+        "subject": {
+          "milpacId": "2",
+          "userId": "8",
+          "username": "John.Doe"
+        },
+        "threadId": "105530"
+      },
+      {
+        "endDate": "",
+        "forum": "LOA_FORUM_2_7",
+        "forumUrl": "https://7cav.us/threads/105541/",
+        "postDate": 1791741600,
+        "reason": "",
+        "reviewReason": "LOA_REVIEW_REASON_DATES_UNREADABLE",
+        "startDate": "2026-10-31",
+        "state": "LOA_STATE_NEEDS_REVIEW",
+        "subject": {
+          "milpacId": "1",
+          "userId": "3",
+          "username": "Jarvis.A"
+        },
+        "threadId": "105541"
+      }
+    ]
+  },
+  "case": "loas/ended_since",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "endedSince, sent as the camelCase key, adds the LOAs that ended on or after it. The body holds one LOA in each state, LOA_STATE_ENDED included, in threadId order.",
+  "path": "/api/v1/loas?endedSince=2026-10-01",
+  "status": 200
+}

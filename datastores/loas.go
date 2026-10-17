@@ -2,6 +2,7 @@ package datastores
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,7 +15,15 @@ import (
 // and today is its UTC calendar date.
 type LoaQuery struct {
 	Now time.Time
+	// EndedSince, when set, adds the LOAs that ended on or after its UTC
+	// date, and the needs-review ones whose thread was posted on or after
+	// it. The zero time means it wasn't given.
+	EndedSince time.Time
 }
+
+// ErrEndedSinceTooFarBack reports an EndedSince more than 365 days before
+// today's UTC date. FindLoas wraps it with the dates.
+var ErrEndedSinceTooFarBack = errors.New("endedSince is more than 365 days back")
 
 // loaForums maps each LOA forum's node id to the forum it reports. Adding an
 // LOA forum is a code change.
@@ -39,15 +48,34 @@ func loaForumNodes() []uint32 {
 // now and resolves the Subject from the post's last Username label by
 // mention id, current username or approved previous username. It keeps the
 // open and upcoming LOAs, and the needs-review ones whose thread was posted
-// in the last 14 days.
+// in the last 14 days. With EndedSince it also keeps the LOAs that ended on
+// or after that date and the needs-review ones posted on or after it, and an
+// EndedSince more than 365 days back is ErrEndedSinceTooFarBack.
 func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error) {
 	today := utcDate(q.Now)
+	var endedSince time.Time
+	if !q.EndedSince.IsZero() {
+		endedSince = utcDate(q.EndedSince)
+		// The limit counts days, not calendar years, from today's UTC date.
+		if limit := today.AddDate(0, 0, -loaMaxEndedSinceDays); endedSince.Before(limit) {
+			return nil, fmt.Errorf("%w: %s is before %s", ErrEndedSinceTooFarBack,
+				endedSince.Format(layoutISO), limit.Format(layoutISO))
+		}
+	}
 	// Read only threads posted in the year before the window starts. The
-	// window starts today.
-	lookback := today.AddDate(-1, 0, 0)
+	// window starts today, or on endedSince when that is earlier.
+	windowStart := today
+	if !endedSince.IsZero() && endedSince.Before(windowStart) {
+		windowStart = endedSince
+	}
+	lookback := windowStart.AddDate(-1, 0, 0)
 	// A needs-review LOA comes back when its thread was posted on or after
-	// midnight UTC 14 days before today.
+	// midnight UTC 14 days before today, or on or after endedSince when that
+	// is earlier. endedSince only ever adds to the default window.
 	reviewSince := today.AddDate(0, 0, -loaReviewWindowDays)
+	if !endedSince.IsZero() && endedSince.Before(reviewSince) {
+		reviewSince = endedSince
+	}
 
 	var threads []struct {
 		ThreadID uint32 `gorm:"column:thread_id"`
@@ -125,7 +153,7 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 			continue
 		}
 		loa.State = loaState(today, post.start, post.end)
-		if loa.State == types.LoaStateEnded {
+		if loa.State == types.LoaStateEnded && (endedSince.IsZero() || post.end.Before(endedSince)) {
 			continue
 		}
 		loas = append(loas, loa)
@@ -300,6 +328,10 @@ const loaMaxDays = 14
 // loaReviewWindowDays is how many days back, by post date, the default
 // window reaches for needs-review threads.
 const loaReviewWindowDays = 14
+
+// loaMaxEndedSinceDays is how many days before today's UTC date endedSince
+// may go.
+const loaMaxEndedSinceDays = 365
 
 // loaReviewReason names the rule a thread trips, or returns
 // LoaReviewReasonUnspecified when the API can take it as written. known

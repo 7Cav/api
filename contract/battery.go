@@ -113,6 +113,10 @@ func Cases() []Case {
 		// --- LOAs -----------------------------------------------------------
 		{Name: "loas/default", Method: "GET", Path: "/api/v1/loas", Auth: AuthReadLoas,
 			Notes: "Every open and upcoming LOA, and the needs-review ones posted in the last 14 days, in threadId order. A needs-review LOA names its reviewReason and gives \"\" for a date it couldn't read. 64-bit ids are strings, the 32-bit postDate is a number, enums are names, and subject is an object."},
+		{Name: "loas/ended_since", Method: "GET", Path: "/api/v1/loas?endedSince=2026-10-01", Auth: AuthReadLoas,
+			Notes: "endedSince, sent as the camelCase key, adds the LOAs that ended on or after it. The body holds one LOA in each state, LOA_STATE_ENDED included, in threadId order."},
+		{Name: "loas/ended_since_too_far_back", Method: "GET", Path: "/api/v1/loas?endedSince=2025-01-01", Auth: AuthReadLoas,
+			Notes: "An endedSince more than 365 days before today's UTC date gets InvalidArgument, and the message names the limit."},
 
 		// --- Roster: both enum path forms, empty, errors -------------------
 		{Name: "roster/combat_by_name", Method: "GET", Path: "/api/v1/roster/ROSTER_TYPE_COMBAT", Auth: AuthRead,

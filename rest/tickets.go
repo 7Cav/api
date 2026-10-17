@@ -139,12 +139,14 @@ func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.D
 	})
 }
 
-// bindListQuery parses the query string STRICTLY for the two list routes and
+// bindListQuery parses the query string STRICTLY for the list routes and
 // returns their binder. The old generated handlers for ListTickets and
 // ListTicketMessages called req.ParseForm() (proto/tickets.pb.gw.go) and
 // 400'd malformed query syntax with the parse error verbatim ("%v", frozen)
 // — r.URL.Query()'s silent drop would diverge. The other tickets routes
-// never called ParseForm, so they deliberately stay lenient.
+// never called ParseForm, so they deliberately stay lenient. The LOA list
+// binds through it too, so an endedSince whose encoding is broken is a 400
+// instead of a silent default window.
 func bindListQuery(w http.ResponseWriter, r *http.Request) (*queryBinder, bool) {
 	q, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {

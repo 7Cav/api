@@ -6,16 +6,38 @@ package rest_test
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/7cav/api/datastores"
 	"github.com/7cav/api/types"
 )
 
+// loaSeedToday is the LOA seed's today, the recording seed's fixed clock.
+var loaSeedToday = time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC)
+
 func (f *fakeDatastore) FindLoas(ctx context.Context, q datastores.LoaQuery) ([]*types.Loa, error) {
 	if f.findLoas != nil {
 		return f.findLoas(ctx, q)
 	}
-	return []*types.Loa{
+	if !q.EndedSince.IsZero() && q.EndedSince.Before(loaSeedToday.AddDate(0, 0, -365)) {
+		return nil, fmt.Errorf("%w: seed limit", datastores.ErrEndedSinceTooFarBack)
+	}
+	var loas []*types.Loa
+	if !q.EndedSince.IsZero() && !q.EndedSince.After(time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)) {
+		loas = append(loas, &types.Loa{
+			ThreadId:  105497,
+			ForumUrl:  "https://7cav.us/threads/105497/",
+			PostDate:  1790272800,
+			Forum:     types.LoaForum3_7,
+			Subject:   types.LoaSubject{UserId: 8, Username: "John.Doe", MilpacId: 2},
+			StartDate: "2026-09-26",
+			EndDate:   "2026-10-09",
+			State:     types.LoaStateEnded,
+			Reason:    "Moving house.",
+		})
+	}
+	return append(loas, []*types.Loa{
 		{
 			ThreadId:  105512,
 			ForumUrl:  "https://7cav.us/threads/105512/",
@@ -49,5 +71,5 @@ func (f *fakeDatastore) FindLoas(ctx context.Context, q datastores.LoaQuery) ([]
 			State:        types.LoaStateNeedsReview,
 			ReviewReason: types.LoaReviewReasonDatesUnreadable,
 		},
-	}, nil
+	}...), nil
 }
