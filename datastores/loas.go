@@ -36,8 +36,9 @@ func loaForumNodes() []uint32 {
 
 // FindLoas reads the visible threads in the LOA forums and returns one LOA
 // per thread, ordered by thread id. It reads each opening post as it reads
-// now, resolves the Subject by current username, and keeps the open and
-// upcoming LOAs.
+// now, resolves the Subject from the post's last Username label by mention
+// id, current username or approved previous username, and keeps the open
+// and upcoming LOAs.
 func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error) {
 	today := utcDate(q.Now)
 	// Read only threads posted in the year before the window starts. The
@@ -63,14 +64,10 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 	}
 
 	posts := make([]loaPost, len(threads))
-	names := make([]string, 0, len(threads))
 	for i, th := range threads {
 		posts[i] = parseLoaPost(th.Message)
-		if posts[i].hasSubject {
-			names = append(names, posts[i].subject)
-		}
 	}
-	members, err := ds.loaMembersByUsername(ctx, names)
+	subjects, err := ds.loaSubjects(ctx, posts)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +76,7 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 	loas := make([]*types.Loa, 0, len(threads))
 	for i, th := range threads {
 		post := posts[i]
-		subject, known := members[strings.ToLower(post.subject)]
+		subject, known := subjects.resolve(post, th.PostDate)
 		// For now a thread whose dates or Subject can't be read is left
 		// out. Later it comes back as needs review.
 		if post.start.IsZero() || post.end.IsZero() || !post.hasSubject || !known {
@@ -108,15 +105,138 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 	return loas, nil
 }
 
-// loaMembersByUsername resolves names to members by current username,
-// without regard to case, keyed by the lowercased name. xf_user.username is
-// unique under a case-insensitive collation, so a key names one member. A
-// member with no milpac record gets a milpac id of 0.
-func (ds *Mysql) loaMembersByUsername(ctx context.Context, names []string) (map[string]types.LoaSubject, error) {
-	members := map[string]types.LoaSubject{}
-	if len(names) == 0 {
-		return members, nil
+// loaSubjectIndex holds the members the posts' Username labels can resolve
+// to.
+type loaSubjectIndex struct {
+	// byID holds the members the labels mention, and the members who
+	// renamed away from a typed label, by user id.
+	byID map[uint64]types.LoaSubject
+	// byName holds the members whose current username a typed label
+	// names, by lowercased username.
+	byName map[string]types.LoaSubject
+	// renamedFrom holds the approved changes away from a typed label, by
+	// the lowercased old username.
+	renamedFrom map[string][]loaRename
+}
+
+// loaRename is one member's approved change away from a username.
+type loaRename struct {
+	userID uint64
+	date   uint32
+}
+
+// resolve returns the Subject a post's last Username label names. A mention
+// names the member by id, whatever its text says now, because the text is
+// the name the member had when the post was written. A typed label names
+// the member with that current username, without regard to case, and
+// otherwise the member who renamed away from it.
+func (s loaSubjectIndex) resolve(post loaPost, posted uint32) (types.LoaSubject, bool) {
+	if post.mentionID != 0 {
+		subject, ok := s.byID[post.mentionID]
+		return subject, ok
 	}
+	name := strings.ToLower(post.subject)
+	if subject, ok := s.byName[name]; ok {
+		return subject, true
+	}
+	if renames := s.renamedFrom[name]; len(renames) > 0 {
+		subject, ok := s.byID[heldAt(renames, posted)]
+		return subject, ok
+	}
+	return types.LoaSubject{}, false
+}
+
+// heldAt picks, among the members who renamed away from one name, the member
+// who held it when the thread was posted. That is the member whose change
+// away from it is the earliest after the post. When every change is before
+// the post, it is the member who renamed away from it last.
+func heldAt(renames []loaRename, posted uint32) uint64 {
+	var after, before *loaRename
+	for i := range renames {
+		r := &renames[i]
+		if r.date > posted {
+			if after == nil || r.date < after.date {
+				after = r
+			}
+		} else if before == nil || r.date > before.date {
+			before = r
+		}
+	}
+	if after != nil {
+		return after.userID
+	}
+	return before.userID
+}
+
+// loaSubjects reads the members the posts' Username labels can resolve to.
+func (ds *Mysql) loaSubjects(ctx context.Context, posts []loaPost) (loaSubjectIndex, error) {
+	idx := loaSubjectIndex{
+		byID:        map[uint64]types.LoaSubject{},
+		byName:      map[string]types.LoaSubject{},
+		renamedFrom: map[string][]loaRename{},
+	}
+	var ids []uint64
+	var names []string
+	for _, p := range posts {
+		switch {
+		case p.mentionID != 0:
+			ids = append(ids, p.mentionID)
+		case p.hasSubject:
+			names = append(names, p.subject)
+		}
+	}
+	if len(names) > 0 {
+		// xf_user.username is unique under a case-insensitive collation,
+		// so a lowercased key names one member.
+		members, err := ds.loaMembers(ctx, "u.username IN ?", names)
+		if err != nil {
+			return idx, err
+		}
+		for _, m := range members {
+			idx.byName[strings.ToLower(m.Username)] = m
+		}
+	}
+	var unmatched []string
+	for _, name := range names {
+		if _, ok := idx.byName[strings.ToLower(name)]; !ok {
+			unmatched = append(unmatched, name)
+		}
+	}
+	if len(unmatched) > 0 {
+		// Only approved changes count. A pending or rejected one never
+		// renamed the member. Reading them in change order keeps a tie
+		// between change dates resolving to the same member every time.
+		var changes []xenforo.UsernameChange
+		err := ds.Db.WithContext(ctx).
+			Where("old_username IN ?", unmatched).
+			Where("change_state = ?", "approved").
+			Order("change_id").
+			Find(&changes).Error
+		if err != nil {
+			return idx, fmt.Errorf("reading previous usernames: %w", err)
+		}
+		for _, c := range changes {
+			name := strings.ToLower(c.OldUsername)
+			idx.renamedFrom[name] = append(idx.renamedFrom[name], loaRename{userID: uint64(c.UserID), date: c.ChangeDate})
+			ids = append(ids, uint64(c.UserID))
+		}
+	}
+	if len(ids) > 0 {
+		members, err := ds.loaMembers(ctx, "u.user_id IN ?", ids)
+		if err != nil {
+			return idx, err
+		}
+		for _, m := range members {
+			idx.byID[m.UserId] = m
+		}
+	}
+	return idx, nil
+}
+
+// loaMembers reads the members a condition on xf_user selects, each with
+// their current username and milpac id. A member with no milpac record gets
+// a milpac id of 0.
+func (ds *Mysql) loaMembers(ctx context.Context, where string, args ...any) ([]types.LoaSubject, error) {
 	var rows []struct {
 		UserID     uint64 `gorm:"column:user_id"`
 		Username   string `gorm:"column:username"`
@@ -127,16 +247,18 @@ func (ds *Mysql) loaMembersByUsername(ctx context.Context, names []string) (map[
 	err := ds.Db.WithContext(ctx).Table("xf_user AS u").
 		Select("u.user_id, u.username, COALESCE(m.relation_id, 0) AS relation_id").
 		Joins("LEFT JOIN xf_nf_rosters_user AS m ON m.user_id = u.user_id").
-		Where("u.username IN ?", names).
+		Where(where, args...).
 		Order("m.relation_id").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("resolving LOA subjects: %w", err)
 	}
+	seen := map[uint64]bool{}
+	members := make([]types.LoaSubject, 0, len(rows))
 	for _, r := range rows {
-		key := strings.ToLower(r.Username)
-		if _, seen := members[key]; !seen {
-			members[key] = types.LoaSubject{UserId: r.UserID, Username: r.Username, MilpacId: r.RelationID}
+		if !seen[r.UserID] {
+			seen[r.UserID] = true
+			members = append(members, types.LoaSubject{UserId: r.UserID, Username: r.Username, MilpacId: r.RelationID})
 		}
 	}
 	return members, nil

@@ -2,6 +2,7 @@ package datastores
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -15,6 +16,9 @@ type loaPost struct {
 	// markup stripped. hasSubject reports whether the post has one.
 	subject    string
 	hasSubject bool
+	// mentionID is the user id of the member that label mentions, or 0
+	// when the label is typed text.
+	mentionID uint64
 	// reason is the text under the post's reason label as plain text, or
 	// "" when the post has no reason label.
 	reason string
@@ -27,6 +31,9 @@ var (
 	bbcodeTag = regexp.MustCompile(`(?i)\[/?[a-z*][a-z0-9*]*(?:=[^\]\n]*)?\]`)
 	// struckText matches struck-through text and its [S] tags.
 	struckText = regexp.MustCompile(`(?is)\[s\].*?\[/s\]`)
+	// userMention matches the opening tag of a user mention, as in
+	// [USER=9001]Loa.Alpha[/USER], and captures the member's user id.
+	userMention = regexp.MustCompile(`(?i)\[user=(\d+)\]`)
 
 	// usernameLabel allows the stray "$" form 12 writes before the value.
 	usernameLabel  = regexp.MustCompile(`(?i)^\s*username\b\s*:?\s*\$?\s*(.*?)\s*$`)
@@ -68,6 +75,7 @@ func parseLoaPost(message string) loaPost {
 		// someone else, an earlier label names the Submitter.
 		if m := usernameLabel.FindStringSubmatch(stripBBCode(line)); m != nil {
 			p.subject, p.hasSubject = m[1], true
+			p.mentionID = mentionedUser(line)
 			continue
 		}
 		dateLine := dateText(line)
@@ -82,6 +90,20 @@ func parseLoaPost(message string) loaPost {
 		}
 	}
 	return p
+}
+
+// mentionedUser returns the user id a line's user mention names, or 0 when
+// the line holds no mention.
+func mentionedUser(line string) uint64 {
+	m := userMention.FindStringSubmatch(line)
+	if m == nil {
+		return 0
+	}
+	id, err := strconv.ParseUint(m[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
 }
 
 // loaReason reads the reason field as plain text, or returns "" when the post
