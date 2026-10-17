@@ -68,13 +68,13 @@ var loaDateLayouts = []string{"Jan 2, 2006", "January 2, 2006"}
 // reason's value can run over several lines.
 func parseLoaPost(message string) loaPost {
 	var p loaPost
-	lines := strings.Split(strings.ReplaceAll(message, "\r\n", "\n"), "\n")
-	p.reason = loaReason(lines)
+	lines, plain := textLines(message)
+	p.reason = loaReason(lines, plain)
 	var seenStart, seenEnd bool
 	for i, line := range lines {
 		// The last Username label names the Subject. On an LOA filed for
 		// someone else, an earlier label names the Submitter.
-		if m := usernameLabel.FindStringSubmatch(stripBBCode(line)); m != nil {
+		if m := usernameLabel.FindStringSubmatch(plain[i]); m != nil {
 			p.subject, p.hasSubject = m[1], true
 			p.mentionID = mentionedUser(line)
 			continue
@@ -108,26 +108,49 @@ func mentionedUser(line string) uint64 {
 }
 
 // loaReason reads the reason field as plain text, or returns "" when the post
-// has no reason label. The value is the rest of the label's line and every
-// line after it, up to the next bold label or the end of the post. Each line
-// loses its BBCode and stays a line of its own, so a consumer can show the
-// reason as the trooper wrote it without rendering BBCode.
-func loaReason(lines []string) string {
-	for i, line := range lines {
-		m := reasonLabel.FindStringSubmatch(stripBBCode(line))
+// has no reason label. lines and plain are the post's lines as textLines
+// returns them. The value is the rest of the label's line and every line
+// after it, up to the next bold label or the end of the post. Each line loses
+// its BBCode and stays a line of its own, so a consumer can show the reason
+// as the trooper wrote it without rendering BBCode.
+func loaReason(lines, plain []string) string {
+	for i, text := range plain {
+		m := reasonLabel.FindStringSubmatch(text)
 		if m == nil {
 			continue
 		}
-		value := []string{m[1]}
-		for _, next := range lines[i+1:] {
-			if boldLabelLine.MatchString(next) {
-				break
-			}
-			value = append(value, stripBBCode(next))
+		end := i + 1
+		for end < len(lines) && !boldLabelLine.MatchString(lines[end]) {
+			end++
 		}
-		return strings.TrimSpace(strings.Join(value, "\n"))
+		return joinLines(append([]string{m[1]}, plain[i+1:end]...))
 	}
 	return ""
+}
+
+// plainText is s with its BBCode stripped and its line breaks kept. A form
+// answer's reason takes the same shape as the post's.
+func plainText(s string) string {
+	_, plain := textLines(s)
+	return joinLines(plain)
+}
+
+// textLines splits a post or form answer into lines, and returns each line a
+// second time with its BBCode stripped. The forum ends lines with "\r\n" or
+// "\n", and both split the same way.
+func textLines(s string) (lines, plain []string) {
+	lines = strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	plain = make([]string, len(lines))
+	for i, line := range lines {
+		plain[i] = stripBBCode(line)
+	}
+	return lines, plain
+}
+
+// joinLines joins plain lines into one text with "\n" between them, and
+// trims the blank space at either end.
+func joinLines(lines []string) string {
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 // dateText reads one line of a date field. It drops struck-through text

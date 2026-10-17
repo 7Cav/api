@@ -3,7 +3,6 @@ package datastores
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/7cav/api/xenforo"
 )
@@ -137,13 +136,4 @@ func secondsApart(a, b uint32) int64 {
 		return d
 	}
 	return int64(b) - int64(a)
-}
-
-// plainText strips the BBCode from each line of s and keeps the line breaks.
-func plainText(s string) string {
-	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
-	for i, line := range lines {
-		lines[i] = stripBBCode(line)
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
