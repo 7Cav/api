@@ -33,6 +33,22 @@
           "username": "John.Doe"
         },
         "threadId": "105530"
+      },
+      {
+        "endDate": "",
+        "forum": "LOA_FORUM_2_7",
+        "forumUrl": "https://7cav.us/threads/105541/",
+        "postDate": 1791741600,
+        "reason": "",
+        "reviewReason": "LOA_REVIEW_REASON_DATES_UNREADABLE",
+        "startDate": "2026-10-31",
+        "state": "LOA_STATE_NEEDS_REVIEW",
+        "subject": {
+          "milpacId": "1",
+          "userId": "3",
+          "username": "Jarvis.A"
+        },
+        "threadId": "105541"
       }
     ]
   },
@@ -41,7 +57,7 @@
     "Content-Type": "application/json"
   },
   "method": "GET",
-  "notes": "Every open and upcoming LOA in threadId order. 64-bit ids are strings, the 32-bit postDate is a number, enums are names, and subject is an object.",
+  "notes": "Every open and upcoming LOA, and the needs-review ones posted in the last 14 days, in threadId order. A needs-review LOA names its reviewReason and gives \"\" for a date it couldn't read. 64-bit ids are strings, the 32-bit postDate is a number, enums are names, and subject is an object.",
   "path": "/api/v1/loas",
   "status": 200
 }

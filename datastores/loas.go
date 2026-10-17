@@ -36,13 +36,17 @@ func loaForumNodes() []uint32 {
 
 // FindLoas reads the visible threads in the LOA forums and returns one LOA
 // per thread, ordered by thread id. It reads each opening post as it reads
-// now, resolves the Subject by current username, and keeps the open and
-// upcoming LOAs.
+// now and resolves the Subject by current username. It keeps the open and
+// upcoming LOAs, and the needs-review ones whose thread was posted in the
+// last 14 days.
 func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error) {
 	today := utcDate(q.Now)
 	// Read only threads posted in the year before the window starts. The
 	// window starts today.
 	lookback := today.AddDate(-1, 0, 0)
+	// A needs-review LOA comes back when its thread was posted on or after
+	// midnight UTC 14 days before today.
+	reviewSince := today.AddDate(0, 0, -loaReviewWindowDays)
 
 	var threads []struct {
 		ThreadID uint32 `gorm:"column:thread_id"`
@@ -79,30 +83,42 @@ func (ds *Mysql) FindLoas(ctx context.Context, q LoaQuery) ([]*types.Loa, error)
 	loas := make([]*types.Loa, 0, len(threads))
 	for i, th := range threads {
 		post := posts[i]
-		subject, known := members[strings.ToLower(post.subject)]
-		// For now a thread whose dates or Subject can't be read is left
-		// out. Later it comes back as needs review.
-		if post.start.IsZero() || post.end.IsZero() || !post.hasSubject || !known {
-			continue
-		}
-		state := loaState(today, post.start, post.end)
-		if state == types.LoaStateEnded {
-			continue
-		}
 		var link string
 		if base != "" {
 			link = fmt.Sprintf("%s/threads/%d/", base, th.ThreadID)
 		}
-		loas = append(loas, &types.Loa{
+		loa := &types.Loa{
 			ThreadId:  uint64(th.ThreadID),
 			ForumUrl:  link,
 			PostDate:  th.PostDate,
 			Forum:     loaForums[th.NodeID],
-			Subject:   subject,
-			StartDate: post.start.Format(layoutISO),
-			EndDate:   post.end.Format(layoutISO),
-			State:     state,
-		})
+			StartDate: loaDateString(post.start),
+			EndDate:   loaDateString(post.end),
+		}
+		subject, known := members[strings.ToLower(post.subject)]
+		if !known {
+			// A Subject who matches no member shows the name as written,
+			// with user and milpac ids of 0. A post with no Username label
+			// names no one.
+			subject = types.LoaSubject{Username: post.subject}
+		}
+		loa.Subject = subject
+		if reason := loaReviewReason(post, known); reason != types.LoaReviewReasonUnspecified {
+			// A needs-review LOA may give no End Date to window on, so its
+			// thread's post date decides instead.
+			if int64(th.PostDate) < reviewSince.Unix() {
+				continue
+			}
+			loa.State = types.LoaStateNeedsReview
+			loa.ReviewReason = reason
+			loas = append(loas, loa)
+			continue
+		}
+		loa.State = loaState(today, post.start, post.end)
+		if loa.State == types.LoaStateEnded {
+			continue
+		}
+		loas = append(loas, loa)
 	}
 	return loas, nil
 }
@@ -139,6 +155,46 @@ func (ds *Mysql) loaMembersByUsername(ctx context.Context, names []string) (map[
 		}
 	}
 	return members, nil
+}
+
+// loaMaxDays is how many days past its Start Date an LOA's End Date may
+// fall. A Saturday-to-Saturday LOA ends exactly 14 days after it starts, and
+// the API doesn't flag it.
+const loaMaxDays = 14
+
+// loaReviewWindowDays is how many days back, by post date, the default
+// window reaches for needs-review threads.
+const loaReviewWindowDays = 14
+
+// loaReviewReason names the rule a thread trips, or returns
+// LoaReviewReasonUnspecified when the API can take it as written. known
+// reports whether the post's Username label matched a member. When several
+// rules apply it reports the first in this order, a choice the spec leaves
+// open.
+func loaReviewReason(post loaPost, known bool) types.LoaReviewReason {
+	switch {
+	case post.start.IsZero() || post.end.IsZero():
+		return types.LoaReviewReasonDatesUnreadable
+	case post.end.Before(post.start):
+		return types.LoaReviewReasonEndBeforeStart
+	case post.end.After(post.start.AddDate(0, 0, loaMaxDays)):
+		return types.LoaReviewReasonTooLong
+	case !post.hasSubject:
+		return types.LoaReviewReasonNoSubject
+	case !known:
+		return types.LoaReviewReasonUnknownSubject
+	default:
+		return types.LoaReviewReasonUnspecified
+	}
+}
+
+// loaDateString writes a date the post gave as YYYY-MM-DD, and a date it
+// didn't as "".
+func loaDateString(d time.Time) string {
+	if d.IsZero() {
+		return ""
+	}
+	return d.Format(layoutISO)
 }
 
 // utcDate returns midnight UTC on t's UTC calendar date.

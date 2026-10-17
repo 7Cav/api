@@ -7,10 +7,11 @@ import "strconv"
 // thread gives one record, and ThreadId is its stable key. Deleting the
 // thread withdraws the LOA.
 //
-// StartDate and EndDate are YYYY-MM-DD calendar dates, and the datastore
-// computes State from them against the request's UTC date. Reason and
-// ReviewReason ship at their empty values until the reason text and the
-// needs-review rules land.
+// StartDate and EndDate are YYYY-MM-DD calendar dates, or "" when the post
+// gives none the API can read. The datastore computes State from them
+// against the request's UTC date. A thread the API can't take as written has
+// State LoaStateNeedsReview, and ReviewReason names the rule it tripped.
+// Reason ships empty until the reason text lands.
 type Loa struct {
 	ThreadId     uint64          `json:"threadId,string"`
 	ForumUrl     string          `json:"forumUrl"`
@@ -26,7 +27,9 @@ type Loa struct {
 
 // LoaSubject is the trooper on leave, by forum user id, current forum
 // username and milpac relation id. MilpacId is 0 when the trooper has no
-// milpac record.
+// milpac record. When the post's Username label matches no member, Username
+// is the name as written and both ids are 0. With no label, Username is ""
+// and both ids are 0.
 type LoaSubject struct {
 	UserId   uint64 `json:"userId,string"`
 	Username string `json:"username"`

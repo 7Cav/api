@@ -322,8 +322,9 @@ func (recordingDatastore) FindForumGroups() ([]*types.ForumGroup, error) {
 
 // --- LOAs -----------------------------------------------------------------
 
-// FindLoas is the LOA seed, one open and one upcoming LOA in threadId order.
-// The Subjects come from the profile seed, relation 1 for user 3 Jarvis.A and
+// FindLoas is the LOA seed, one open, one upcoming and one needs-review LOA
+// in threadId order. The needs-review LOA gives no readable End Date. The
+// Subjects come from the profile seed, relation 1 for user 3 Jarvis.A and
 // relation 2 for user 8 John.Doe, so userId and milpacId differ.
 // rest/fake_loas_test.go mirrors this set so the new-stack replay agrees with
 // the recorded golden.
@@ -348,6 +349,17 @@ func (recordingDatastore) FindLoas(context.Context, datastores.LoaQuery) ([]*typ
 			StartDate: "2026-10-24",
 			EndDate:   "2026-11-06",
 			State:     types.LoaStateUpcoming,
+		},
+		{
+			ThreadId:     105541,
+			ForumUrl:     "https://7cav.us/threads/105541/",
+			PostDate:     1791741600,
+			Forum:        types.LoaForum2_7,
+			Subject:      types.LoaSubject{UserId: 3, Username: "Jarvis.A", MilpacId: 1},
+			StartDate:    "2026-10-31",
+			EndDate:      "",
+			State:        types.LoaStateNeedsReview,
+			ReviewReason: types.LoaReviewReasonDatesUnreadable,
 		},
 	}, nil
 }
