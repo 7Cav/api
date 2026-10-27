@@ -530,8 +530,8 @@ func seedMessages42() []*types.Message {
 }
 
 // Cursor helpers mirroring datastores/tickets.go exactly.
-func encodeTicketCursor(lastModified, ticketID uint32) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d:%d", lastModified, ticketID)))
+func encodeTicketCursor(lastActivity, ticketID uint32) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d:%d", lastActivity, ticketID)))
 }
 
 func decodeTicketCursor(c string) (uint32, uint32, error) {

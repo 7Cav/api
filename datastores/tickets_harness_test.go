@@ -187,6 +187,17 @@ func TestListTickets_Filters(t *testing.T) {
 	}
 }
 
+// listModifiedSince lists the visible tickets whose last activity is at or
+// after since.
+func listModifiedSince(t *testing.T, ds *datastores.Mysql, rc datastores.TicketReferenceCache, since uint32) []*types.Ticket {
+	t.Helper()
+	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: since})
+	if err != nil {
+		t.Fatalf("ListTickets(modifiedSince %d): %v", since, err)
+	}
+	return tickets
+}
+
 // Ticket 8 opened after the forum stopped maintaining
 // last_modified_date, so the column reads 0. Its public reply at
 // 1793100790 is its last activity, and modifiedSince filters on that.
@@ -205,25 +216,18 @@ func TestListTickets_ModifiedSinceFindsReplyOnUnmaintainedColumn(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: c.since})
-			if err != nil {
-				t.Fatalf("ListTickets(modifiedSince %d): %v", c.since, err)
-			}
-			assertTicketOrder(t, tickets, c.want)
+			assertTicketOrder(t, listModifiedSince(t, ds, rc, c.since), c.want)
 		})
 	}
 }
 
-// Ticket 9's newest event is its assignment at 1793050000, logged after
-// its last public reply. A counted log action is last activity.
+// Ticket 9's newest event is its assignment at 1793050000, logged long
+// after its opening post. A counted log action is last activity.
 func TestListTickets_CountedLogActionIsLastActivity(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
 	const assigned = 1793050000
-	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: assigned})
-	if err != nil {
-		t.Fatalf("ListTickets(modifiedSince %d): %v", assigned, err)
-	}
+	tickets := listModifiedSince(t, ds, rc, assigned)
 	assertTicketOrder(t, tickets, []uint32{8, 9})
 	if got := tickets[1].LastModifiedDate; got != assigned {
 		t.Errorf("ticket 9 lastModifiedDate = %d, want its assignment at %d", got, assigned)
@@ -237,11 +241,7 @@ func TestListTickets_UncountedLogActionsAreNotActivity(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
 	const uncounted = 1793080000
-	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: uncounted})
-	if err != nil {
-		t.Fatalf("ListTickets(modifiedSince %d): %v", uncounted, err)
-	}
-	assertTicketOrder(t, tickets, []uint32{8})
+	assertTicketOrder(t, listModifiedSince(t, ds, rc, uncounted), []uint32{8})
 }
 
 // Ticket 11's last public reply is at 1792900000 and an internal staff
@@ -250,16 +250,9 @@ func TestListTickets_InternalNoteIsNotActivity(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
 	const note, reply = 1793070000, 1792900000
-	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: note})
-	if err != nil {
-		t.Fatalf("ListTickets(modifiedSince %d): %v", note, err)
-	}
-	assertTicketOrder(t, tickets, []uint32{8})
+	assertTicketOrder(t, listModifiedSince(t, ds, rc, note), []uint32{8})
 
-	tickets, _, _, err = ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: reply})
-	if err != nil {
-		t.Fatalf("ListTickets(modifiedSince %d): %v", reply, err)
-	}
+	tickets := listModifiedSince(t, ds, rc, reply)
 	assertTicketOrder(t, tickets, []uint32{8, 9, 11})
 	if got := tickets[2].LastModifiedDate; got != reply {
 		t.Errorf("ticket 11 lastModifiedDate = %d, want its last public reply at %d", got, reply)
@@ -283,15 +276,6 @@ func TestListTickets_OnlyCountedLogActionsAreActivity(t *testing.T) {
 			t.Fatalf("logging %s: %v", action, err)
 		}
 	}
-	modifiedSinceLatest := func(t *testing.T) []*types.Ticket {
-		t.Helper()
-		tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: at})
-		if err != nil {
-			t.Fatalf("ListTickets(modifiedSince %d): %v", at, err)
-		}
-		return tickets
-	}
-
 	counted := []string{
 		"status_changed", "assigned", "priority_changed", "category_moved",
 		"title_changed", "prefix_changed", "locked", "unlocked", "made_visible",
@@ -301,7 +285,7 @@ func TestListTickets_OnlyCountedLogActionsAreActivity(t *testing.T) {
 	for _, action := range counted {
 		t.Run(action, func(t *testing.T) {
 			logOnTicket6(t, action)
-			tickets := modifiedSinceLatest(t)
+			tickets := listModifiedSince(t, ds, rc, at)
 			assertTicketOrder(t, tickets, []uint32{6})
 			if got := tickets[0].LastModifiedDate; got != at {
 				t.Errorf("lastModifiedDate = %d, want the %s row at %d", got, action, at)
@@ -311,7 +295,7 @@ func TestListTickets_OnlyCountedLogActionsAreActivity(t *testing.T) {
 
 	t.Run("an action outside the list", func(t *testing.T) {
 		logOnTicket6(t, "some_future_action")
-		assertTicketOrder(t, modifiedSinceLatest(t), []uint32{})
+		assertTicketOrder(t, listModifiedSince(t, ds, rc, at), []uint32{})
 	})
 }
 

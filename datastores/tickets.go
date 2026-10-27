@@ -138,9 +138,7 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 		}
 	}
 
-	q := ds.ticketsWithLastActivity(ctx).
-		Preload("Participants").
-		Preload("FieldValues")
+	q := ds.ticketQuery(ctx)
 
 	// Visibility default: only visible discussion_state unless include_hidden.
 	if !f.IncludeHidden {
@@ -223,13 +221,15 @@ var ticketActivityActions = []string{
 	"warning_created",
 }
 
-// ticketsWithLastActivity queries xf_nf_tickets_ticket with one more
-// column, last_activity: the latest of the ticket's start, its last public
-// reply, the old last_modified_date, and its newest activity-log row whose
-// action is in ticketActivityActions. The forum stopped maintaining
-// last_modified_date, so the API derives last activity itself (ADR 0008).
-// The add-on keeps internal staff notes out of last_message_date.
-func (ds *Mysql) ticketsWithLastActivity(ctx context.Context) *gorm.DB {
+// ticketQuery starts every query that loads tickets for generateTicketProto.
+// It preloads participants and custom fields, and adds one column to
+// xf_nf_tickets_ticket, last_activity: the latest of the ticket's start, its
+// last public reply, the old last_modified_date, and its newest activity-log
+// row whose action is in ticketActivityActions. The forum stopped
+// maintaining last_modified_date, so the API derives last activity itself
+// (ADR 0008). The add-on keeps internal staff notes out of
+// last_message_date.
+func (ds *Mysql) ticketQuery(ctx context.Context) *gorm.DB {
 	return ds.Db.WithContext(ctx).Table(`(
 		SELECT t.*, GREATEST(
 			t.start_date, t.last_message_date, t.last_modified_date,
@@ -239,7 +239,9 @@ func (ds *Mysql) ticketsWithLastActivity(ctx context.Context) *gorm.DB {
 			), 0)
 		) AS last_activity
 		FROM xf_nf_tickets_ticket t
-	) AS xf_nf_tickets_ticket`, ticketActivityActions)
+	) AS xf_nf_tickets_ticket`, ticketActivityActions).
+		Preload("Participants").
+		Preload("FieldValues")
 }
 
 // generateTicketProto maps a xenforo.Ticket to types.Ticket, resolving
@@ -369,9 +371,7 @@ func decodeMessageCursor(c string) (uint32, error) {
 
 func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*types.Ticket, error) {
 	var row xenforo.Ticket
-	tx := ds.ticketsWithLastActivity(ctx).
-		Preload("Participants").
-		Preload("FieldValues").
+	tx := ds.ticketQuery(ctx).
 		Where("ticket_id = ?", ticketID).
 		First(&row)
 	if tx.Error != nil {
@@ -481,9 +481,7 @@ func messageToProto(m *xenforo.TicketMessage) *types.Message {
 
 func (ds *Mysql) GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBase string) (*types.Ticket, error) {
 	var row xenforo.Ticket
-	tx := ds.ticketsWithLastActivity(ctx).
-		Preload("Participants").
-		Preload("FieldValues").
+	tx := ds.ticketQuery(ctx).
 		Where("ticket_ref = ?", ref).
 		First(&row)
 	if tx.Error != nil {

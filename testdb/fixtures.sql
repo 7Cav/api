@@ -228,7 +228,8 @@ INSERT INTO xf_phrase (language_id, title, phrase_text) VALUES
 -- Tickets 8 to 11 opened after the forum stopped maintaining the column,
 -- so it reads 0 and the API derives their last activity:
 --   8: a public reply at 1793100790.
---   9: assigned at 1793050000, after its last public reply.
+--   9: opened at 1792750000 and assigned at 1793050000. Only the
+--      assignment puts it above tickets 11 and 10.
 --  10: a public reply at 1792850000, then user_banned, ticket_mention and
 --      tags_changed rows at 1793080000, none of which counts.
 --  11: a public reply at 1792900000, then an internal staff note at
@@ -281,9 +282,9 @@ INSERT INTO xf_nf_tickets_ticket
    3012, 1793100790, 401, 'Helpdesk.H',
    0, 1, 0, '', 150, 'Trooper.C'),
   (9, 'SE-0009', 'Arma mod pack mismatch', 105, 'Trooper.B', '', '', '',
-   1792950000, 3013, 1792950000, 2, 1, 'open',
+   1792750000, 3013, 1792750000, 2, 1, 'open',
    'visible', 401, 'Helpdesk.H', 3,
-   3013, 1792950000, 105, 'Trooper.B',
+   3013, 1792750000, 105, 'Trooper.B',
    0, 0, 0, '', 105, 'Trooper.B'),
   (10, 'SE-0010', 'Discord role missing',  100, 'Trooper.A', '', '', '',
    1792800000, 3014, 1792800000, 2, 1, 'open',
@@ -314,7 +315,7 @@ INSERT INTO xf_nf_tickets_message
   (3010, 7, 301, 'Discharged.F','', '', 1740370000, 'Where is my citation?',          'visible', 0, ''),
   (3011, 8, 150, 'Trooper.C',   '', '', 1793000000, 'Login sends me back to login.',  'visible', 0, ''),
   (3012, 8, 401, 'Helpdesk.H',  '', '', 1793100790, 'Cleared your sessions, retry.',  'visible', 1, ''),
-  (3013, 9, 105, 'Trooper.B',   '', '', 1792950000, 'Mods fail the server check.',    'visible', 0, ''),
+  (3013, 9, 105, 'Trooper.B',   '', '', 1792750000, 'Mods fail the server check.',    'visible', 0, ''),
   (3014, 10, 100, 'Trooper.A',  '', '', 1792800000, 'My Discord role is gone.',       'visible', 0, ''),
   (3015, 10, 401, 'Helpdesk.H', '', '', 1792850000, 'Re-synced, check now.',          'visible', 1, ''),
   (3016, 11, 205, 'Trooper.D',  '', '', 1792700000, 'Cannot join the S6 channel.',    'visible', 0, ''),
@@ -332,7 +333,7 @@ INSERT INTO xf_nf_tickets_message
 INSERT INTO xf_nf_tickets_ticket_activity_log
   (ticket_id, after_message_id, actor_type, actor_id, action, data, created_at) VALUES
   (8, 3011, 'user', 150, 'ticket_opened', NULL, 1793000000),
-  (9, 3013, 'user', 105, 'ticket_opened', NULL, 1792950000),
+  (9, 3013, 'user', 105, 'ticket_opened', NULL, 1792750000),
   (9, 3013, 'user', 401, 'assigned',
    '{"actor":"Helpdesk.H","new_user_id":401,"new_username":"Helpdesk.H"}', 1793050000),
   (10, 3014, 'user', 100, 'ticket_opened', NULL, 1792800000),
