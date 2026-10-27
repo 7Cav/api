@@ -149,8 +149,9 @@ The tickets surface exposes the forum's ticket system (powered by the
 `NF Tickets` add-on) as a read-only API.
 
 - **`Ticket`** — a thread: title, status, category, participants,
-  message count, timestamps. `forum_url` is populated when the API is
-  configured with the public forum base URL.
+  message count, timestamps. `forumUrl` links to the ticket on the forum
+  by its numeric ticket id, not its ref. It is `""` when the API has no
+  public forum base URL.
 - **`Message`** — one post within a ticket, addressed by `position`
   (0-indexed within the thread).
 - **`Category`** — a top-level grouping for tickets; carries a current

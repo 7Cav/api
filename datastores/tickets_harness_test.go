@@ -272,7 +272,7 @@ func TestListTickets_MalformedCursorIsInvalidCursorError(t *testing.T) {
 	}
 }
 
-// forum_url is assembled from the configured FORUM_BASE_URL, trailing
+// forumUrl is assembled from the configured FORUM_BASE_URL, trailing
 // slashes trimmed; without configuration it stays empty.
 func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
@@ -282,7 +282,7 @@ func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 		t.Fatalf("ListTickets(unconfigured): %v", err)
 	}
 	if tickets[0].ForumUrl != "" {
-		t.Errorf("without FORUM_BASE_URL forum_url must be empty, got %q", tickets[0].ForumUrl)
+		t.Errorf("without FORUM_BASE_URL forumUrl must be empty, got %q", tickets[0].ForumUrl)
 	}
 
 	prior := viper.GetString("FORUM_BASE_URL")
@@ -293,7 +293,7 @@ func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTickets(configured): %v", err)
 	}
-	if want := "https://forum.example.test/tickets/AA-0001/"; tickets[0].ForumUrl != want {
+	if want := "https://forum.example.test/tickets/1/"; tickets[0].ForumUrl != want {
 		t.Errorf("ForumUrl = %q, want %q", tickets[0].ForumUrl, want)
 	}
 }
@@ -311,7 +311,7 @@ func TestGetTicket_ByIdHappyPath(t *testing.T) {
 	if ticket.StatusName != "Awaiting Support" {
 		t.Errorf("StatusName = %q, want Awaiting Support", ticket.StatusName)
 	}
-	if ticket.ForumUrl != "https://7cav.us/tickets/AA-0001/" {
+	if ticket.ForumUrl != "https://7cav.us/tickets/1/" {
 		t.Errorf("ForumUrl = %q", ticket.ForumUrl)
 	}
 	if len(ticket.Participants) != 2 {
@@ -361,7 +361,7 @@ func TestGetTicketByRef(t *testing.T) {
 	if ticket.TicketId != 1 {
 		t.Errorf("TicketId = %d, want 1", ticket.TicketId)
 	}
-	if ticket.ForumUrl != "https://7cav.us/tickets/AA-0001/" {
+	if ticket.ForumUrl != "https://7cav.us/tickets/1/" {
 		t.Errorf("ForumUrl = %q", ticket.ForumUrl)
 	}
 

@@ -429,7 +429,7 @@ func seedTickets() []*types.Ticket {
 			ReplyCount:          1,
 			TotalMessageCount:   2,
 			CustomFields:        map[string]string{"department": "S1", "billet": "Rifleman"},
-			ForumUrl:            "https://7cav.us/tickets/ZZTOP44Q/",
+			ForumUrl:            "https://7cav.us/tickets/44/",
 		},
 		{
 			TicketId:            43,
@@ -455,7 +455,7 @@ func seedTickets() []*types.Ticket {
 			ReplyCount:          0,
 			TotalMessageCount:   1,
 			CustomFields:        map[string]string{},
-			ForumUrl:            "https://7cav.us/tickets/QQWW43RR/",
+			ForumUrl:            "https://7cav.us/tickets/43/",
 		},
 		{
 			TicketId:            42,
@@ -483,7 +483,7 @@ func seedTickets() []*types.Ticket {
 			ReplyCount:          2,
 			TotalMessageCount:   3,
 			CustomFields:        map[string]string{"recruiter": "Jarvis.A"},
-			ForumUrl:            "https://7cav.us/tickets/MF1UI9HE/",
+			ForumUrl:            "https://7cav.us/tickets/42/",
 		},
 	}
 }
