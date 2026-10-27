@@ -1730,6 +1730,9 @@ components:
             type: string
         forumUrl:
           type: string
+          description: >-
+            Link to the ticket on the forum by its ticketId, not its
+            ticketRef. Empty when the server has no forum base URL configured.
       required:
         - ticketId
         - ticketRef

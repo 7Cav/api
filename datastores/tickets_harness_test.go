@@ -272,7 +272,7 @@ func TestListTickets_MalformedCursorIsInvalidCursorError(t *testing.T) {
 	}
 }
 
-// forum_url is assembled from the configured FORUM_BASE_URL, trailing
+// forumUrl is assembled from the configured FORUM_BASE_URL, trailing
 // slashes trimmed; without configuration it stays empty.
 func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
@@ -282,7 +282,7 @@ func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 		t.Fatalf("ListTickets(unconfigured): %v", err)
 	}
 	if tickets[0].ForumUrl != "" {
-		t.Errorf("without FORUM_BASE_URL forum_url must be empty, got %q", tickets[0].ForumUrl)
+		t.Errorf("without FORUM_BASE_URL forumUrl must be empty, got %q", tickets[0].ForumUrl)
 	}
 
 	prior := viper.GetString("FORUM_BASE_URL")
