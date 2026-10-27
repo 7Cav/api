@@ -263,7 +263,7 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		})
 	}
 	if forumBase != "" {
-		out.ForumUrl = forumBase + "/tickets/" + t.TicketRef + "/"
+		out.ForumUrl = fmt.Sprintf("%s/tickets/%d/", forumBase, t.TicketID)
 	}
 	return out
 }
