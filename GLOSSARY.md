@@ -158,6 +158,19 @@ The tickets surface exposes the forum's ticket system (powered by the
   ticket count.
 - **`TicketParticipant`** — a member-to-ticket association with a role.
 
+**Ticket activity**:
+The ticket being opened, a public reply, a merge or warning on the
+ticket, or a change to its status, assignee, priority, category, title,
+prefix, lock or visibility. Nothing else is ticket activity, including
+internal staff notes, reply edits, tag and custom field edits, and events
+about the ticket's member.
+_Avoid_: modification, ticket update
+
+**Last activity**:
+The time of a ticket's most recent ticket activity. The wire field
+`lastModifiedDate` carries it, and `modifiedSince` filters on it.
+_Avoid_: last modified, last update
+
 `ListTicketMessages` paginates with an opaque cursor whose semantic is
 "next `position` to include" (inclusive lower bound), so `position=0`
 is reachable.

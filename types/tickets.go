@@ -10,7 +10,8 @@ package types
 
 // Ticket is one forum ticket thread: identity, category, workflow state,
 // people, activity timestamps, custom fields. forumUrl is populated when the
-// API is configured with the public forum base URL.
+// API is configured with the public forum base URL. LastModifiedDate carries
+// the ticket's last activity, not the forum column of that name (ADR 0008).
 type Ticket struct {
 	TicketId            uint32               `json:"ticketId"`
 	TicketRef           string               `json:"ticketRef"`
@@ -79,7 +80,7 @@ type GetTicketResponse struct {
 }
 
 // ListTicketsResponse is the GET /api/v1/tickets envelope: one page of
-// tickets, last_modified DESC (ticket id DESC tiebreak). NextCursor is
+// tickets, last activity DESC (ticket id DESC tiebreak). NextCursor is
 // opaque and empty when HasMore is false. Tickets must be allocated even
 // when empty.
 type ListTicketsResponse struct {

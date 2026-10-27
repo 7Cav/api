@@ -166,7 +166,7 @@ func Cases() []Case {
 
 		// --- Tickets: list -------------------------------------------------
 		{Name: "tickets/list_default", Method: "GET", Path: "/api/v1/tickets", Auth: AuthReadTickets,
-			Notes: "All seeded tickets, last_modified DESC; empty next_cursor, has_more false."},
+			Notes: "All seeded tickets, last activity DESC; empty next_cursor, has_more false."},
 		{Name: "tickets/list_repeated_status_filter", Method: "GET", Path: "/api/v1/tickets?status_id=1&status_id=5", Auth: AuthReadTickets,
 			Notes: "Repeated query params build a repeated field: tickets 43 and 42 only."},
 		{Name: "tickets/list_state_filter", Method: "GET", Path: "/api/v1/tickets?ticket_state=resolved", Auth: AuthReadTickets,

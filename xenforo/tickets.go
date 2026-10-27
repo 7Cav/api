@@ -28,6 +28,9 @@ type Ticket struct {
 	PrefixID            uint32 `gorm:"column:prefix_id"`
 	StarterUserID       uint32 `gorm:"column:starter_user_id"`
 	StarterUsername     string `gorm:"column:starter_username"`
+	// LastActivity is not a forum column. The datastore derives it in SQL,
+	// so it reads 0 on any query that doesn't select it.
+	LastActivity uint32 `gorm:"column:last_activity;->"`
 	// Custom fields come from the normalized FieldValues, not the blob.
 	FieldValues  []TicketFieldValue  `gorm:"foreignKey:TicketID;references:TicketID"`
 	Participants []TicketParticipant `gorm:"foreignKey:TicketID;references:TicketID"`

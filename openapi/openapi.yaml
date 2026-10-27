@@ -652,9 +652,11 @@ paths:
       operationId: TicketsService_ListTickets
       summary: List tickets
       description: >-
-        List tickets matching optional filters. Cursor-paginated, sorted by
-        last_modified_date DESC with ticket_id DESC as the tiebreaker (the
-        cursor is stable under the non-unique sort key). Every query key is
+        List tickets matching optional filters. Cursor-paginated and sorted by
+        last activity, the lastModifiedDate on each ticket, newest first.
+        Tickets with the same last activity sort by ticketId, highest first,
+        and the cursor neither skips nor repeats a ticket inside such a tie.
+        Every query key is
         accepted in both
         lowerCamelCase and snake_case spellings (e.g. perPage / per_page);
         unknown query parameters are ignored. Multi-select filters repeat the
@@ -726,6 +728,15 @@ paths:
             type: integer
             minimum: 0
             maximum: 4294967295
+            description: >-
+              A Unix timestamp. Returns the tickets whose last activity is at
+              or after it, combined with the other filters. The forum stamps
+              each change with the time its request started and commits it a
+              moment later, so a change can reach the database already older
+              than the cutoff of a poll that just ran. To poll for activity,
+              start each window 5 minutes before your previous cutoff and
+              skip any ticketId you've already handled at the same
+              lastModifiedDate.
         - name: includeHidden
           in: query
           required: false
@@ -1715,6 +1726,18 @@ components:
         lastModifiedDate:
           type: integer
           minimum: 0
+          description: >-
+            The ticket's last activity as a Unix timestamp. That is the latest
+            of its opening, its last public reply, a merge into it, a warning
+            given from it, a change to its status, assignee, priority,
+            category, title, prefix, lock or visibility, and the forum's
+            last_modified_date column. The forum stopped updating that column
+            in January 2026, so it only decides the value on older tickets,
+            where it can hold the time of a change made before the forum
+            logged changes. Internal staff notes, reply edits, tag and custom
+            field edits, and events about the ticket's member, such as a ban,
+            don't count. ListTickets sorts on it and modifiedSince filters on
+            it.
         replyCount:
           type: integer
           minimum: 0
