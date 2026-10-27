@@ -1729,13 +1729,15 @@ components:
           description: >-
             The ticket's last activity as a Unix timestamp. That is the latest
             of its opening, its last public reply, a merge into it, a warning
-            given from it, and a change to its status, assignee, priority,
-            category, title, prefix, lock or visibility. Internal staff notes,
-            reply edits, tag and custom field edits, and events about the
-            ticket's member, such as a ban, don't count. ListTickets sorts on
-            it and modifiedSince filters on it. It isn't the forum's
-            last_modified_date column, which the forum no longer keeps up to
-            date.
+            given from it, a change to its status, assignee, priority,
+            category, title, prefix, lock or visibility, and the forum's
+            last_modified_date column. The forum stopped updating that column
+            in January 2026, so it only decides the value on older tickets,
+            where it can hold the time of a change made before the forum
+            logged changes. Internal staff notes, reply edits, tag and custom
+            field edits, and events about the ticket's member, such as a ban,
+            don't count. ListTickets sorts on it and modifiedSince filters on
+            it.
         replyCount:
           type: integer
           minimum: 0
