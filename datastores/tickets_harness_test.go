@@ -36,9 +36,9 @@ func assertTicketOrder(t *testing.T, tickets []*types.Ticket, want []uint32) {
 	}
 }
 
-// The default listing serves visible tickets only, newest activity
-// first, with the (last_modified_date, ticket_id) tie broken by higher
-// id first — tickets 7 and 6 share a timestamp in the fixtures.
+// The default listing serves visible tickets only, latest last activity
+// first, with a tie broken by higher id first. Tickets 7 and 6 share a
+// last activity in the fixtures.
 func TestListTickets_DefaultListsVisibleNewestFirst(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
@@ -46,7 +46,7 @@ func TestListTickets_DefaultListsVisibleNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTickets: %v", err)
 	}
-	assertTicketOrder(t, tickets, []uint32{1, 2, 3, 4, 7, 6})
+	assertTicketOrder(t, tickets, []uint32{8, 9, 11, 10, 1, 2, 3, 4, 7, 6})
 	if more || next != "" {
 		t.Errorf("single-page result: hasMore=%v next=%q, want false/empty", more, next)
 	}
@@ -58,7 +58,8 @@ func TestListTickets_DefaultListsVisibleNewestFirst(t *testing.T) {
 func TestListTickets_HydratesTicketShape(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
-	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{})
+	// Admin Office and its subtree list tickets 1 and 2 first.
+	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{CategoryIDs: []uint32{1}})
 	if err != nil {
 		t.Fatalf("ListTickets: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestListTickets_IncludeHiddenAddsDeletedTickets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTickets(include hidden): %v", err)
 	}
-	assertTicketOrder(t, tickets, []uint32{1, 2, 3, 4, 5, 7, 6})
+	assertTicketOrder(t, tickets, []uint32{8, 9, 11, 10, 1, 2, 3, 4, 5, 7, 6})
 }
 
 // The category filter expands to subcategories by default (Admin
@@ -164,14 +165,14 @@ func TestListTickets_Filters(t *testing.T) {
 		{"repeated status ids", datastores.ListTicketsFilter{StatusIDs: []uint32{2, 3}}, []uint32{2, 4, 7, 6}},
 		{"ticket states", datastores.ListTicketsFilter{TicketStates: []string{"resolved"}}, []uint32{4, 7}},
 		{"prefix ids", datastores.ListTicketsFilter{PrefixIDs: []uint32{1}}, []uint32{2, 7}},
-		{"assigned user", datastores.ListTicketsFilter{AssignedUserIDs: []uint32{401}}, []uint32{1, 2, 4, 7, 6}},
+		{"assigned user", datastores.ListTicketsFilter{AssignedUserIDs: []uint32{401}}, []uint32{9, 1, 2, 4, 7, 6}},
 		{"starter user", datastores.ListTicketsFilter{StarterUserIDs: []uint32{400}}, []uint32{1}},
 		// 1740450000 deliberately sits BETWEEN ticket 4 (1740400000) and
 		// ticket 3 (1740500000) so the filter's direction is observable.
-		{"modified since", datastores.ListTicketsFilter{ModifiedSince: 1740450000}, []uint32{1, 2, 3}},
-		// Exactly ticket 3's last_modified_date: the boundary is
-		// INCLUSIVE (tickets.go uses >=, not >) — ticket 3 stays in.
-		{"modified since boundary inclusive", datastores.ListTicketsFilter{ModifiedSince: 1740500000}, []uint32{1, 2, 3}},
+		{"modified since", datastores.ListTicketsFilter{ModifiedSince: 1740450000}, []uint32{8, 9, 11, 10, 1, 2, 3}},
+		// Exactly ticket 3's last activity: the boundary is INCLUSIVE, so
+		// ticket 3 stays in.
+		{"modified since boundary inclusive", datastores.ListTicketsFilter{ModifiedSince: 1740500000}, []uint32{8, 9, 11, 10, 1, 2, 3}},
 		{"conjunction", datastores.ListTicketsFilter{StatusIDs: []uint32{3}, PrefixIDs: []uint32{1}}, []uint32{7}},
 		{"no match", datastores.ListTicketsFilter{StarterUserIDs: []uint32{9999}}, []uint32{}},
 	}
@@ -186,8 +187,137 @@ func TestListTickets_Filters(t *testing.T) {
 	}
 }
 
+// Ticket 8 opened after the forum stopped maintaining
+// last_modified_date, so the column reads 0. Its public reply at
+// 1793100790 is its last activity, and modifiedSince filters on that.
+func TestListTickets_ModifiedSinceFindsReplyOnUnmaintainedColumn(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	const reply = 1793100790
+	cases := []struct {
+		name  string
+		since uint32
+		want  []uint32
+	}{
+		{"at the reply", reply, []uint32{8}},
+		{"one second before", reply - 1, []uint32{8}},
+		{"one second after", reply + 1, []uint32{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: c.since})
+			if err != nil {
+				t.Fatalf("ListTickets(modifiedSince %d): %v", c.since, err)
+			}
+			assertTicketOrder(t, tickets, c.want)
+		})
+	}
+}
+
+// Ticket 9's newest event is its assignment at 1793050000, logged after
+// its last public reply. A counted log action is last activity.
+func TestListTickets_CountedLogActionIsLastActivity(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	const assigned = 1793050000
+	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: assigned})
+	if err != nil {
+		t.Fatalf("ListTickets(modifiedSince %d): %v", assigned, err)
+	}
+	assertTicketOrder(t, tickets, []uint32{8, 9})
+	if got := tickets[1].LastModifiedDate; got != assigned {
+		t.Errorf("ticket 9 lastModifiedDate = %d, want its assignment at %d", got, assigned)
+	}
+}
+
+// Ticket 10's only log rows after its last public reply are user_banned,
+// ticket_mention and tags_changed at 1793080000. None of them is ticket
+// activity, so modifiedSince at that time leaves ticket 10 out.
+func TestListTickets_UncountedLogActionsAreNotActivity(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	const uncounted = 1793080000
+	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: uncounted})
+	if err != nil {
+		t.Fatalf("ListTickets(modifiedSince %d): %v", uncounted, err)
+	}
+	assertTicketOrder(t, tickets, []uint32{8})
+}
+
+// Ticket 11's last public reply is at 1792900000 and an internal staff
+// note follows at 1793070000. The note isn't ticket activity.
+func TestListTickets_InternalNoteIsNotActivity(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	const note, reply = 1793070000, 1792900000
+	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: note})
+	if err != nil {
+		t.Fatalf("ListTickets(modifiedSince %d): %v", note, err)
+	}
+	assertTicketOrder(t, tickets, []uint32{8})
+
+	tickets, _, _, err = ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: reply})
+	if err != nil {
+		t.Fatalf("ListTickets(modifiedSince %d): %v", reply, err)
+	}
+	assertTicketOrder(t, tickets, []uint32{8, 9, 11})
+	if got := tickets[2].LastModifiedDate; got != reply {
+		t.Errorf("ticket 11 lastModifiedDate = %d, want its last public reply at %d", got, reply)
+	}
+}
+
+// Each counted activity-log action moves a ticket's last activity, and an
+// action outside the list doesn't. Each step logs one action on ticket 6,
+// newer than every earlier step, so an action missing from the counted
+// list fails its own step.
+func TestListTickets_OnlyCountedLogActionsAreActivity(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	at := uint32(1800000000)
+	logOnTicket6 := func(t *testing.T, action string) {
+		t.Helper()
+		at += 10
+		if err := ds.Db.Exec(`INSERT INTO xf_nf_tickets_ticket_activity_log
+			(ticket_id, after_message_id, actor_type, actor_id, action, created_at)
+			VALUES (6, 3009, 'user', 401, ?, ?)`, action, at).Error; err != nil {
+			t.Fatalf("logging %s: %v", action, err)
+		}
+	}
+	modifiedSinceLatest := func(t *testing.T) []*types.Ticket {
+		t.Helper()
+		tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{ModifiedSince: at})
+		if err != nil {
+			t.Fatalf("ListTickets(modifiedSince %d): %v", at, err)
+		}
+		return tickets
+	}
+
+	counted := []string{
+		"status_changed", "assigned", "priority_changed", "category_moved",
+		"title_changed", "prefix_changed", "locked", "unlocked", "made_visible",
+		"unapproved", "soft_deleted", "restored", "merged", "ticket_opened",
+		"warning_created",
+	}
+	for _, action := range counted {
+		t.Run(action, func(t *testing.T) {
+			logOnTicket6(t, action)
+			tickets := modifiedSinceLatest(t)
+			assertTicketOrder(t, tickets, []uint32{6})
+			if got := tickets[0].LastModifiedDate; got != at {
+				t.Errorf("lastModifiedDate = %d, want the %s row at %d", got, action, at)
+			}
+		})
+	}
+
+	t.Run("an action outside the list", func(t *testing.T) {
+		logOnTicket6(t, "some_future_action")
+		assertTicketOrder(t, modifiedSinceLatest(t), []uint32{})
+	})
+}
+
 // Cursor pagination walks the full visible set without skips or
-// duplicates, two per page.
+// duplicates, one per page, so every ticket is a page boundary. The
+// first boundary is ticket 8, whose last_modified_date column reads 0.
 func TestListTickets_CursorWalksAllPages(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
@@ -196,7 +326,7 @@ func TestListTickets_CursorWalksAllPages(t *testing.T) {
 	pages := 0
 	for {
 		tickets, next, more, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{
-			PerPage:     2,
+			PerPage:     1,
 			AfterCursor: cursor,
 		})
 		if err != nil {
@@ -219,10 +349,10 @@ func TestListTickets_CursorWalksAllPages(t *testing.T) {
 		}
 	}
 
-	if pages != 3 {
-		t.Errorf("6 visible tickets at 2 per page = 3 pages, got %d", pages)
+	want := []uint32{8, 9, 11, 10, 1, 2, 3, 4, 7, 6}
+	if pages != len(want) {
+		t.Errorf("%d visible tickets at 1 per page = %d pages, got %d", len(want), len(want), pages)
 	}
-	want := []uint32{1, 2, 3, 4, 7, 6}
 	if len(seen) != len(want) {
 		t.Fatalf("walked ids = %v, want %v", seen, want)
 	}
@@ -233,29 +363,33 @@ func TestListTickets_CursorWalksAllPages(t *testing.T) {
 	}
 }
 
-// A page boundary landing exactly on the shared last_modified_date of
-// tickets 7 and 6 must resume INSIDE the tie via the tuple comparison —
-// returning 6, not skipping it and not repeating 7.
+// A page boundary landing exactly on the shared last activity of
+// tickets 7 and 6 must resume INSIDE the tie, returning 6, not skipping
+// it and not repeating 7.
 func TestListTickets_CursorResumesInsideTimestampTie(t *testing.T) {
 	ds, rc := openTicketsHarness(t)
 
-	first, next, more, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{PerPage: 5})
+	first, next, more, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{PerPage: 9})
 	if err != nil {
 		t.Fatalf("ListTickets(page 1): %v", err)
 	}
-	assertTicketOrder(t, first, []uint32{1, 2, 3, 4, 7})
+	assertTicketOrder(t, first, []uint32{8, 9, 11, 10, 1, 2, 3, 4, 7})
 	if !more || next == "" {
 		t.Fatalf("expected another page, got hasMore=%v next=%q", more, next)
 	}
 
 	second, next, more, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{
-		PerPage:     5,
+		PerPage:     9,
 		AfterCursor: next,
 	})
 	if err != nil {
 		t.Fatalf("ListTickets(page 2): %v", err)
 	}
 	assertTicketOrder(t, second, []uint32{6})
+	if seven, six := first[len(first)-1], second[0]; seven.LastModifiedDate != six.LastModifiedDate {
+		t.Fatalf("fixtures no longer tie: ticket 7 at %d, ticket 6 at %d, so the tie-break goes untested",
+			seven.LastModifiedDate, six.LastModifiedDate)
+	}
 	if more || next != "" {
 		t.Errorf("exhausted listing: hasMore=%v next=%q, want false/empty", more, next)
 	}
@@ -293,7 +427,7 @@ func TestListTickets_ForumUrlFromConfiguredBase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTickets(configured): %v", err)
 	}
-	if want := "https://forum.example.test/tickets/1/"; tickets[0].ForumUrl != want {
+	if want := "https://forum.example.test/tickets/8/"; tickets[0].ForumUrl != want {
 		t.Errorf("ForumUrl = %q, want %q", tickets[0].ForumUrl, want)
 	}
 }
@@ -316,6 +450,28 @@ func TestGetTicket_ByIdHappyPath(t *testing.T) {
 	}
 	if len(ticket.Participants) != 2 {
 		t.Errorf("participants = %v, want both seeded members", ticket.Participants)
+	}
+}
+
+// Get by id and get by ref serve last activity as lastModifiedDate, the
+// same as the list: ticket 8's public reply and ticket 9's assignment.
+func TestGetTicket_LastModifiedDateIsLastActivity(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	byID, err := ds.GetTicket(context.Background(), rc, 8, "")
+	if err != nil {
+		t.Fatalf("GetTicket(8): %v", err)
+	}
+	if want := uint32(1793100790); byID.LastModifiedDate != want {
+		t.Errorf("by id: ticket 8 lastModifiedDate = %d, want its public reply at %d", byID.LastModifiedDate, want)
+	}
+
+	byRef, err := ds.GetTicketByRef(context.Background(), rc, "SE-0009", "")
+	if err != nil {
+		t.Fatalf("GetTicketByRef(SE-0009): %v", err)
+	}
+	if want := uint32(1793050000); byRef.LastModifiedDate != want {
+		t.Errorf("by ref: ticket 9 lastModifiedDate = %d, want its assignment at %d", byRef.LastModifiedDate, want)
 	}
 }
 

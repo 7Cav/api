@@ -198,7 +198,7 @@ INSERT INTO xf_nf_tickets_category
    category_emails, prefix_cache, notify_emails) VALUES
   (1, 'Admin Office',  'General admin requests', 0, 0, 1, 4, 10, 3, '', '', '', '', '', ''),
   (2, 'Recruiting',    'Enlistment paperwork',   1, 1, 2, 3, 10, 2, '', '', '', '', '', ''),
-  (3, 'Tech Support',  'TeamSpeak and game tech',0, 0, 5, 6, 20, 2, '', '', '', '', '', '');
+  (3, 'Tech Support',  'TeamSpeak and game tech',0, 0, 5, 6, 20, 6, '', '', '', '', '', '');
 
 -- Phrases backing the reference cache: status / priority / prefix names.
 -- The NF Tickets add-on's own phrase naming is inconsistent: status and
@@ -218,11 +218,21 @@ INSERT INTO xf_phrase (language_id, title, phrase_text) VALUES
   (0, 'nf_tickets_status_no_id', 'edge: no trailing id');
 
 -- Tickets span categories 1/2/3, statuses 1/2/3, all three states, and
--- include one deleted (hidden) ticket. last_modified_date descends
--- (non-strictly) with ticket_id ascending so cursor pagination is
--- exercised against a deterministic order; tickets 6 and 7 deliberately
--- share a value to exercise the tuple-comparison tie-break (pinned by
--- TestFixtures_TicketCursorOrderingInvariant).
+-- include one deleted (hidden) ticket.
+--
+-- Tickets 1 to 7 are legacy tickets from before the forum stopped
+-- maintaining last_modified_date, so the column is their last activity.
+-- Their last activity descends as ticket_id ascends, and tickets 6 and 7
+-- share one to exercise the cursor's tie-break.
+--
+-- Tickets 8 to 11 opened after the forum stopped maintaining the column,
+-- so it reads 0 and the API derives their last activity:
+--   8: a public reply at 1793100790.
+--   9: assigned at 1793050000, after its last public reply.
+--  10: a public reply at 1792850000, then user_banned, ticket_mention and
+--      tags_changed rows at 1793080000, none of which counts.
+--  11: a public reply at 1792900000, then an internal staff note at
+--      1793070000, which the add-on keeps out of last_message_date.
 INSERT INTO xf_nf_tickets_ticket
   (ticket_id, ticket_ref, title, user_id, username, user_name, user_email, password,
    start_date, first_message_id, first_message_date, priority, status_id, ticket_state,
@@ -254,17 +264,37 @@ INSERT INTO xf_nf_tickets_ticket
    1740350000, 3008, 1740350000, 1, 1, 'open',
    'deleted', 0, '', 3,
    3008, 1740350000, 205, 'Trooper.D',
-   1740300000, 0, 0, '', 205, 'Trooper.D'),
+   1740390000, 0, 0, '', 205, 'Trooper.D'),
   (6, 'RE-0006', 'Transfer request',       105, 'Trooper.B', '', '', '',
    1740360000, 3009, 1740360000, 2, 2, 'pending',
    'visible', 401, 'Helpdesk.H', 2,
    3009, 1740360000, 105, 'Trooper.B',
-   1740200000, 0, 0, '', 105, 'Trooper.B'),
+   1740380000, 0, 0, '', 105, 'Trooper.B'),
   (7, 'AA-0007', 'Award citation query',   301, 'Discharged.F', '', '', '',
    1740370000, 3010, 1740370000, 1, 3, 'resolved',
    'visible', 401, 'Helpdesk.H', 1,
    3010, 1740370000, 301, 'Discharged.F',
-   1740200000, 0, 1, '', 301, 'Discharged.F');
+   1740380000, 0, 1, '', 301, 'Discharged.F'),
+  (8, 'SE-0008', 'Forum login loop',       150, 'Trooper.C', '', '', '',
+   1793000000, 3011, 1793000000, 2, 1, 'open',
+   'visible', 0, '', 3,
+   3012, 1793100790, 401, 'Helpdesk.H',
+   0, 1, 0, '', 150, 'Trooper.C'),
+  (9, 'SE-0009', 'Arma mod pack mismatch', 105, 'Trooper.B', '', '', '',
+   1792950000, 3013, 1792950000, 2, 1, 'open',
+   'visible', 401, 'Helpdesk.H', 3,
+   3013, 1792950000, 105, 'Trooper.B',
+   0, 0, 0, '', 105, 'Trooper.B'),
+  (10, 'SE-0010', 'Discord role missing',  100, 'Trooper.A', '', '', '',
+   1792800000, 3014, 1792800000, 2, 1, 'open',
+   'visible', 0, '', 3,
+   3015, 1792850000, 401, 'Helpdesk.H',
+   0, 1, 0, '', 100, 'Trooper.A'),
+  (11, 'SE-0011', 'TeamSpeak permissions', 205, 'Trooper.D', '', '', '',
+   1792700000, 3016, 1792700000, 2, 1, 'open',
+   'visible', 0, '', 3,
+   3017, 1792900000, 401, 'Helpdesk.H',
+   0, 1, 0, '', 205, 'Trooper.D');
 
 -- Messages for ticket 1 include a hidden reply between two visible ones
 -- (positions stay dense and unique per ticket); single openers for the
@@ -281,7 +311,36 @@ INSERT INTO xf_nf_tickets_message
   (3007, 4, 401, 'Helpdesk.H',  '', '', 1740310000, 'Processed. o7',                  'visible', 1, ''),
   (3008, 5, 205, 'Trooper.D',   '', '', 1740350000, 'buy gold now',                   'visible', 0, ''),
   (3009, 6, 105, 'Trooper.B',   '', '', 1740360000, 'Requesting transfer to Bravo.',  'visible', 0, ''),
-  (3010, 7, 301, 'Discharged.F','', '', 1740370000, 'Where is my citation?',          'visible', 0, '');
+  (3010, 7, 301, 'Discharged.F','', '', 1740370000, 'Where is my citation?',          'visible', 0, ''),
+  (3011, 8, 150, 'Trooper.C',   '', '', 1793000000, 'Login sends me back to login.',  'visible', 0, ''),
+  (3012, 8, 401, 'Helpdesk.H',  '', '', 1793100790, 'Cleared your sessions, retry.',  'visible', 1, ''),
+  (3013, 9, 105, 'Trooper.B',   '', '', 1792950000, 'Mods fail the server check.',    'visible', 0, ''),
+  (3014, 10, 100, 'Trooper.A',  '', '', 1792800000, 'My Discord role is gone.',       'visible', 0, ''),
+  (3015, 10, 401, 'Helpdesk.H', '', '', 1792850000, 'Re-synced, check now.',          'visible', 1, ''),
+  (3016, 11, 205, 'Trooper.D',  '', '', 1792700000, 'Cannot join the S6 channel.',    'visible', 0, ''),
+  (3017, 11, 401, 'Helpdesk.H', '', '', 1792900000, 'Looking into it.',               'visible', 1, '');
+
+-- An internal staff note: visible, but is_internal. Staff see it on the
+-- forum and the member doesn't.
+INSERT INTO xf_nf_tickets_message
+  (message_id, ticket_id, user_id, username, user_name, user_email,
+   message_date, message, message_state, position, reaction_users, is_internal) VALUES
+  (3018, 11, 401, 'Helpdesk.H', '', '', 1793070000, 'Needs a TS server admin.',       'visible', 2, '', 1);
+
+-- NF Tickets 2.11 and later log a ticket_opened row when a ticket opens.
+-- Legacy tickets 1 to 7 predate the log and have none.
+INSERT INTO xf_nf_tickets_ticket_activity_log
+  (ticket_id, after_message_id, actor_type, actor_id, action, data, created_at) VALUES
+  (8, 3011, 'user', 150, 'ticket_opened', NULL, 1793000000),
+  (9, 3013, 'user', 105, 'ticket_opened', NULL, 1792950000),
+  (9, 3013, 'user', 401, 'assigned',
+   '{"actor":"Helpdesk.H","new_user_id":401,"new_username":"Helpdesk.H"}', 1793050000),
+  (10, 3014, 'user', 100, 'ticket_opened', NULL, 1792800000),
+  (10, 3015, 'user', 401, 'user_banned', '{"actor":"Helpdesk.H"}', 1793080000),
+  (10, 3015, 'user', 401, 'ticket_mention', '{"actor":"Helpdesk.H","ticket_id":9}', 1793080000),
+  (10, 3015, 'user', 401, 'tags_changed',
+   '{"actor":"Helpdesk.H","added":["discord"],"removed":[]}', 1793080000),
+  (11, 3016, 'user', 205, 'ticket_opened', NULL, 1792700000);
 
 INSERT INTO xf_nf_tickets_ticket_participant (ticket_id, user_id, last_read_date) VALUES
   (1, 400, 1740001200),

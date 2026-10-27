@@ -12,6 +12,7 @@ import (
 	"github.com/7cav/api/types"
 	"github.com/7cav/api/xenforo"
 	"github.com/spf13/viper"
+	"gorm.io/gorm"
 )
 
 // ListTicketsFilter carries the conjunctive filter knobs supported by
@@ -137,8 +138,7 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 		}
 	}
 
-	q := ds.Db.WithContext(ctx).
-		Model(&xenforo.Ticket{}).
+	q := ds.ticketsWithLastActivity(ctx).
 		Preload("Participants").
 		Preload("FieldValues")
 
@@ -171,7 +171,7 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 		q = q.Where("starter_user_id IN ?", f.StarterUserIDs)
 	}
 	if f.ModifiedSince > 0 {
-		q = q.Where("last_modified_date >= ?", f.ModifiedSince)
+		q = q.Where("last_activity >= ?", f.ModifiedSince)
 	}
 
 	if f.AfterCursor != "" {
@@ -180,12 +180,12 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 			return nil, "", false, err
 		}
 		// Tuple comparison for stable cursor under non-unique sort key.
-		q = q.Where("(last_modified_date < ?) OR (last_modified_date = ? AND ticket_id < ?)", ts, ts, id)
+		q = q.Where("(last_activity < ?) OR (last_activity = ? AND ticket_id < ?)", ts, ts, id)
 	}
 
 	// Fetch perPage+1 so we know whether there's another page without a count query.
 	var rows []xenforo.Ticket
-	q = q.Order("last_modified_date DESC, ticket_id DESC").Limit(int(perPage) + 1)
+	q = q.Order("last_activity DESC, ticket_id DESC").Limit(int(perPage) + 1)
 	tx := q.Find(&rows)
 	if tx.Error != nil {
 		return nil, "", false, tx.Error
@@ -204,9 +204,42 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 	var nextCursor string
 	if hasMore && len(rows) > 0 {
 		last := rows[len(rows)-1]
-		nextCursor = encodeCursor(last.LastModifiedDate, last.TicketID)
+		nextCursor = encodeCursor(last.LastActivity, last.TicketID)
 	}
 	return out, nextCursor, hasMore, nil
+}
+
+// ticketActivityActions lists the activity-log actions that count as ticket
+// activity. "assigned" also records unassignment. No other action counts,
+// including any that a later add-on version adds. user_banned,
+// user_approved and user_rejected are events about the ticket's member, and
+// the add-on writes them to each of the member's open tickets.
+// ticket_mention records another ticket linking this one, and tags_changed
+// changes nothing the API shows.
+var ticketActivityActions = []string{
+	"status_changed", "assigned", "priority_changed", "category_moved",
+	"title_changed", "prefix_changed", "locked", "unlocked", "made_visible",
+	"unapproved", "soft_deleted", "restored", "merged", "ticket_opened",
+	"warning_created",
+}
+
+// ticketsWithLastActivity queries xf_nf_tickets_ticket with one more
+// column, last_activity: the latest of the ticket's start, its last public
+// reply, the old last_modified_date, and its newest activity-log row whose
+// action is in ticketActivityActions. The forum stopped maintaining
+// last_modified_date, so the API derives last activity itself (ADR 0008).
+// The add-on keeps internal staff notes out of last_message_date.
+func (ds *Mysql) ticketsWithLastActivity(ctx context.Context) *gorm.DB {
+	return ds.Db.WithContext(ctx).Table(`(
+		SELECT t.*, GREATEST(
+			t.start_date, t.last_message_date, t.last_modified_date,
+			COALESCE((
+				SELECT MAX(l.created_at) FROM xf_nf_tickets_ticket_activity_log l
+				WHERE l.ticket_id = t.ticket_id AND l.action IN ?
+			), 0)
+		) AS last_activity
+		FROM xf_nf_tickets_ticket t
+	) AS xf_nf_tickets_ticket`, ticketActivityActions)
 }
 
 // generateTicketProto maps a xenforo.Ticket to types.Ticket, resolving
@@ -246,7 +279,7 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		LastMessageDate:     t.LastMessageDate,
 		LastMessageUserId:   t.LastMessageUserID,
 		LastMessageUsername: t.LastMessageUsername,
-		LastModifiedDate:    t.LastModifiedDate,
+		LastModifiedDate:    t.LastActivity,
 		ReplyCount:          t.ReplyCount,
 		TotalMessageCount:   t.ReplyCount + 1,
 		CustomFields:        map[string]string{},
@@ -278,10 +311,10 @@ func (ds *Mysql) forumBaseURL() string {
 	return v
 }
 
-// encodeCursor packs (last_modified_date, ticket_id) into a single opaque
+// encodeCursor packs (last activity, ticket_id) into a single opaque
 // base64 string. Callers must not parse it.
-func encodeCursor(lastModified, ticketID uint32) string {
-	raw := fmt.Sprintf("%d:%d", lastModified, ticketID)
+func encodeCursor(lastActivity, ticketID uint32) string {
+	raw := fmt.Sprintf("%d:%d", lastActivity, ticketID)
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
@@ -336,7 +369,7 @@ func decodeMessageCursor(c string) (uint32, error) {
 
 func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBase string) (*types.Ticket, error) {
 	var row xenforo.Ticket
-	tx := ds.Db.WithContext(ctx).
+	tx := ds.ticketsWithLastActivity(ctx).
 		Preload("Participants").
 		Preload("FieldValues").
 		Where("ticket_id = ?", ticketID).
@@ -448,7 +481,7 @@ func messageToProto(m *xenforo.TicketMessage) *types.Message {
 
 func (ds *Mysql) GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBase string) (*types.Ticket, error) {
 	var row xenforo.Ticket
-	tx := ds.Db.WithContext(ctx).
+	tx := ds.ticketsWithLastActivity(ctx).
 		Preload("Participants").
 		Preload("FieldValues").
 		Where("ticket_ref = ?", ref).

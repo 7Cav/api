@@ -125,7 +125,7 @@
     "Content-Type": "application/json"
   },
   "method": "GET",
-  "notes": "All seeded tickets, last_modified DESC; empty next_cursor, has_more false.",
+  "notes": "All seeded tickets, last activity DESC; empty next_cursor, has_more false.",
   "path": "/api/v1/tickets",
   "status": 200
 }

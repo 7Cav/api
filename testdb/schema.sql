@@ -424,6 +424,7 @@ CREATE TABLE `xf_nf_tickets_message` (
   `embed_metadata` blob DEFAULT NULL,
   `anonymized` tinyint(3) unsigned NOT NULL DEFAULT 0,
   `user_agent` varchar(255) DEFAULT NULL,
+  `is_internal` tinyint(3) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`message_id`),
   KEY `message_id_position` (`position`,`message_id`),
   KEY `user_id` (`user_id`)
@@ -481,6 +482,21 @@ CREATE TABLE `xf_nf_tickets_category` (
   PRIMARY KEY (`ticket_category_id`),
   KEY `parent_category_id_lft` (`ticket_category_id`,`lft`),
   KEY `lft_rgt` (`lft`,`rgt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Added in NF Tickets 2.11. The add-on writes one row per ticket event,
+-- such as a status change or an assignment.
+CREATE TABLE `xf_nf_tickets_ticket_activity_log` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `ticket_id` int(10) unsigned NOT NULL,
+  `after_message_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `actor_type` varchar(25) NOT NULL DEFAULT '',
+  `actor_id` int(10) unsigned NOT NULL DEFAULT 0,
+  `action` varchar(50) NOT NULL DEFAULT '',
+  `data` blob DEFAULT NULL,
+  `created_at` int(10) unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `ticket_id_after_message_id` (`ticket_id`,`after_message_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `xf_phrase` (

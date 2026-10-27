@@ -5,7 +5,7 @@ package rest_test
 // — the two seeds MUST agree or golden replay against the new stack proves
 // nothing. The recording seed lives in package contract's test files, so it
 // cannot be imported; this file mirrors it verbatim (same world: tickets
-// 44/43/42 sorted last_modified DESC, the ticket-42 message thread, the
+// 44/43/42 sorted by last activity DESC, the ticket-42 message thread, the
 // three-node category tree, the exact cursor formats from
 // datastores/tickets.go).
 
@@ -21,8 +21,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// seedTickets returns the ticket world sorted by last_modified_date DESC,
-// ticket_id DESC — the order the real datastore queries in.
+// seedTickets returns the ticket world sorted by last activity
+// (LastModifiedDate) DESC, ticket_id DESC — the order the real datastore
+// queries in.
 func seedTickets() []*types.Ticket {
 	return []*types.Ticket{
 		{

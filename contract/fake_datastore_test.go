@@ -393,8 +393,9 @@ func (recordingDatastore) FindLoas(_ context.Context, q datastores.LoaQuery) ([]
 
 // --- Tickets --------------------------------------------------------------
 
-// seedTickets returns the ticket world sorted by last_modified_date DESC,
-// ticket_id DESC — the order the real datastore queries in.
+// seedTickets returns the ticket world sorted by last activity
+// (LastModifiedDate) DESC, ticket_id DESC — the order the real datastore
+// queries in.
 func seedTickets() []*types.Ticket {
 	return []*types.Ticket{
 		{
