@@ -541,18 +541,14 @@ func TestGetTicketByRef(t *testing.T) {
 	}
 }
 
-// First-messages preview: hidden replies are excluded from both the
-// page and the total unless requested; the page is position-ordered
-// and capped at n while the total counts the whole ticket.
+// First-messages preview: hidden replies are excluded unless requested;
+// the page is position-ordered and capped at n.
 func TestGetTicketFirstMessages(t *testing.T) {
 	ds, _ := openTicketsHarness(t)
 
-	msgs, total, err := ds.GetTicketFirstMessages(context.Background(), 1, 10, false)
+	msgs, err := ds.GetTicketFirstMessages(context.Background(), 1, 10, false)
 	if err != nil {
 		t.Fatalf("GetTicketFirstMessages(visible): %v", err)
-	}
-	if total != 2 {
-		t.Errorf("visible total = %d, want 2 (hidden internal note excluded)", total)
 	}
 	if len(msgs) != 2 || msgs[0].Position != 0 || msgs[1].Position != 2 {
 		t.Fatalf("visible positions = %v, want [0 2]", messagePositions(msgs))
@@ -561,22 +557,21 @@ func TestGetTicketFirstMessages(t *testing.T) {
 		t.Errorf("starter message = %q by %q", msgs[0].Message, msgs[0].Username)
 	}
 
-	msgs, total, err = ds.GetTicketFirstMessages(context.Background(), 1, 10, true)
+	msgs, err = ds.GetTicketFirstMessages(context.Background(), 1, 10, true)
 	if err != nil {
 		t.Fatalf("GetTicketFirstMessages(include hidden): %v", err)
 	}
-	if total != 3 || len(msgs) != 3 || msgs[1].MessageState != "hidden" {
-		t.Errorf("with hidden: total=%d positions=%v state[1]=%q, want 3/[0 1 2]/hidden",
-			total, messagePositions(msgs), msgs[1].MessageState)
+	if len(msgs) != 3 || msgs[1].MessageState != "hidden" {
+		t.Errorf("with hidden: positions=%v state[1]=%q, want [0 1 2]/hidden",
+			messagePositions(msgs), msgs[1].MessageState)
 	}
 
-	// n caps the page, not the total.
-	msgs, total, err = ds.GetTicketFirstMessages(context.Background(), 1, 1, false)
+	msgs, err = ds.GetTicketFirstMessages(context.Background(), 1, 1, false)
 	if err != nil {
 		t.Fatalf("GetTicketFirstMessages(n=1): %v", err)
 	}
-	if len(msgs) != 1 || total != 2 {
-		t.Errorf("n=1: got %d messages, total %d; want 1 message, total 2", len(msgs), total)
+	if len(msgs) != 1 {
+		t.Errorf("n=1: got %d messages, want 1", len(msgs))
 	}
 }
 
@@ -677,12 +672,12 @@ func TestListTicketMessages_CursorWalksAcrossHiddenGap(t *testing.T) {
 func TestTicketMessages_NonexistentTicketIsEmptyNotError(t *testing.T) {
 	ds, _ := openTicketsHarness(t)
 
-	msgs, total, err := ds.GetTicketFirstMessages(context.Background(), 9999, 10, true)
+	msgs, err := ds.GetTicketFirstMessages(context.Background(), 9999, 10, true)
 	if err != nil {
 		t.Fatalf("GetTicketFirstMessages(9999): %v", err)
 	}
-	if len(msgs) != 0 || total != 0 {
-		t.Errorf("nonexistent ticket: got %d messages, total %d; want 0/0", len(msgs), total)
+	if len(msgs) != 0 {
+		t.Errorf("nonexistent ticket: got %d messages, want 0", len(msgs))
 	}
 
 	listed, next, more, err := ds.ListTicketMessages(context.Background(), 9999, "", 10, true)

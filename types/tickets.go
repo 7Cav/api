@@ -68,15 +68,10 @@ type Message struct {
 
 // GetTicketResponse is the envelope shared by GET /api/v1/tickets/{ticketId}
 // and GET /api/v1/tickets/ref/{ticketRef}: the ticket plus its first
-// messages (oldest first). The top-level TotalMessageCount mirrors the old
-// surface's duplicate of ticket.totalMessageCount — deprecated there, frozen
-// here — but the two are computed INDEPENDENTLY (ticket.totalMessageCount is
-// replyCount+1; this one is a COUNT of visible message rows) and may diverge
-// for threads with hidden messages.
+// messages (oldest first).
 type GetTicketResponse struct {
-	Ticket            *Ticket    `json:"ticket"`
-	FirstMessages     []*Message `json:"firstMessages"`
-	TotalMessageCount uint32     `json:"totalMessageCount"`
+	Ticket        *Ticket    `json:"ticket"`
+	FirstMessages []*Message `json:"firstMessages"`
 }
 
 // ListTicketsResponse is the GET /api/v1/tickets envelope: one page of

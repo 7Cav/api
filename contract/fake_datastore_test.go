@@ -674,16 +674,15 @@ func (recordingDatastore) GetTicketByRef(_ context.Context, _ datastores.TicketR
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (recordingDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, _ bool) ([]*types.Message, uint32, error) {
+func (recordingDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, _ bool) ([]*types.Message, error) {
 	if ticketID != 42 {
-		return []*types.Message{}, 0, nil
+		return []*types.Message{}, nil
 	}
 	msgs := seedMessages42()
-	total := uint32(len(msgs))
 	if n < len(msgs) {
 		msgs = msgs[:n]
 	}
-	return msgs, total, nil
+	return msgs, nil
 }
 
 func (recordingDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, _ bool) ([]*types.Message, string, bool, error) {

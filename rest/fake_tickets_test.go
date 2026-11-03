@@ -314,19 +314,18 @@ func (f *fakeDatastore) GetTicketByRef(_ context.Context, rc datastores.TicketRe
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, uint32, error) {
+func (f *fakeDatastore) GetTicketFirstMessages(_ context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, error) {
 	if f.getTicketFirstMessages != nil {
 		return f.getTicketFirstMessages(ticketID, n, includeHidden)
 	}
 	if ticketID != 42 {
-		return []*types.Message{}, 0, nil
+		return []*types.Message{}, nil
 	}
 	msgs := seedMessages42()
-	total := uint32(len(msgs))
 	if n < len(msgs) {
 		msgs = msgs[:n]
 	}
-	return msgs, total, nil
+	return msgs, nil
 }
 
 func (f *fakeDatastore) ListTicketMessages(_ context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*types.Message, string, bool, error) {

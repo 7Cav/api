@@ -193,7 +193,7 @@ func Cases() []Case {
 
 		// --- Tickets: get by id / ref ---------------------------------------
 		{Name: "tickets/get_by_id_happy", Method: "GET", Path: "/api/v1/tickets/42", Auth: AuthReadTickets,
-			Notes: "Ticket + firstMessages + deprecated top-level totalMessageCount duplicating ticket.totalMessageCount."},
+			Notes: "Ticket + firstMessages."},
 		{Name: "tickets/get_by_id_not_found", Method: "GET", Path: "/api/v1/tickets/9999", Auth: AuthReadTickets,
 			Notes: "NotFound names the numeric id."},
 		{Name: "tickets/get_by_id_parse_error", Method: "GET", Path: "/api/v1/tickets/abc", Auth: AuthReadTickets,

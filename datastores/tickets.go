@@ -392,30 +392,21 @@ func (ds *Mysql) GetTicket(ctx context.Context, rc TicketReferenceCache, ticketI
 	return generateTicketProto(&row, rc, strings.TrimRight(base, "/")), nil
 }
 
-func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, uint32, error) {
-	var total int64
-	q := ds.Db.WithContext(ctx).Model(&xenforo.TicketMessage{}).Where("ticket_id = ?", ticketID)
+func (ds *Mysql) GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, error) {
+	var rows []xenforo.TicketMessage
+	q := ds.Db.WithContext(ctx).Where("ticket_id = ?", ticketID)
 	if !includeHidden {
 		q = q.Where("message_state = ?", "visible")
 	}
-	if tx := q.Count(&total); tx.Error != nil {
-		return nil, 0, tx.Error
-	}
-
-	var rows []xenforo.TicketMessage
-	q2 := ds.Db.WithContext(ctx).Where("ticket_id = ?", ticketID)
-	if !includeHidden {
-		q2 = q2.Where("message_state = ?", "visible")
-	}
-	tx := q2.Order("position ASC").Limit(n).Find(&rows)
+	tx := q.Order("position ASC").Limit(n).Find(&rows)
 	if tx.Error != nil {
-		return nil, 0, tx.Error
+		return nil, tx.Error
 	}
 	out := make([]*types.Message, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageToProto(&rows[i]))
 	}
-	return out, uint32(total), nil
+	return out, nil
 }
 
 func (ds *Mysql) ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*types.Message, string, bool, error) {

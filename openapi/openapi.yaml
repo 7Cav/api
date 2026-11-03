@@ -1915,12 +1915,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Message'
-        totalMessageCount:
-          type: integer
-          minimum: 0
-          deprecated: true
-          description: 'DEPRECATED: use ticket.totalMessageCount. Removal target: v2.3.0.'
-      required: [ticket, firstMessages, totalMessageCount]
+      required: [ticket, firstMessages]
       additionalProperties: false
 
     ListTicketsResponse:
