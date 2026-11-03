@@ -298,7 +298,6 @@ var implementedCases = []string{
 	"tickets/statuses",
 	"tickets/list_default",
 	"tickets/list_repeated_status_filter",
-	"tickets/list_state_filter",
 	"tickets/list_category_includes_subcategories",
 	"tickets/list_category_exclude_subcategories",
 	"tickets/list_starter_filter",

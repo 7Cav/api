@@ -170,8 +170,6 @@ func Cases() []Case {
 			Notes: "All seeded tickets, last activity DESC; empty next_cursor, has_more false."},
 		{Name: "tickets/list_repeated_status_filter", Method: "GET", Path: "/api/v1/tickets?status_id=1&status_id=5", Auth: AuthReadTickets,
 			Notes: "Repeated query params build a repeated field: tickets 43 and 42 only."},
-		{Name: "tickets/list_state_filter", Method: "GET", Path: "/api/v1/tickets?ticket_state=resolved", Auth: AuthReadTickets,
-			Notes: "String filter: resolved only."},
 		{Name: "tickets/list_category_includes_subcategories", Method: "GET", Path: "/api/v1/tickets?category_id=1", Auth: AuthReadTickets,
 			Notes: "Category filter expands the subtree by default: parent 1 pulls in child category 5."},
 		{Name: "tickets/list_category_exclude_subcategories", Method: "GET", Path: "/api/v1/tickets?category_id=1&exclude_subcategories=true", Auth: AuthReadTickets,

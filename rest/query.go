@@ -117,8 +117,7 @@ func (b *queryBinder) bracketGroups(snake string) [][]string {
 // the cross-group order here is the deterministic ruling. nil when absent.
 // Always a fresh slice once anything joins the snake values: appending onto
 // b.values[snake] directly would write into the url.Values backing array
-// when it has spare capacity (and stringSliceField hands the result to
-// callers).
+// when it has spare capacity.
 func (b *queryBinder) raw(snake string) []string {
 	vals := b.values[snake]
 	var camelVals []string
@@ -189,10 +188,6 @@ func (b *queryBinder) stringField(snake string) string {
 		return ""
 	}
 	return vals[len(vals)-1] // camel wins (ruling, see package comment)
-}
-
-func (b *queryBinder) stringSliceField(snake string) []string {
-	return b.raw(snake)
 }
 
 func (b *queryBinder) uint32Field(snake string) uint32 {

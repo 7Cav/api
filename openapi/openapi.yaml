@@ -678,13 +678,6 @@ paths:
           required: false
           schema:
             type: boolean
-        - name: ticketState
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              type: string
         - name: statusId
           in: query
           required: false
@@ -1721,8 +1714,6 @@ components:
           items:
             type: integer
             minimum: 0
-        ticketState:
-          type: string
         statusId:
           type: integer
           minimum: 0
@@ -1807,7 +1798,6 @@ components:
         - categoryId
         - categoryTitle
         - categoryAncestorIds
-        - ticketState
         - statusId
         - statusName
         - priorityId

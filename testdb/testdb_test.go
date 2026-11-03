@@ -288,15 +288,14 @@ func TestFixtures_AwolContrastHoldsRelativeToNow(t *testing.T) {
 // Ticket fixtures must span categories, statuses and states so the
 // tickets datastore tests (#120) can exercise every filter knob:
 // multiple categories (with a parent/child pair for subtree expansion),
-// multiple status_ids, all three ticket_states, and at least one
-// non-visible ticket for the include_hidden switch.
+// multiple status_ids, and at least one non-visible ticket for the
+// include_hidden switch.
 func TestFixtures_TicketsSpanCategoriesAndStatuses(t *testing.T) {
 	db, _ := testdb.Open(t)
 
 	counts := map[string]string{
 		"distinct ticket categories":   `SELECT COUNT(DISTINCT ticket_category_id) FROM xf_nf_tickets_ticket`,
 		"distinct status ids":          `SELECT COUNT(DISTINCT status_id) FROM xf_nf_tickets_ticket`,
-		"distinct ticket states":       `SELECT COUNT(DISTINCT ticket_state) FROM xf_nf_tickets_ticket`,
 		"child categories (depth > 0)": `SELECT COUNT(*) FROM xf_nf_tickets_category WHERE parent_category_id > 0`,
 	}
 	for label, q := range counts {

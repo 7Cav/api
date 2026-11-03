@@ -45,7 +45,6 @@
         "ticketId": 44,
         "ticketLocked": false,
         "ticketRef": "ZZTOP44Q",
-        "ticketState": "open",
         "title": "Transfer request: Bravo to Alpha",
         "totalMessageCount": 2
       },
@@ -83,7 +82,6 @@
         "ticketId": 42,
         "ticketLocked": false,
         "ticketRef": "MF1UI9HE",
-        "ticketState": "open",
         "title": "Enlistment — John.Doe",
         "totalMessageCount": 3
       }

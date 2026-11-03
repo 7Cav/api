@@ -31,7 +31,6 @@ func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) ht
 		filter := &datastores.ListTicketsFilter{
 			CategoryIDs:          b.uint32SliceField("category_id"),
 			ExcludeSubcategories: b.boolField("exclude_subcategories"),
-			TicketStates:         b.stringSliceField("ticket_state"),
 			StatusIDs:            b.uint32SliceField("status_id"),
 			PrefixIDs:            b.uint32SliceField("prefix_id"),
 			AssignedUserIDs:      b.uint32SliceField("assigned_user_id"),

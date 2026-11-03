@@ -32,8 +32,7 @@ func FuzzQueryBinder(f *testing.F) {
 		"status_id[0]=5",                   // bracket fold
 		"status_id[x]=5",                   // non-numeric bracket content
 		"per_page=1&per_page=2&per_page=3", // pathological repetition
-		"ticket_state=open&ticket_state=closed",
-		"a[b][c]=1", // greedy bracket fold to unknown base
+		"a[b][c]=1",                        // greedy bracket fold to unknown base
 	} {
 		f.Add(seed)
 	}
@@ -45,7 +44,7 @@ func FuzzQueryBinder(f *testing.F) {
 		}
 		b := newQueryBinder(values)
 
-		// Bind a spread that hits scalar/slice × uint32/bool/string and a
+		// Bind a spread that hits scalar uint32/bool/string, a uint32 slice and a
 		// multi-word name (camel-fold path). After each read, the first error
 		// must never change once set.
 		var firstErr error
@@ -67,9 +66,7 @@ func FuzzQueryBinder(f *testing.F) {
 		check()
 		b.boolField("include_hidden")
 		check()
-		b.stringField("ticket_state")
-		check()
-		b.stringSliceField("ticket_state")
+		b.stringField("after_cursor")
 		check()
 	})
 }

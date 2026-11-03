@@ -13,7 +13,6 @@ type Ticket struct {
 	FirstMessageDate    uint32 `gorm:"column:first_message_date"`
 	Priority            uint32 `gorm:"column:priority"`
 	StatusID            uint32 `gorm:"column:status_id"`
-	TicketState         string `gorm:"column:ticket_state"`
 	TicketLocked        uint32 `gorm:"column:ticket_locked"`
 	DiscussionState     string `gorm:"column:discussion_state"`
 	AssignedUserID      uint32 `gorm:"column:assigned_user_id"`

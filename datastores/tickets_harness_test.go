@@ -80,8 +80,8 @@ func TestListTickets_HydratesTicketShape(t *testing.T) {
 	if len(got.CategoryAncestorIds) != 0 {
 		t.Errorf("root category has no ancestors, got %v", got.CategoryAncestorIds)
 	}
-	if got.TicketState != "open" || got.DiscussionState != "visible" || got.TicketLocked {
-		t.Errorf("state = %q/%q locked=%v", got.TicketState, got.DiscussionState, got.TicketLocked)
+	if got.DiscussionState != "visible" || got.TicketLocked {
+		t.Errorf("state = %q locked=%v", got.DiscussionState, got.TicketLocked)
 	}
 	if got.StarterUserId != 400 || got.StarterUsername != "TicketGuy.G" {
 		t.Errorf("starter = %d %q", got.StarterUserId, got.StarterUsername)
@@ -188,7 +188,6 @@ func TestListTickets_Filters(t *testing.T) {
 	}{
 		{"status ids", datastores.ListTicketsFilter{StatusIDs: []uint32{3}}, []uint32{4, 7}},
 		{"repeated status ids", datastores.ListTicketsFilter{StatusIDs: []uint32{2, 3}}, []uint32{2, 4, 7, 6}},
-		{"ticket states", datastores.ListTicketsFilter{TicketStates: []string{"resolved"}}, []uint32{4, 7}},
 		{"prefix ids", datastores.ListTicketsFilter{PrefixIDs: []uint32{1}}, []uint32{2, 7}},
 		{"assigned user", datastores.ListTicketsFilter{AssignedUserIDs: []uint32{401}}, []uint32{9, 1, 2, 4, 7, 6}},
 		{"starter user", datastores.ListTicketsFilter{StarterUserIDs: []uint32{400}}, []uint32{1}},

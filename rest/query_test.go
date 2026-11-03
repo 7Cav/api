@@ -35,7 +35,6 @@ func TestQueryBinder_AbsentKeysBindZeroValues(t *testing.T) {
 	assert.Equal(t, "", b.stringField("after_cursor"))
 	assert.False(t, b.boolField("include_hidden"))
 	assert.Empty(t, b.uint32SliceField("status_id"))
-	assert.Empty(t, b.stringSliceField("ticket_state"))
 	assert.NoError(t, b.Err())
 }
 
@@ -153,5 +152,4 @@ func TestSnakeToCamel(t *testing.T) {
 	assert.Equal(t, "afterCursor", snakeToCamel("after_cursor"))
 	assert.Equal(t, "excludeSubcategories", snakeToCamel("exclude_subcategories"))
 	assert.Equal(t, "starterUserId", snakeToCamel("starter_user_id"))
-	assert.Equal(t, "ticketState", snakeToCamel("ticket_state"))
 }

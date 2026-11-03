@@ -372,7 +372,6 @@ func TestNewStack_ListTicketsBindsEveryFilterField(t *testing.T) {
 	query := strings.Join([]string{
 		"category_id=1", "categoryId=9", // repeated, both spellings (snake first)
 		"exclude_subcategories=true",
-		"ticket_state=open", "ticketState=closed",
 		"status_id=2", "statusId=6",
 		"prefix_id=3",
 		"assignedUserId=4",
@@ -389,7 +388,6 @@ func TestNewStack_ListTicketsBindsEveryFilterField(t *testing.T) {
 	assert.Equal(t, &datastores.ListTicketsFilter{
 		CategoryIDs:          []uint32{1, 9},
 		ExcludeSubcategories: true,
-		TicketStates:         []string{"open", "closed"},
 		StatusIDs:            []uint32{2, 6},
 		PrefixIDs:            []uint32{3},
 		AssignedUserIDs:      []uint32{4},
