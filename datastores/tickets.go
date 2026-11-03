@@ -20,7 +20,6 @@ import (
 type ListTicketsFilter struct {
 	CategoryIDs          []uint32
 	ExcludeSubcategories bool
-	TicketStates         []string
 	StatusIDs            []uint32
 	PrefixIDs            []uint32
 	AssignedUserIDs      []uint32
@@ -154,9 +153,6 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 		}
 		q = q.Where("ticket_category_id IN ?", ids)
 	}
-	if len(f.TicketStates) > 0 {
-		q = q.Where("ticket_state IN ?", f.TicketStates)
-	}
 	if len(f.StatusIDs) > 0 {
 		q = q.Where("status_id IN ?", f.StatusIDs)
 	}
@@ -276,7 +272,6 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		Title:               t.Title,
 		CategoryId:          t.TicketCategoryID,
 		CategoryAncestorIds: ancestors,
-		TicketState:         t.TicketState,
 		StatusId:            t.StatusID,
 		StatusName:          rc.StatusName(t.StatusID),
 		PriorityId:          t.Priority,

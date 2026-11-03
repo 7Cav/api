@@ -5,8 +5,9 @@ package types
 // this surface are 32-bit and stay JSON numbers; the emit-everything and
 // allocation disciplines from the package doc apply throughout (empty
 // collections are []/{} on the wire, never null). State strings
-// (ticketState, discussionState, messageState) are raw XenForo states frozen
-// as-is — deliberately NOT lifted into RosterType-style enums.
+// (discussionState, messageState) are raw XenForo states frozen as-is —
+// deliberately NOT lifted into RosterType-style enums. The ticket_state
+// column is not exposed: NF Tickets leaves it 'open' on every ticket.
 
 // Ticket is one forum ticket thread: identity, category, workflow state,
 // people, activity timestamps, custom fields. forumUrl is populated when the
@@ -19,7 +20,6 @@ type Ticket struct {
 	CategoryId          uint32               `json:"categoryId"`
 	CategoryTitle       string               `json:"categoryTitle"`
 	CategoryAncestorIds []uint32             `json:"categoryAncestorIds"`
-	TicketState         string               `json:"ticketState"`
 	StatusId            uint32               `json:"statusId"`
 	StatusName          string               `json:"statusName"`
 	PriorityId          uint32               `json:"priorityId"`

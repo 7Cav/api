@@ -33,7 +33,6 @@ func seedTickets() []*types.Ticket {
 			CategoryId:          5,
 			CategoryTitle:       "S1 Personnel",
 			CategoryAncestorIds: []uint32{1},
-			TicketState:         "open",
 			StatusId:            2,
 			StatusName:          "In Progress",
 			PriorityId:          2,
@@ -67,7 +66,6 @@ func seedTickets() []*types.Ticket {
 			CategoryId:          7,
 			CategoryTitle:       "S6 Technical Support",
 			CategoryAncestorIds: []uint32{},
-			TicketState:         "resolved",
 			StatusId:            5,
 			StatusName:          "Resolved",
 			PriorityId:          1,
@@ -93,7 +91,6 @@ func seedTickets() []*types.Ticket {
 			CategoryId:          1,
 			CategoryTitle:       "Recruiting",
 			CategoryAncestorIds: []uint32{},
-			TicketState:         "open",
 			StatusId:            1,
 			StatusName:          "New",
 			PriorityId:          3,
@@ -264,9 +261,6 @@ func matchTicket(t *types.Ticket, f *datastores.ListTicketsFilter) bool {
 			return false
 		}
 	}
-	if len(f.TicketStates) > 0 && !containsStr(f.TicketStates, t.TicketState) {
-		return false
-	}
 	if len(f.StatusIDs) > 0 && !containsU32(f.StatusIDs, t.StatusId) {
 		return false
 	}
@@ -286,15 +280,6 @@ func matchTicket(t *types.Ticket, f *datastores.ListTicketsFilter) bool {
 }
 
 func containsU32(haystack []uint32, needle uint32) bool {
-	for _, v := range haystack {
-		if v == needle {
-			return true
-		}
-	}
-	return false
-}
-
-func containsStr(haystack []string, needle string) bool {
 	for _, v := range haystack {
 		if v == needle {
 			return true
