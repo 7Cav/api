@@ -357,12 +357,12 @@ func TestNewStack_ScopeGatePrecedesBindingErrors(t *testing.T) {
 
 // --- Binding pins: what reaches the datastore (#129 review F7) -------------
 
-// Every ListTicketsFilter field arrives from its query key — all eleven in
+// Every ListTicketsFilter field arrives from its query key, all of them in
 // one request, spellings mixed, the COMPLETE struct asserted. Kills silent
 // filter-key copy-paste errors the per-filter goldens cannot see
 // (PrefixIDs/AssignedUserIDs/ModifiedSince/IncludeHidden are asserted
 // nowhere else).
-func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
+func TestNewStack_ListTicketsBindsEveryFilterField(t *testing.T) {
 	var got *datastores.ListTicketsFilter
 	h := rest.New(&fakeDatastore{listTickets: func(f *datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error) {
 		got = f
@@ -378,6 +378,7 @@ func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
 		"assignedUserId=4",
 		"starter_user_id=5",
 		"modifiedSince=123456",
+		"title=teamspeak",
 		"include_hidden=1",
 		"per_page=25",
 		"afterCursor=CUR123",
@@ -394,6 +395,7 @@ func TestNewStack_ListTicketsBindsAllElevenFilterFields(t *testing.T) {
 		AssignedUserIDs:      []uint32{4},
 		StarterUserIDs:       []uint32{5},
 		ModifiedSince:        123456,
+		Title:                "teamspeak",
 		IncludeHidden:        true,
 		PerPage:              25,
 		AfterCursor:          "CUR123",

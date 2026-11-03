@@ -37,6 +37,7 @@ func listTickets(ds datastores.Datastore, rc datastores.TicketReferenceCache) ht
 			AssignedUserIDs:      b.uint32SliceField("assigned_user_id"),
 			StarterUserIDs:       b.uint32SliceField("starter_user_id"),
 			ModifiedSince:        b.uint32Field("modified_since"),
+			Title:                b.stringField("title"),
 			IncludeHidden:        b.boolField("include_hidden"),
 			PerPage:              b.uint32Field("per_page"),
 			AfterCursor:          b.stringField("after_cursor"),

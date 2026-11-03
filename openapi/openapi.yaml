@@ -737,6 +737,14 @@ paths:
               start each window 5 minutes before your previous cutoff and
               skip any ticketId you've already handled at the same
               lastModifiedDate.
+        - name: title
+          in: query
+          required: false
+          schema:
+            type: string
+            description: >-
+              Returns the tickets whose title contains this text, ignoring
+              case. Matched literally, so % and _ are plain characters.
         - name: includeHidden
           in: query
           required: false

@@ -26,6 +26,7 @@ type ListTicketsFilter struct {
 	AssignedUserIDs      []uint32
 	StarterUserIDs       []uint32
 	ModifiedSince        uint32
+	Title                string
 	IncludeHidden        bool
 
 	PerPage     uint32
@@ -170,6 +171,11 @@ func (ds *Mysql) ListTickets(ctx context.Context, rc TicketReferenceCache, f *Li
 	}
 	if f.ModifiedSince > 0 {
 		q = q.Where("last_activity >= ?", f.ModifiedSince)
+	}
+	// INSTR takes the term literally (no LIKE wildcards to escape) and
+	// follows the column's case-insensitive collation.
+	if f.Title != "" {
+		q = q.Where("INSTR(title, ?) > 0", f.Title)
 	}
 
 	if f.AfterCursor != "" {
