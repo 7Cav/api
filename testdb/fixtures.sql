@@ -234,6 +234,10 @@ INSERT INTO xf_phrase (language_id, title, phrase_text) VALUES
 --      tags_changed rows at 1793080000, none of which counts.
 --  11: a public reply at 1792900000, then an internal staff note at
 --      1793070000, which the add-on keeps out of last_message_date.
+--
+-- The add-on fills starter_username only best effort. Ticket 9's is
+-- blank, ticket 10's is a name its starter has since changed, and
+-- ticket 11's starter 500 has no xf_user row.
 INSERT INTO xf_nf_tickets_ticket
   (ticket_id, ticket_ref, title, user_id, username, user_name, user_email, password,
    start_date, first_message_id, first_message_date, priority, status_id, ticket_state,
@@ -285,17 +289,17 @@ INSERT INTO xf_nf_tickets_ticket
    1792750000, 3013, 1792750000, 2, 1, 'open',
    'visible', 401, 'Helpdesk.H', 3,
    3013, 1792750000, 105, 'Trooper.B',
-   0, 0, 0, '', 105, 'Trooper.B'),
+   0, 0, 0, '', 105, ''),
   (10, 'SE-0010', 'Discord role missing',  100, 'Trooper.A', '', '', '',
    1792800000, 3014, 1792800000, 2, 1, 'open',
    'visible', 0, '', 3,
    3015, 1792850000, 401, 'Helpdesk.H',
-   0, 1, 0, '', 100, 'Trooper.A'),
+   0, 1, 0, '', 100, 'Recruit.A'),
   (11, 'SE-0011', 'TeamSpeak permissions', 205, 'Trooper.D', '', '', '',
    1792700000, 3016, 1792700000, 2, 1, 'open',
    'visible', 0, '', 3,
    3017, 1792900000, 401, 'Helpdesk.H',
-   0, 1, 0, '', 205, 'Trooper.D');
+   0, 1, 0, '', 500, '');
 
 -- Messages for ticket 1 include a hidden reply between two visible ones
 -- (positions stay dense and unique per ticket); single openers for the

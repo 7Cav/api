@@ -228,16 +228,20 @@ var ticketActivityActions = []string{
 }
 
 // ticketQuery starts every query that loads tickets for generateTicketProto.
-// It preloads participants and custom fields, and adds one column to
-// xf_nf_tickets_ticket, last_activity: the latest of the ticket's start, its
-// last public reply, the old last_modified_date, and its newest activity-log
-// row whose action is in ticketActivityActions. The forum stopped
-// maintaining last_modified_date, so the API derives last activity itself
-// (ADR 0008). The add-on keeps internal staff notes out of
-// last_message_date.
+// It preloads participants and custom fields, and adds two columns to
+// xf_nf_tickets_ticket. last_activity is the latest of the ticket's start,
+// its last public reply, the old last_modified_date, and its newest
+// activity-log row whose action is in ticketActivityActions. The forum
+// stopped maintaining last_modified_date, so the API derives last activity
+// itself (ADR 0008). The add-on keeps internal staff notes out of
+// last_message_date. starter_display_name is the stored starter_username,
+// or the starter's current username when the add-on left it blank, as the
+// forum shows it.
 func (ds *Mysql) ticketQuery(ctx context.Context) *gorm.DB {
-	return ds.Db.WithContext(ctx).Table(`(
-		SELECT t.*, GREATEST(
+	db := ds.Db.WithContext(ctx)
+	tickets := db.Raw(`
+		SELECT t.*, COALESCE(NULLIF(t.starter_username, ''), u.username, '') AS starter_display_name,
+		GREATEST(
 			t.start_date, t.last_message_date, t.last_modified_date,
 			COALESCE((
 				SELECT MAX(l.created_at) FROM xf_nf_tickets_ticket_activity_log l
@@ -245,7 +249,10 @@ func (ds *Mysql) ticketQuery(ctx context.Context) *gorm.DB {
 			), 0)
 		) AS last_activity
 		FROM xf_nf_tickets_ticket t
-	) AS xf_nf_tickets_ticket`, ticketActivityActions).
+		LEFT JOIN xf_user u ON u.user_id = t.starter_user_id`, ticketActivityActions)
+	// Bound, not inlined: GORM takes the table name from the first
+	// "AS x," in a Table() string, which would be a column alias here.
+	return db.Table("(?) AS xf_nf_tickets_ticket", tickets).
 		Preload("Participants").
 		Preload("FieldValues")
 }
@@ -279,7 +286,7 @@ func generateTicketProto(t *xenforo.Ticket, rc TicketReferenceCache, forumBase s
 		DiscussionState:     t.DiscussionState,
 		TicketLocked:        t.TicketLocked != 0,
 		StarterUserId:       t.StarterUserID,
-		StarterUsername:     t.StarterUsername,
+		StarterUsername:     t.StarterDisplayName,
 		AssignedUserId:      t.AssignedUserID,
 		AssignedUsername:    t.AssignedUsername,
 		Participants:        make([]*types.TicketParticipant, 0, len(t.Participants)),

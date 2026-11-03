@@ -116,6 +116,31 @@ func TestListTickets_HydratesTicketShape(t *testing.T) {
 	}
 }
 
+// starterUsername keeps a stored name and falls back to the starter's
+// current username when the column is blank, the way the forum shows it.
+func TestListTickets_StarterUsernameFallsBackToUser(t *testing.T) {
+	ds, rc := openTicketsHarness(t)
+
+	tickets, _, _, err := ds.ListTickets(context.Background(), rc, &datastores.ListTicketsFilter{})
+	if err != nil {
+		t.Fatalf("ListTickets: %v", err)
+	}
+	got := map[uint32]string{}
+	for _, tk := range tickets {
+		got[tk.TicketId] = tk.StarterUsername
+	}
+	for id, want := range map[uint32]string{
+		1:  "TicketGuy.G", // stored
+		9:  "Trooper.B",   // blank, from xf_user
+		10: "Recruit.A",   // stored name wins over the current one
+		11: "",            // blank, starter has no xf_user row
+	} {
+		if got[id] != want {
+			t.Errorf("ticket %d starterUsername = %q, want %q", id, got[id], want)
+		}
+	}
+}
+
 // include_hidden pulls non-visible tickets into the listing in their
 // chronological slot.
 func TestListTickets_IncludeHiddenAddsDeletedTickets(t *testing.T) {
