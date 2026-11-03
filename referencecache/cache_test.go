@@ -50,6 +50,7 @@ func TestRefresh_PopulatesAllMaps(t *testing.T) {
 	assert.Equal(t, "Open", c.StatusName(1))
 	assert.Equal(t, "Resolved", c.StatusName(3))
 	assert.Equal(t, "", c.StatusName(99), "unknown id returns empty")
+	assert.Equal(t, map[uint32]string{1: "Open", 3: "Resolved"}, c.StatusNames())
 	assert.Equal(t, "Critical", c.PriorityName(4))
 	assert.Equal(t, "[Bug]", c.PrefixName(1))
 	assert.Equal(t, "S1 Citations", c.Category(17).Title)

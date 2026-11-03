@@ -2,8 +2,10 @@ package rest
 
 import (
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 
 	"github.com/7cav/api/datastores"
@@ -251,5 +253,18 @@ func listCategories(ds datastores.Datastore, rc datastores.TicketReferenceCache)
 			cats = []*types.Category{}
 		}
 		writeJSON(w, r, types.ListCategoriesResponse{Categories: cats})
+	})
+}
+
+// listStatuses serves GET /api/v1/tickets/statuses: every ticket status from
+// the reference cache, ordered by statusId.
+func listStatuses(rc datastores.TicketReferenceCache) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		names := rc.StatusNames()
+		statuses := make([]*types.TicketStatus, 0, len(names))
+		for _, id := range slices.Sorted(maps.Keys(names)) {
+			statuses = append(statuses, &types.TicketStatus{StatusId: id, StatusName: names[id]})
+		}
+		writeJSON(w, r, types.ListStatusesResponse{Statuses: statuses})
 	})
 }

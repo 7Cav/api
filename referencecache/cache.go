@@ -9,6 +9,7 @@ package referencecache
 
 import (
 	"context"
+	"maps"
 	"sync"
 )
 
@@ -39,6 +40,7 @@ type Loader interface {
 // ReferenceCache is what consumers (datastore methods, handlers) call.
 type ReferenceCache interface {
 	StatusName(id uint32) string
+	StatusNames() map[uint32]string
 	PriorityName(id uint32) string
 	PrefixName(id uint32) string
 	Category(id uint32) *CategoryRecord
@@ -109,6 +111,12 @@ func (c *Cache) StatusName(id uint32) string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.statuses[id]
+}
+
+func (c *Cache) StatusNames() map[uint32]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return maps.Clone(c.statuses)
 }
 
 func (c *Cache) PriorityName(id uint32) string {

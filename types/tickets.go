@@ -118,3 +118,16 @@ type Category struct {
 type ListCategoriesResponse struct {
 	Categories []*Category `json:"categories"`
 }
+
+// TicketStatus is one ticket status. Served by GET /api/v1/tickets/statuses;
+// reference data for the statusId filter on the list route.
+type TicketStatus struct {
+	StatusId   uint32 `json:"statusId"`
+	StatusName string `json:"statusName"`
+}
+
+// ListStatusesResponse is the GET /api/v1/tickets/statuses envelope.
+// Statuses must be allocated even when empty.
+type ListStatusesResponse struct {
+	Statuses []*TicketStatus `json:"statuses"`
+}

@@ -175,10 +175,12 @@ func routes(ds datastores.Datastore, rc datastores.TicketReferenceCache) *http.S
 	handle(mux, "GET /api/v1/loas", "read:loas", maxAgeLoas, listLoas(ds))
 
 	// --- tickets (scope: read:tickets, max-age 0 — never cached, live) -----
-	// The literal /categories segment wins over {ticket_id} (mux precedence,
-	// golden-pinned by tickets/categories).
+	// The literal /categories and /statuses segments win over {ticket_id}
+	// (mux precedence, golden-pinned by tickets/categories and
+	// tickets/statuses).
 	handle(mux, "GET /api/v1/tickets", "read:tickets", maxAgeTickets, listTickets(ds, rc))
 	handle(mux, "GET /api/v1/tickets/categories", "read:tickets", maxAgeTickets, listCategories(ds, rc))
+	handle(mux, "GET /api/v1/tickets/statuses", "read:tickets", maxAgeTickets, listStatuses(rc))
 	handle(mux, "GET /api/v1/tickets/{ticket_id}", "read:tickets", maxAgeTickets, getTicketById(ds, rc))
 	handle(mux, "GET /api/v1/tickets/ref/{ticket_ref}", "read:tickets", maxAgeTickets, getTicketByRef(ds, rc))
 	// Exact pattern beats ref/{ticket_ref} in ServeMux precedence — see

@@ -306,6 +306,7 @@ func TestNewStack_TicketsScopeGateOnEveryRoute(t *testing.T) {
 		"/api/v1/tickets/ref/MF1UI9HE",
 		"/api/v1/tickets/42/messages",
 		"/api/v1/tickets/categories",
+		"/api/v1/tickets/statuses",
 	} {
 		for _, key := range []string{"cav7_readkey", "cav7_noscopekey"} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)

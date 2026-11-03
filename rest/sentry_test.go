@@ -64,6 +64,7 @@ func (f *sentryFakeDatastore) FindProfilesById(ids ...uint64) ([]*types.Profile,
 type sentryStubCache struct{}
 
 func (*sentryStubCache) StatusName(uint32) string                       { return "" }
+func (*sentryStubCache) StatusNames() map[uint32]string                 { return nil }
 func (*sentryStubCache) PriorityName(uint32) string                     { return "" }
 func (*sentryStubCache) PrefixName(uint32) string                       { return "" }
 func (*sentryStubCache) Category(uint32) *referencecache.CategoryRecord { return nil }
