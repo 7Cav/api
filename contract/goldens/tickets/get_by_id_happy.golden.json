@@ -78,15 +78,14 @@
       "ticketRef": "MF1UI9HE",
       "title": "Enlistment — John.Doe",
       "totalMessageCount": 3
-    },
-    "totalMessageCount": 3
+    }
   },
   "case": "tickets/get_by_id_happy",
   "header": {
     "Content-Type": "application/json"
   },
   "method": "GET",
-  "notes": "Ticket + firstMessages + deprecated top-level totalMessageCount duplicating ticket.totalMessageCount.",
+  "notes": "Ticket + firstMessages.",
   "path": "/api/v1/tickets/42",
   "status": 200
 }

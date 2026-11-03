@@ -78,8 +78,7 @@
       "ticketRef": "MF1UI9HE",
       "title": "Enlistment — John.Doe",
       "totalMessageCount": 3
-    },
-    "totalMessageCount": 3
+    }
   },
   "case": "tickets/get_by_ref_happy",
   "header": {

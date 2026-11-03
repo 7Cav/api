@@ -101,7 +101,7 @@ type Datastore interface {
 	ListTickets(ctx context.Context, rc TicketReferenceCache, filter *ListTicketsFilter) (tickets []*types.Ticket, nextCursor string, hasMore bool, err error)
 	GetTicket(ctx context.Context, rc TicketReferenceCache, ticketID uint32, forumBaseURL string) (*types.Ticket, error)
 	GetTicketByRef(ctx context.Context, rc TicketReferenceCache, ref string, forumBaseURL string) (*types.Ticket, error)
-	GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) (msgs []*types.Message, totalCount uint32, err error)
+	GetTicketFirstMessages(ctx context.Context, ticketID uint32, n int, includeHidden bool) ([]*types.Message, error)
 	ListTicketMessages(ctx context.Context, ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) (msgs []*types.Message, nextCursor string, hasMore bool, err error)
 	ListCategories(ctx context.Context, rc TicketReferenceCache) ([]*types.Category, error)
 }

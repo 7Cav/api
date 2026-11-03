@@ -61,7 +61,7 @@ type fakeDatastore struct {
 	listTickets            func(*datastores.ListTicketsFilter) ([]*types.Ticket, string, bool, error)
 	getTicket              func(ticketID uint32) (*types.Ticket, error)
 	getTicketByRef         func(ref string) (*types.Ticket, error)
-	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*types.Message, uint32, error)
+	getTicketFirstMessages func(ticketID uint32, n int, includeHidden bool) ([]*types.Message, error)
 	listTicketMessages     func(ticketID uint32, afterCursor string, perPage uint32, includeHidden bool) ([]*types.Message, string, bool, error)
 	listCategories         func() ([]*types.Category, error)
 

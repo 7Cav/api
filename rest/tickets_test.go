@@ -59,8 +59,8 @@ func TestNewStack_NilTicketWithNilErrorIsInternalJSON(t *testing.T) {
 // An outage on the first-messages fetch (after the ticket resolved) keeps its
 // own frozen message string: "fetch ticket messages: %v".
 func TestNewStack_GetTicketFirstMessagesOutageIsInternalJSON(t *testing.T) {
-	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int, bool) ([]*types.Message, uint32, error) {
-		return nil, 0, io.ErrUnexpectedEOF
+	h := rest.New(&fakeDatastore{getTicketFirstMessages: func(uint32, int, bool) ([]*types.Message, error) {
+		return nil, io.ErrUnexpectedEOF
 	}}, &stubReferenceCache{})
 
 	rr := ticketsGet(t, h, "/api/v1/tickets/42")
@@ -543,9 +543,9 @@ func TestNewStack_GetTicketByRefDatastoreOutageIsInternalJSON(t *testing.T) {
 func TestNewStack_FirstMessagesCountAndVisibilityFrozen(t *testing.T) {
 	for _, path := range []string{"/api/v1/tickets/42", "/api/v1/tickets/ref/MF1UI9HE"} {
 		gotN, gotHidden, called := 0, true, false
-		h := rest.New(&fakeDatastore{getTicketFirstMessages: func(_ uint32, n int, includeHidden bool) ([]*types.Message, uint32, error) {
+		h := rest.New(&fakeDatastore{getTicketFirstMessages: func(_ uint32, n int, includeHidden bool) ([]*types.Message, error) {
 			gotN, gotHidden, called = n, includeHidden, true
-			return []*types.Message{}, 0, nil
+			return []*types.Message{}, nil
 		}}, &stubReferenceCache{})
 
 		rr := ticketsGet(t, h, path)

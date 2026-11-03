@@ -114,11 +114,8 @@ func getTicketByRef(ds datastores.Datastore, rc datastores.TicketReferenceCache)
 }
 
 // writeTicketResponse assembles the shared GetTicketResponse envelope (the
-// by-id and by-ref bindings return the same shape): the ticket, its first
-// messages, and the deprecated top-level total that mirrors
-// ticket.totalMessageCount but is computed independently (visible-message
-// COUNT vs replyCount+1 — they diverge on hidden messages; see
-// types.GetTicketResponse).
+// by-id and by-ref bindings return the same shape): the ticket and its first
+// messages.
 func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.Datastore, ticket *types.Ticket) {
 	if ticket == nil {
 		// A (nil, nil) datastore return is a bug — fail loudly rather than
@@ -126,7 +123,7 @@ func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.D
 		writeError(w, r, codeInternal, "fetch ticket: nil ticket")
 		return
 	}
-	msgs, total, err := ds.GetTicketFirstMessages(r.Context(), ticket.TicketId, firstMessagesCount, false)
+	msgs, err := ds.GetTicketFirstMessages(r.Context(), ticket.TicketId, firstMessagesCount, false)
 	if err != nil {
 		writeError(w, r, codeInternal, "fetch ticket messages: %v", err)
 		return
@@ -135,9 +132,8 @@ func writeTicketResponse(w http.ResponseWriter, r *http.Request, ds datastores.D
 		msgs = []*types.Message{}
 	}
 	writeJSON(w, r, types.GetTicketResponse{
-		Ticket:            ticket,
-		FirstMessages:     msgs,
-		TotalMessageCount: total,
+		Ticket:        ticket,
+		FirstMessages: msgs,
 	})
 }
 
