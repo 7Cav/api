@@ -1,0 +1,31 @@
+{
+  "auth": "read:tickets",
+  "body": {
+    "statuses": [
+      {
+        "statusId": 1,
+        "statusName": "Open"
+      },
+      {
+        "statusId": 2,
+        "statusName": "Assigned"
+      },
+      {
+        "statusId": 3,
+        "statusName": "Resolved"
+      },
+      {
+        "statusId": 12,
+        "statusName": "Awaiting Response"
+      }
+    ]
+  },
+  "case": "tickets/statuses",
+  "header": {
+    "Content-Type": "application/json"
+  },
+  "method": "GET",
+  "notes": "Every ticket status the statusId filter takes, ordered by statusId; literal 'statuses' segment wins over {ticket_id}.",
+  "path": "/api/v1/tickets/statuses",
+  "status": 200
+}

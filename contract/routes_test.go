@@ -2,7 +2,7 @@ package contract
 
 import "regexp"
 
-// publicRoutes is the single test-side truth for the 18 public routes. Each
+// publicRoutes is the single test-side truth for the 19 public routes. Each
 // entry carries a human label (battery coverage in
 // corpus_test.go), the OpenAPI path template (spec coverage and golden
 // replay in spec_test.go), and the regex that classifies battery case paths
@@ -10,7 +10,7 @@ import "regexp"
 //
 // Ordered most-specific first: each case path (query string stripped) is
 // classified to the FIRST matching entry, so a literal segment (categories,
-// ref, messages) can never satisfy a path-parameter sibling. Prefix matching
+// statuses, ref, messages) can never satisfy a path-parameter sibling. Prefix matching
 // would let tickets/42/messages stand in for deleted ticket-by-id cases.
 var publicRoutes = []struct {
 	label    string
@@ -18,6 +18,7 @@ var publicRoutes = []struct {
 	pattern  *regexp.Regexp
 }{
 	{"ticket categories", "/api/v1/tickets/categories", regexp.MustCompile(`^/api/v1/tickets/categories$`)},
+	{"ticket statuses", "/api/v1/tickets/statuses", regexp.MustCompile(`^/api/v1/tickets/statuses$`)},
 	{"ticket by ref", "/api/v1/tickets/ref/{ticketRef}", regexp.MustCompile(`^/api/v1/tickets/ref/[^/]+$`)},
 	{"ticket messages", "/api/v1/tickets/{ticketId}/messages", regexp.MustCompile(`^/api/v1/tickets/[^/]+/messages$`)},
 	{"ticket by id", "/api/v1/tickets/{ticketId}", regexp.MustCompile(`^/api/v1/tickets/[^/]+$`)},

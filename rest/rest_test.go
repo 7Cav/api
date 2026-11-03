@@ -76,14 +76,19 @@ type fakeDatastore struct {
 	lastRC datastores.TicketReferenceCache
 }
 
-// stubReferenceCache is the explicit no-op datastores.TicketReferenceCache
-// the new-stack tests mount: rest.New refuses nil (a nil cache is a
-// guaranteed panic on the first tickets request against the real datastore),
-// and the fake datastore never consults it. A fresh pointer per test keeps
-// the identity pin honest.
+// stubReferenceCache is the datastores.TicketReferenceCache the new-stack
+// tests mount: rest.New refuses nil (a nil cache is a guaranteed panic on the
+// first tickets request against the real datastore), and the fake datastore
+// never consults it. StatusNames serves the tickets/statuses golden's seed.
+// A fresh pointer per test keeps the identity pin honest.
 type stubReferenceCache struct{}
 
+func seedStatusNames() map[uint32]string {
+	return map[uint32]string{3: "Resolved", 1: "Open", 12: "Awaiting Response", 2: "Assigned"}
+}
+
 func (*stubReferenceCache) StatusName(uint32) string                       { return "" }
+func (*stubReferenceCache) StatusNames() map[uint32]string                 { return seedStatusNames() }
 func (*stubReferenceCache) PriorityName(uint32) string                     { return "" }
 func (*stubReferenceCache) PrefixName(uint32) string                       { return "" }
 func (*stubReferenceCache) Category(uint32) *referencecache.CategoryRecord { return nil }
@@ -290,6 +295,7 @@ var implementedCases = []string{
 	"milpacs/gamertag_happy",
 	"milpacs/gamertag_not_found",
 	"tickets/categories",
+	"tickets/statuses",
 	"tickets/list_default",
 	"tickets/list_repeated_status_filter",
 	"tickets/list_state_filter",

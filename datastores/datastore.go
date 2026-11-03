@@ -111,6 +111,7 @@ type Datastore interface {
 // so the Datastore interface stays self-describing and easy to mock in tests.
 type TicketReferenceCache interface {
 	StatusName(id uint32) string
+	StatusNames() map[uint32]string
 	PriorityName(id uint32) string
 	PrefixName(id uint32) string
 	Category(id uint32) *referencecache.CategoryRecord

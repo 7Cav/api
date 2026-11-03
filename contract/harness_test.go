@@ -60,13 +60,20 @@ func mountCurrentStack() (http.Handler, error) {
 	return rest.New(ds, stubReferenceCache{}), nil
 }
 
-// stubReferenceCache is the no-op TicketReferenceCache the corpus mounts:
-// rest.New refuses nil, and recordingDatastore resolves all reference names in
-// its seeds (it never calls back into the cache), so every method can return
-// the zero value.
+// stubReferenceCache is the TicketReferenceCache the corpus mounts: rest.New
+// refuses nil, and recordingDatastore resolves all reference names in its
+// seeds (it never calls back into the cache), so every method returns the
+// zero value except StatusNames, which the statuses route reads directly.
 type stubReferenceCache struct{}
 
+// seedStatusNames is the status list behind tickets/statuses. The literal is
+// unordered on purpose: the route must sort by statusId.
+func seedStatusNames() map[uint32]string {
+	return map[uint32]string{3: "Resolved", 1: "Open", 12: "Awaiting Response", 2: "Assigned"}
+}
+
 func (stubReferenceCache) StatusName(uint32) string                       { return "" }
+func (stubReferenceCache) StatusNames() map[uint32]string                 { return seedStatusNames() }
 func (stubReferenceCache) PriorityName(uint32) string                     { return "" }
 func (stubReferenceCache) PrefixName(uint32) string                       { return "" }
 func (stubReferenceCache) Category(uint32) *referencecache.CategoryRecord { return nil }

@@ -67,12 +67,13 @@ var specRoutes = map[string]string{
 	"/api/v1/milpacs/position/search/squad%20leader":                "/api/v1/milpacs/position/search/{positionQuery}",
 	"/api/v1/milpacs/position/search/Platoon/Leader":                "/api/v1/milpacs/position/search/{positionQuery}",
 	"/api/v1/milpacs/position/search/":                              "/api/v1/milpacs/position/search/{positionQuery}",
-	// Tickets (#129): categories, by id (happy/not-found/parse-error), by
+	// Tickets (#129): categories, statuses, by id (happy/not-found/parse-error), by
 	// ref (happy/not-found), messages (happy/page-two/parse-error), list —
 	// the list path also carries the 401-tier battery cases (auth runs
 	// before routing, so the observed 401s are route-independent).
 	"/api/v1/tickets":              "/api/v1/tickets",
 	"/api/v1/tickets/categories":   "/api/v1/tickets/categories",
+	"/api/v1/tickets/statuses":     "/api/v1/tickets/statuses",
 	"/api/v1/tickets/42":           "/api/v1/tickets/{ticketId}",
 	"/api/v1/tickets/9999":         "/api/v1/tickets/{ticketId}",
 	"/api/v1/tickets/abc":          "/api/v1/tickets/{ticketId}",

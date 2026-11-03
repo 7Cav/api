@@ -987,6 +987,42 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /api/v1/tickets/statuses:
+    get:
+      operationId: TicketsService_ListStatuses
+      summary: List ticket statuses
+      description: >-
+        Returns every ticket status, ordered by statusId. Reference data for
+        the statusId filter on ListTickets.
+      tags: [tickets]
+      responses:
+        "200":
+          description: Ticket statuses.
+          headers:
+            Vary:
+              description: >-
+                Cache-keying hint: the server selects the body encoding from
+                Accept-Encoding, so a shared cache must store the gzip and
+                identity variants under separate keys.
+              schema:
+                type: string
+                const: Accept-Encoding
+            Cache-Control:
+              description: >-
+                Freshness signal: always served live. Responses are
+                stale immediately; do not cache.
+              schema:
+                type: string
+                const: max-age=0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListStatusesResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
   securitySchemes:
     # http/bearer makes the docs UI auto-prepend "Bearer " so users paste only
@@ -1927,4 +1963,25 @@ components:
           items:
             $ref: '#/components/schemas/Category'
       required: [categories]
+      additionalProperties: false
+
+    TicketStatus:
+      type: object
+      properties:
+        statusId:
+          type: integer
+          minimum: 0
+        statusName:
+          type: string
+      required: [statusId, statusName]
+      additionalProperties: false
+
+    ListStatusesResponse:
+      type: object
+      properties:
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketStatus'
+      required: [statuses]
       additionalProperties: false

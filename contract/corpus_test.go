@@ -108,7 +108,7 @@ func TestCorpusHasNoOrphanGoldens(t *testing.T) {
 
 // TestBatteryIsWellFormed pins structural invariants of the battery itself:
 // unique names, GET-only, the keycloak route deliberately absent, and at
-// least one case per public route (all 18).
+// least one case per public route (all 19).
 func TestBatteryIsWellFormed(t *testing.T) {
 	cases := Cases()
 	seen := map[string]bool{}

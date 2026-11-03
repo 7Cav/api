@@ -4,7 +4,7 @@ package contract
 // route × happy/edge/error/auth cases, both enum path forms, repeated-filter
 // and dual-spelling query combinations on tickets.
 //
-// 18 public routes (the keycloak lookup route
+// 19 public routes (the keycloak lookup route
 // /api/v1/milpac/keycloak/{keycloak_id} is deliberately NOT recorded — it
 // dies at cutover, so there is no golden to hold it to):
 //
@@ -26,6 +26,7 @@ package contract
 //  16. GET /api/v1/tickets/categories
 //  17. GET /api/v1/forum/groups
 //  18. GET /api/v1/loas
+//  19. GET /api/v1/tickets/statuses
 //
 // Path literals reference the recording seed (see fake_datastore_test.go and
 // contract/README.md): relation 1 ↔ user 3 (Jarvis.A), relation 2 ↔ user 8
@@ -225,5 +226,9 @@ func Cases() []Case {
 		// --- Tickets: categories ---------------------------------------------
 		{Name: "tickets/categories", Method: "GET", Path: "/api/v1/tickets/categories", Auth: AuthReadTickets,
 			Notes: "Category reference tree; literal 'categories' segment wins over {ticket_id}."},
+
+		// --- Tickets: statuses -----------------------------------------------
+		{Name: "tickets/statuses", Method: "GET", Path: "/api/v1/tickets/statuses", Auth: AuthReadTickets,
+			Notes: "Every ticket status the statusId filter takes, ordered by statusId; literal 'statuses' segment wins over {ticket_id}."},
 	}
 }
