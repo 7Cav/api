@@ -173,7 +173,13 @@ func TestListTickets_Filters(t *testing.T) {
 		// Exactly ticket 3's last activity: the boundary is INCLUSIVE, so
 		// ticket 3 stays in.
 		{"modified since boundary inclusive", datastores.ListTicketsFilter{ModifiedSince: 1740500000}, []uint32{8, 9, 11, 10, 1, 2, 3}},
+		{"title ignores case", datastores.ListTicketsFilter{Title: "teamspeak"}, []uint32{11, 3}},
+		// No seeded title holds %, _ or a quote, so each must match nothing.
+		{"title percent is literal", datastores.ListTicketsFilter{Title: "%"}, []uint32{}},
+		{"title underscore is literal", datastores.ListTicketsFilter{Title: "_"}, []uint32{}},
+		{"title quote is literal", datastores.ListTicketsFilter{Title: "O'Brien"}, []uint32{}},
 		{"conjunction", datastores.ListTicketsFilter{StatusIDs: []uint32{3}, PrefixIDs: []uint32{1}}, []uint32{7}},
+		{"title conjunction", datastores.ListTicketsFilter{Title: "request", StatusIDs: []uint32{3}}, []uint32{4}},
 		{"no match", datastores.ListTicketsFilter{StarterUserIDs: []uint32{9999}}, []uint32{}},
 	}
 	for _, c := range cases {
