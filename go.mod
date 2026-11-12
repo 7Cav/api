@@ -6,7 +6,7 @@ require (
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/pb33f/libopenapi v0.41.8
-	github.com/pb33f/libopenapi-validator v0.16.1
+	github.com/pb33f/libopenapi-validator v0.16.2
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
 	github.com/prometheus/common v0.73.0
@@ -22,7 +22,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/buger/jsonparser v1.1.2 // indirect
+	github.com/buger/jsonparser v1.6.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-openapi/jsonpointer v1.0.2 // indirect
@@ -35,7 +35,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pandatix/go-abnf v0.5.1 // indirect
 	github.com/pb33f/go-yaml v0.1.1 // indirect
-	github.com/pb33f/jsonpath v0.8.4 // indirect
+	github.com/pb33f/jsonpath v0.8.5 // indirect
 	github.com/pb33f/jsonschema/v6 v6.0.3 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
@@ -47,7 +47,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
