@@ -47,7 +47,7 @@ func TestValidateApiKey_ActiveKeyResolvesActiveScopes(t *testing.T) {
 }
 
 // The seeded read:loas key validates and carries the scope the LOA route
-// gates on.
+// gates on. Its owner's email bounced, which must not revoke the key.
 func TestValidateApiKey_LoasKeyCarriesReadLoas(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
@@ -63,17 +63,28 @@ func TestValidateApiKey_LoasKeyCarriesReadLoas(t *testing.T) {
 	}
 }
 
-// A revoked (is_active = 0) key must fail validation with a nil result
-// and no error — the auth boundary then responds 401.
-func TestValidateApiKey_RevokedKeyYieldsNil(t *testing.T) {
+// A revoked key, or an active key whose owner is banned, disabled or
+// deleted, must fail validation with a nil result and no error. The auth
+// boundary then responds 401.
+func TestValidateApiKey_RevokedKeyOrInactiveOwnerYieldsNil(t *testing.T) {
 	ds := openHarnessDatastore(t)
 
-	result, err := ds.ValidateApiKey(testdb.RevokedAPIKey)
-	if err != nil {
-		t.Fatalf("ValidateApiKey(revoked): %v", err)
-	}
-	if result != nil {
-		t.Errorf("revoked key must yield nil result, got %+v", result)
+	for name, key := range map[string]string{
+		"revoked key":    testdb.RevokedAPIKey,
+		"banned owner":   testdb.BannedOwnerAPIKey,
+		"disabled owner": testdb.DisabledOwnerAPIKey,
+		"deleted owner":  testdb.DeletedOwnerAPIKey,
+		"rejected owner": testdb.RejectedOwnerAPIKey,
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := ds.ValidateApiKey(key)
+			if err != nil {
+				t.Fatalf("ValidateApiKey(%s): %v", name, err)
+			}
+			if result != nil {
+				t.Errorf("%s must yield nil result, got %+v", name, result)
+			}
+		})
 	}
 }
 

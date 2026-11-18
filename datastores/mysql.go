@@ -758,6 +758,9 @@ func (ds Mysql) FindAwol() ([]*types.Awol, error) {
 	return awolList, nil
 }
 
+// ValidateApiKey resolves a raw key to its active scopes. Banned, disabled,
+// rejected and deleted owners lose access; a bounced or unconfirmed email
+// does not revoke a key.
 func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
 	var rows []struct {
 		KeyId     uint   `gorm:"column:key_id"`
@@ -769,9 +772,12 @@ func (ds Mysql) ValidateApiKey(rawKey string) (*ApiKeyResult, error) {
 		FROM   xf_cav7_api_key k
 		JOIN   xf_cav7_api_key_scope ks     ON ks.key_id   = k.key_id
 		JOIN   xf_cav7_api_key_scope_def sd ON sd.scope_id = ks.scope_id
+		JOIN   xf_user u                    ON u.user_id   = k.user_id
 		WHERE  k.key_hash   = UNHEX(SHA2(?, 256))
 		  AND  k.is_active  = 1
-		  AND  sd.is_active = 1`, rawKey).Scan(&rows)
+		  AND  sd.is_active = 1
+		  AND  u.is_banned  = 0
+		  AND  u.user_state NOT IN ('rejected', 'disabled')`, rawKey).Scan(&rows)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
