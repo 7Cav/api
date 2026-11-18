@@ -74,6 +74,7 @@ func TestValidateApiKey_RevokedKeyOrInactiveOwnerYieldsNil(t *testing.T) {
 		"banned owner":   testdb.BannedOwnerAPIKey,
 		"disabled owner": testdb.DisabledOwnerAPIKey,
 		"deleted owner":  testdb.DeletedOwnerAPIKey,
+		"rejected owner": testdb.RejectedOwnerAPIKey,
 	} {
 		t.Run(name, func(t *testing.T) {
 			result, err := ds.ValidateApiKey(key)

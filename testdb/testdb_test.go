@@ -136,25 +136,36 @@ func TestFixtures_ApiKeysResolveScopes(t *testing.T) {
 	}
 }
 
-// testdb.RevokedAPIKey and the seeded inactive key row are duplicated
-// raw strings (constant in testdb.go, literal in fixtures.sql). If they
-// drift, downstream negative-path tests pass for the wrong reason: the
-// key fails validation because it's unknown, not because it's revoked.
-// Pin them together: the exported constant must hash to exactly one
-// seeded INACTIVE row.
-func TestFixtures_RevokedAPIKeyResolvesToInactiveRow(t *testing.T) {
+// The negative-path key constants and their seeded rows are duplicated raw
+// strings (constants in testdb.go, literals in fixtures.sql). If they drift,
+// downstream negative-path tests pass for the wrong reason: the key fails
+// validation because it's unknown, not because it's revoked or its owner is
+// inactive. Pin them together: each constant must hash to exactly one seeded
+// row with the expected is_active flag.
+func TestFixtures_NegativeAPIKeysResolveToSeededRows(t *testing.T) {
 	db, _ := testdb.Open(t)
 
-	var n int
-	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM xf_cav7_api_key
-		 WHERE key_hash = UNHEX(SHA2(?, 256)) AND is_active = 0`,
-		testdb.RevokedAPIKey,
-	).Scan(&n); err != nil {
-		t.Fatalf("resolving revoked key: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("testdb.RevokedAPIKey must hash to exactly one inactive seeded row, got %d (constant and fixtures.sql drifted?)", n)
+	for _, tc := range []struct {
+		key      string
+		isActive int
+	}{
+		{testdb.RevokedAPIKey, 0},
+		{testdb.BannedOwnerAPIKey, 1},
+		{testdb.DisabledOwnerAPIKey, 1},
+		{testdb.DeletedOwnerAPIKey, 1},
+		{testdb.RejectedOwnerAPIKey, 1},
+	} {
+		var n int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM xf_cav7_api_key
+			 WHERE key_hash = UNHEX(SHA2(?, 256)) AND is_active = ?`,
+			tc.key, tc.isActive,
+		).Scan(&n); err != nil {
+			t.Fatalf("resolving %s: %v", tc.key, err)
+		}
+		if n != 1 {
+			t.Errorf("%s must hash to exactly one seeded row with is_active = %d, got %d (constant and fixtures.sql drifted?)", tc.key, tc.isActive, n)
+		}
 	}
 }
 

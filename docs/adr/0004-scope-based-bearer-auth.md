@@ -18,9 +18,10 @@ tables: the key table, the key-to-scope mapping, the scope catalog, and
 the owner's forum account (`xf_user`). A row is returned per scope granted
 to the key. Zero rows → 401.
 
-The forum addon recomputes a key's scopes only when the owner's groups
-change. A ban, a disabled or rejected account, or a deleted user changes
-no groups, so the query checks the owner's account state itself. A
+When a user is saved, the forum addon recomputes their key's scopes only
+if their groups changed. A ban, a disabled or rejected account, or a
+deleted user changes no groups, so the query checks the owner's account
+state itself. A
 bounced or unconfirmed email does not revoke a key.
 
 The validation result carries the set of granted scope names. Each
