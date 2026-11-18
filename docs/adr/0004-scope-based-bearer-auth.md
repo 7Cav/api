@@ -13,9 +13,15 @@ invalidation in this service.
 ## Decision
 
 Clients send a `Bearer` token (case-insensitive prefix per RFC 7235),
-which is validated on every request by a single JOIN over three upstream
-tables: the key table, the key-to-scope mapping, and the scope catalog.
-A row is returned per scope granted to the key. Zero rows → 401.
+which is validated on every request by a single JOIN over four upstream
+tables: the key table, the key-to-scope mapping, the scope catalog, and
+the owner's forum account (`xf_user`). A row is returned per scope granted
+to the key. Zero rows → 401.
+
+The forum addon recomputes a key's scopes only when the owner's groups
+change. A ban, a disabled or rejected account, or a deleted user changes
+no groups, so the query checks the owner's account state itself. A
+bounced or unconfirmed email does not revoke a key.
 
 The validation result carries the set of granted scope names. Each
 route self-gates on a required scope via a `requireScope` wrapper
@@ -30,8 +36,8 @@ on malformed input.
 
 ## Consequences
 
-- Revocation, key creation, and scope changes are instant: the next
-  request hits the new state. No restart, no cache flush.
+- Revocation, key creation, scope changes, and owner bans are instant:
+  the next request hits the new state. No restart, no cache flush.
 - Every request pays for one DB round-trip on the auth path. This is
   acceptable for the current load and keeps the model simple; if it
   becomes a bottleneck, a short-TTL in-process cache keyed by token hash

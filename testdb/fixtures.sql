@@ -27,6 +27,16 @@ VALUES
   (400, 'TicketGuy.G', 'g@example.test', 1, 0, 'UTC', 2, '', 1, 'k400'),
   (401, 'Helpdesk.H',  'h@example.test', 1, 0, 'UTC', 2, '', 1, 'k401');
 
+-- API key owners whose account state gates their keys (see the key fixtures).
+INSERT INTO xf_user
+  (user_id, username, email, language_id, style_id, timezone,
+   user_group_id, secondary_group_ids, permission_combination_id, secret_key,
+   user_state, is_banned)
+VALUES
+  (402, 'Bounced.K',   'k@example.test', 1, 0, 'UTC', 2, '', 1, 'k402', 'email_bounce', 0),
+  (403, 'Banned.L',    'l@example.test', 1, 0, 'UTC', 2, '', 1, 'k403', 'valid',        1),
+  (404, 'Disabled.M',  'm@example.test', 1, 0, 'UTC', 2, '', 1, 'k404', 'disabled',     0);
+
 -- Forum permission-group directory (issue #203). Rows are intentionally
 -- inserted out of user_group_id order so the harness test proves
 -- FindForumGroups sorts by groupId ascending rather than relying on insert
@@ -363,12 +373,13 @@ INSERT INTO xf_nf_tickets_ticket_field_value (ticket_id, field_id, field_value) 
 -- API keys (Cav7 ApiKeyManager)
 -- ---------------------------------------------------------------------
 -- Raw key material is the testdb package's public contract
--- (testdb.ActiveAPIKey / testdb.RevokedAPIKey); only hashes are stored,
--- matching the datastore's UNHEX(SHA2(?, 256)) lookup. Scope 3 is an
--- inactive scope attached to the active key: it must NOT surface. Key 3,
--- testdb.LoasAPIKey, holds read:loas alone, the scope the LOA route gates
--- on. Its owner 402 has no xf_user row, because key validation never reads
--- the user table.
+-- (testdb.ActiveAPIKey and friends); only hashes are stored, matching the
+-- datastore's UNHEX(SHA2(?, 256)) lookup. Scope 3 is an inactive scope
+-- attached to the active key: it must NOT surface. Key 3,
+-- testdb.LoasAPIKey, holds read:loas alone; its owner 402 has a bounced
+-- email, which must not lock them out. Keys 4-6 are active with active
+-- scopes but their owners are banned (403), disabled (404) and deleted
+-- (405, no xf_user row), so they must fail validation.
 INSERT INTO xf_cav7_api_key_scope_def
   (scope_id, scope_name, title, description, is_active) VALUES
   (1, 'read',         'Read',         'Read milpacs data',  1),
@@ -380,11 +391,20 @@ INSERT INTO xf_cav7_api_key
   (key_id, user_id, key_hash, key_prefix, is_active, created_date) VALUES
   (1, 401, UNHEX(SHA2('cav7_harness_active', 256)),  'cav7_harness', 1, 1740000000),
   (2, 400, UNHEX(SHA2('cav7_harness_revoked', 256)), 'cav7_harness', 0, 1740000000),
-  (3, 402, UNHEX(SHA2('cav7_harness_loas', 256)),    'cav7_harness', 1, 1740000000);
+  (3, 402, UNHEX(SHA2('cav7_harness_loas', 256)),    'cav7_harness', 1, 1740000000),
+  (4, 403, UNHEX(SHA2('cav7_harness_banned', 256)),  'cav7_harness', 1, 1740000000),
+  (5, 404, UNHEX(SHA2('cav7_harness_disabled', 256)),'cav7_harness', 1, 1740000000),
+  (6, 405, UNHEX(SHA2('cav7_harness_deleted', 256)), 'cav7_harness', 1, 1740000000);
 
 INSERT INTO xf_cav7_api_key_scope (key_id, scope_id) VALUES
   (1, 1),
   (1, 2),
   (1, 3),
   (2, 1),
-  (3, 4);
+  (3, 4),
+  (4, 1),
+  (4, 2),
+  (5, 1),
+  (5, 2),
+  (6, 1),
+  (6, 2);
